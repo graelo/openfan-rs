@@ -1,0 +1,52 @@
+[Unit]
+Description=OpenFAN Controller Server
+Documentation=https://github.com/graelo/OpenFanController
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openfan
+Group=openfan
+WorkingDirectory=/opt/openfan
+ExecStart=/opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openfan-server
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/openfan /var/log/openfan /etc/openfan
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictNamespaces=true
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+# Device access for hardware communication
+DeviceAllow=/dev/ttyUSB* rw
+DeviceAllow=/dev/ttyACM* rw
+DevicePolicy=closed
+
+# Environment
+Environment=RUST_LOG=info
+Environment=OPENFAN_CONFIG=/etc/openfan/config.yaml
+
+[Install]
+WantedBy=multi-user.target
+Alias=openfan.service

@@ -1,0 +1,234 @@
+//! Configuration management module
+//!
+//! Handles loading, saving, and managing the YAML configuration file.
+
+use openfan_core::{Config, OpenFanError, Result};
+use std::collections::hash_map::Entry;
+use std::path::Path;
+use tokio::fs;
+use tracing::{debug, error, info, warn};
+
+/// Configuration manager
+pub struct ConfigManager {
+    path: std::path::PathBuf,
+    config: Config,
+}
+
+impl ConfigManager {
+    /// Create a new configuration manager
+    pub fn new(path: impl AsRef<Path>) -> Self {
+        Self {
+            path: path.as_ref().to_path_buf(),
+            config: Config::default(),
+        }
+    }
+
+    /// Load configuration from file
+    ///
+    /// If the file doesn't exist, creates it with default values.
+    /// If the file exists but is incomplete, merges with defaults and saves.
+    pub async fn load(&mut self) -> Result<()> {
+        debug!("Loading configuration from: {}", self.path.display());
+
+        // Check if config file exists
+        if !self.path.exists() {
+            warn!(
+                "Configuration file not found: {}. Creating with defaults.",
+                self.path.display()
+            );
+            return self.init_default_config().await;
+        }
+
+        // Read file contents
+        let contents = fs::read_to_string(&self.path).await.map_err(|e| {
+            error!("Failed to read config file: {}", e);
+            OpenFanError::Config(format!("Failed to read config file: {}", e))
+        })?;
+
+        // Parse YAML
+        match serde_yaml::from_str::<Config>(&contents) {
+            Ok(loaded_config) => {
+                info!("Configuration loaded successfully");
+                self.config = loaded_config;
+
+                // Validate and fill missing data
+                let needs_save = self.validate_and_fill_defaults();
+
+                if needs_save {
+                    warn!("Configuration was incomplete. Filling with defaults and saving.");
+                    self.save().await?;
+                }
+
+                self.debug_config();
+                Ok(())
+            }
+            Err(e) => {
+                error!("Failed to parse config file: {}", e);
+                warn!("Using default configuration");
+                self.config = Config::default();
+                self.init_default_config().await
+            }
+        }
+    }
+
+    /// Save current configuration to file
+    pub async fn save(&self) -> Result<()> {
+        debug!("Saving configuration to: {}", self.path.display());
+
+        let yaml = serde_yaml::to_string(&self.config).map_err(|e| {
+            error!("Failed to serialize config: {}", e);
+            OpenFanError::Config(format!("Failed to serialize config: {}", e))
+        })?;
+
+        fs::write(&self.path, yaml).await.map_err(|e| {
+            error!("Failed to write config file: {}", e);
+            OpenFanError::Config(format!("Failed to write config file: {}", e))
+        })?;
+
+        info!("Configuration saved successfully");
+        Ok(())
+    }
+
+    /// Initialize with default configuration and save to file
+    async fn init_default_config(&mut self) -> Result<()> {
+        info!("Initializing default configuration");
+        self.config = Config::default();
+        self.save().await?;
+        Ok(())
+    }
+
+    /// Validate configuration and fill missing values with defaults
+    ///
+    /// Returns true if any values were filled
+    fn validate_and_fill_defaults(&mut self) -> bool {
+        let mut modified = false;
+
+        // Ensure we have at least the default profiles
+        let default_config = Config::default();
+
+        if self.config.fan_profiles.is_empty() {
+            debug!("No fan profiles found, adding defaults");
+            self.config.fan_profiles = default_config.fan_profiles;
+            modified = true;
+        }
+
+        // Ensure we have all 10 fan aliases
+        for i in 0..10u8 {
+            if let Entry::Vacant(e) = self.config.fan_aliases.entry(i) {
+                debug!("Missing alias for fan {}, adding default", i);
+                e.insert(format!("Fan #{}", i + 1));
+                modified = true;
+            }
+        }
+
+        modified
+    }
+
+    /// Print configuration to debug log
+    fn debug_config(&self) {
+        debug!("--- Server Config ---");
+        debug!("  Host: {}", self.config.server.hostname);
+        debug!("  Port: {}", self.config.server.port);
+        debug!("  Timeout: {}s", self.config.server.communication_timeout);
+        debug!("--- Hardware Config ---");
+        debug!("  Host: {}", self.config.hardware.hostname);
+        debug!("  Port: {}", self.config.hardware.port);
+        debug!("  Timeout: {}s", self.config.hardware.communication_timeout);
+        debug!("--- Fan Profiles ---");
+        for (name, profile) in &self.config.fan_profiles {
+            debug!(
+                "  {}: {:?} - {:?}",
+                name, profile.control_mode, profile.values
+            );
+        }
+        debug!("--- Fan Aliases ---");
+        for i in 0..10u8 {
+            if let Some(alias) = self.config.fan_aliases.get(&i) {
+                debug!("  Fan {}: {}", i, alias);
+            }
+        }
+        debug!("--------------------");
+    }
+
+    /// Get immutable reference to configuration
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
+    /// Get mutable reference to configuration
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.config
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::NamedTempFile;
+
+    #[tokio::test]
+    async fn test_config_manager_default() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Remove the file so we test creation
+        std::fs::remove_file(path).unwrap();
+
+        let mut manager = ConfigManager::new(path);
+        manager.load().await.unwrap();
+
+        // Check defaults
+        assert_eq!(manager.config().server.port, 3000);
+        assert_eq!(manager.config().fan_profiles.len(), 3);
+        assert_eq!(manager.config().fan_aliases.len(), 10);
+
+        // File should now exist
+        assert!(path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_config_manager_load_save() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        let mut manager = ConfigManager::new(path);
+        manager.load().await.unwrap();
+
+        // Modify config
+        manager.config_mut().server.port = 4000;
+        manager.save().await.unwrap();
+
+        // Load again and verify
+        let mut manager2 = ConfigManager::new(path);
+        manager2.load().await.unwrap();
+        assert_eq!(manager2.config().server.port, 4000);
+    }
+
+    #[tokio::test]
+    async fn test_config_validation() {
+        let temp_file = NamedTempFile::new().unwrap();
+        let path = temp_file.path();
+
+        // Create incomplete config
+        let incomplete_yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases: {}
+"#;
+        std::fs::write(path, incomplete_yaml).unwrap();
+
+        let mut manager = ConfigManager::new(path);
+        manager.load().await.unwrap();
+
+        // Should have filled defaults
+        assert!(!manager.config().fan_profiles.is_empty());
+        assert_eq!(manager.config().fan_aliases.len(), 10);
+    }
+}

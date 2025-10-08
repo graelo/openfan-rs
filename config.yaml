@@ -1,0 +1,59 @@
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles:
+  100% PWM:
+    type: pwm
+    values:
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+    - 100
+  1000 RPM:
+    type: rpm
+    values:
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+    - 1000
+  50% PWM:
+    type: pwm
+    values:
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+    - 50
+fan_aliases:
+  5: 'Fan #6'
+  8: 'Fan #9'
+  6: 'Fan #7'
+  3: 'Fan #4'
+  4: 'Fan #5'
+  7: 'Fan #8'
+  2: 'Fan #3'
+  1: 'Fan #2'
+  0: CPU Fan
+  9: 'Fan #10'

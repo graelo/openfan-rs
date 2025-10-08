@@ -1,0 +1,214 @@
+# OpenFAN Controller Docker Compose Configuration
+# This file provides easy deployment options for the OpenFAN Controller
+
+version: '3.8'
+
+services:
+  # OpenFAN Server (Production)
+  openfan-server:
+    build: .
+    container_name: openfan-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - openfan-config:/etc/openfan
+      - openfan-data:/var/lib/openfan
+      - openfan-logs:/var/log/openfan
+      # Mount host devices for hardware access
+      - /dev:/dev
+    devices:
+      # Grant access to USB serial devices
+      - /dev/ttyUSB0:/dev/ttyUSB0
+      - /dev/ttyACM0:/dev/ttyACM0
+    privileged: false
+    # Add necessary capabilities for device access
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - RUST_LOG=info
+      - OPENFAN_CONFIG=/etc/openfan/config.yaml
+    command: ["/opt/openfan/bin/openfan-server", "--config", "/etc/openfan/config.yaml"]
+    networks:
+      - openfan-network
+    healthcheck:
+      test: ["/usr/local/bin/openfan", "--server", "http://localhost:8080", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # OpenFAN Server (Mock Mode for Testing)
+  openfan-server-mock:
+    build: .
+    container_name: openfan-server-mock
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - openfan-config-mock:/etc/openfan
+      - openfan-data-mock:/var/lib/openfan
+      - openfan-logs-mock:/var/log/openfan
+    environment:
+      - RUST_LOG=info
+      - OPENFAN_CONFIG=/etc/openfan/config.yaml
+    command: ["/opt/openfan/bin/openfan-server", "--config", "/etc/openfan/config.yaml", "--mock"]
+    networks:
+      - openfan-network
+    healthcheck:
+      test: ["/usr/local/bin/openfan", "--server", "http://localhost:8080", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - mock
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: openfan-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx-certs:/etc/nginx/certs:ro
+    depends_on:
+      - openfan-server
+    networks:
+      - openfan-network
+    profiles:
+      - proxy
+
+  # Log aggregator (optional)
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: openfan-loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - openfan-network
+    profiles:
+      - monitoring
+
+  # Metrics and monitoring (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: openfan-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - openfan-network
+    profiles:
+      - monitoring
+
+  # Dashboard (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: openfan-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - openfan-network
+    profiles:
+      - monitoring
+
+# Volumes for persistent data
+volumes:
+  # Production volumes
+  openfan-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./config
+  openfan-data:
+    driver: local
+  openfan-logs:
+    driver: local
+
+  # Mock mode volumes
+  openfan-config-mock:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./config
+  openfan-data-mock:
+    driver: local
+  openfan-logs-mock:
+    driver: local
+
+  # Monitoring volumes
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  loki-data:
+    driver: local
+
+  # Nginx volumes
+  nginx-certs:
+    driver: local
+
+# Networks
+networks:
+  openfan-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Override configurations for different environments
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+
+# Development override example (create docker-compose.override.yml):
+# version: '3.8'
+# services:
+#   openfan-server:
+#     build:
+#       context: .
+#       target: builder
+#     volumes:
+#       - .:/usr/src/openfan
+#     command: ["cargo", "run", "--bin", "openfan-server", "--", "--mock"]
+#     environment:
+#       - RUST_LOG=debug
+
+# Production override example (create docker-compose.prod.yml):
+# version: '3.8'
+# services:
+#   openfan-server:
+#     image: openfan/controller:latest
+#     deploy:
+#       replicas: 2
+#       update_config:
+#         parallelism: 1
+#         delay: 10s
+#       restart_policy:
+#         condition: on-failure

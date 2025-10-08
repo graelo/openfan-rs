@@ -1,0 +1,106 @@
+# OpenFAN Controller Docker ignore file
+# Exclude unnecessary files from Docker build context
+
+# Target directory (build artifacts)
+target/
+**/target/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+docs/
+conversion/
+
+# Test files
+tests/
+**/tests/
+
+# Deployment files (not needed in container)
+deploy/
+*.deb
+*.tar.gz
+*.zip
+dist/
+
+# Docker files
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Logs
+*.log
+logs/
+server.log
+
+# Configuration backups
+*.yaml.bak
+*.yaml.old
+
+# Temporary files
+tmp/
+temp/
+
+# Rust specific
+Cargo.lock.bak
+**/*.rs.bk
+
+# Python (if any scripts exist)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+
+# Node.js (if any frontend exists)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage reports
+coverage/
+*.profraw
+cobertura.xml
+
+# Backup files
+*~
+*.bak
+*.backup
+*.old
+
+# Local environment files
+.env
+.env.local
+.env.*.local
+
+# Package build artifacts
+debian-package/
+*.deb
+rpm-build/
+*.rpm
+
+# Testing artifacts
+test-results/
+test-output/

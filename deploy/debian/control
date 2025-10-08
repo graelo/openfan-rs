@@ -1,0 +1,27 @@
+Package: openfan-controller
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libc6 (>= 2.17), libgcc-s1 (>= 3.0), systemd
+Maintainer: OpenFAN Contributors <maintainer@example.com>
+Homepage: https://github.com/graelo/OpenFanController
+Description: OpenFAN Controller - Fan Management System
+ OpenFAN Controller is a high-performance fan management system written in Rust.
+ It provides both a REST API server and command-line interface for controlling
+ computer fans via serial communication.
+ .
+ Features:
+  - REST API server for remote fan control
+  - Command-line interface with intuitive commands
+  - Support for PWM and RPM control modes
+  - Fan profiles for automated control
+  - Real-time monitoring and status reporting
+  - Hardware auto-detection
+  - Mock mode for testing without hardware
+ .
+ This package includes:
+  - openfan-server: REST API server daemon
+  - openfan: Command-line interface tool
+  - systemd service configuration
+  - Default configuration files
