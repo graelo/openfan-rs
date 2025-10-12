@@ -9,6 +9,7 @@ use serde_json::Value;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
+use tempfile::TempDir;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 
@@ -22,6 +23,7 @@ pub struct E2ETestHarness {
     server_process: Arc<Mutex<Option<Child>>>,
     server_port: u16,
     server_url: String,
+    temp_dir: TempDir,
 }
 
 impl Default for E2ETestHarness {
@@ -36,11 +38,13 @@ impl Default for E2ETestHarness {
         let port_offset = thread_hash.parse::<u16>().unwrap_or(0) % 1000;
         let server_port = 18000 + port_offset;
         let server_url = format!("http://127.0.0.1:{}", server_port);
+        let temp_dir = tempfile::tempdir().unwrap();
 
         Self {
             server_process: Arc::new(Mutex::new(None)),
             server_port,
             server_url,
+            temp_dir,
         }
     }
 }
@@ -68,7 +72,10 @@ fans:
 
 profiles: {}
 "#;
-        let config_path = format!("test_config_{}.yaml", self.server_port);
+        let config_path = self
+            .temp_dir
+            .as_ref()
+            .join(format!("test_config_{}.yaml", self.server_port));
         std::fs::write(&config_path, config_content)?;
 
         // Start the server process in mock mode
@@ -82,7 +89,7 @@ profiles: {}
                 "--",
                 "--mock",
                 "--config",
-                &config_path,
+                &config_path.to_string_lossy(),
                 "--port",
                 &self.server_port.to_string(),
                 "--bind",
@@ -305,6 +312,7 @@ impl Drop for E2ETestHarness {
                 let _ = child.kill();
             }
         }
+        // The temp_dir will be automatically cleaned up when it goes out of scope
     }
 }
 
