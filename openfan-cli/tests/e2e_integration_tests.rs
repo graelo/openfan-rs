@@ -72,7 +72,7 @@ profiles: {}
         std::fs::write(&config_path, config_content)?;
 
         // Start the server process in mock mode
-        let mut child = Command::new("cargo")
+        let child = Command::new("cargo")
             .args([
                 "run",
                 "-p",
@@ -94,13 +94,38 @@ profiles: {}
             .spawn()
             .expect("Failed to start server process");
 
+        // Assign child to process guard immediately
+        *process_guard = Some(child);
+
+        // Assign child to process guard immediately
+        // Ensure child is only moved once
+
         // Wait for server to be ready
         let start_time = std::time::Instant::now();
         let mut last_error = String::new();
         while start_time.elapsed() < SERVER_STARTUP_TIMEOUT {
             if let Ok(response) = self.check_server_health().await {
                 if response.status().is_success() {
-                    *process_guard = Some(child);
+                    // Process has exited - get output for debugging
+                    let mut stdout = String::new();
+                    let mut stderr = String::new();
+                    if let Some(ref mut stdout_handle) =
+                        process_guard.as_mut().unwrap().stdout.as_mut()
+                    {
+                        use std::io::Read;
+                        let _ = stdout_handle.read_to_string(&mut stdout);
+                    }
+                    if let Some(ref mut stderr_handle) =
+                        process_guard.as_mut().unwrap().stderr.as_mut()
+                    {
+                        use std::io::Read;
+                        let _ = stderr_handle.read_to_string(&mut stderr);
+                    }
+
+                    // Clean up config file
+                    let config_path = format!("test_config_{}.yaml", self.server_port);
+                    let _ = std::fs::remove_file(&config_path);
+
                     println!("Server started successfully on port {}", self.server_port);
                     // Give it a moment to fully initialize
                     sleep(Duration::from_millis(500)).await;
@@ -109,16 +134,20 @@ profiles: {}
                 last_error = format!("HTTP status: {}", response.status());
             } else {
                 // Check if child process is still running
-                match child.try_wait() {
+                match process_guard.as_mut().unwrap().try_wait() {
                     Ok(Some(status)) => {
                         // Process has exited - get output for debugging
                         let mut stdout = String::new();
                         let mut stderr = String::new();
-                        if let Some(ref mut stdout_handle) = child.stdout.as_mut() {
+                        if let Some(ref mut stdout_handle) =
+                            process_guard.as_mut().unwrap().stdout.as_mut()
+                        {
                             use std::io::Read;
                             let _ = stdout_handle.read_to_string(&mut stdout);
                         }
-                        if let Some(ref mut stderr_handle) = child.stderr.as_mut() {
+                        if let Some(ref mut stderr_handle) =
+                            process_guard.as_mut().unwrap().stderr.as_mut()
+                        {
                             use std::io::Read;
                             let _ = stderr_handle.read_to_string(&mut stderr);
                         }
@@ -147,7 +176,9 @@ profiles: {}
         }
 
         // Kill the child process if startup failed
-        let _ = child.kill();
+        if let Some(ref mut child) = process_guard.as_mut() {
+            let _ = child.kill();
+        }
 
         // Clean up config file
         let config_path = format!("test_config_{}.yaml", self.server_port);
