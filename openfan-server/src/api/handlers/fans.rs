@@ -251,45 +251,6 @@ pub async fn set_fan_rpm(
 
 #[cfg(test)]
 mod tests {
-    // Test imports removed - not used
-
-    #[test]
-    fn test_pwm_validation() {
-        // Test clamping
-        assert_eq!(if 150.0 > 100.0 { 100.0 } else { 150.0 } as u32, 100);
-        assert_eq!(if -10.0 < 0.0 { 0.0 } else { -10.0 } as u32, 0);
-        assert_eq!(
-            if 50.0 > 100.0 {
-                100.0
-            } else if 50.0 < 0.0 {
-                0.0
-            } else {
-                50.0
-            } as u32,
-            50
-        );
-    }
-
-    #[test]
-    fn test_rpm_validation() {
-        // Test clamping
-        assert_eq!(
-            if 20000.0 > 16000.0 { 16000.0 } else { 20000.0 } as u32,
-            16000
-        );
-        assert_eq!(if 400.0 < 480.0 { 0.0 } else { 400.0 } as u32, 0);
-        assert_eq!(
-            if 1000.0 > 16000.0 {
-                16000.0
-            } else if 1000.0 < 480.0 {
-                0.0
-            } else {
-                1000.0
-            } as u32,
-            1000
-        );
-    }
-
     #[test]
     fn test_fan_id_parsing() {
         assert_eq!("0".parse::<u8>().unwrap(), 0);

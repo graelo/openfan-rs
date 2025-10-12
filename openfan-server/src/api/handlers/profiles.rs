@@ -219,12 +219,12 @@ mod tests {
     #[test]
     fn test_profile_validation() {
         // Test PWM values
-        let pwm_values = vec![0, 25, 50, 75, 100, 100, 75, 50, 25, 0];
+        let pwm_values = [0, 25, 50, 75, 100, 100, 75, 50, 25, 0];
         assert_eq!(pwm_values.len(), 10);
         assert!(pwm_values.iter().all(|&v| v <= 100));
 
         // Test RPM values
-        let rpm_values = vec![0, 1000, 2000, 3000, 4000, 5000, 4000, 3000, 2000, 1000];
+        let rpm_values = [0, 1000, 2000, 3000, 4000, 5000, 4000, 3000, 2000, 1000];
         assert_eq!(rpm_values.len(), 10);
         assert!(rpm_values.iter().all(|&v| v <= 16000));
     }

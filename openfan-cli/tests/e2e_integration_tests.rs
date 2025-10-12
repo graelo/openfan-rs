@@ -24,9 +24,9 @@ pub struct E2ETestHarness {
     server_url: String,
 }
 
-impl E2ETestHarness {
+impl Default for E2ETestHarness {
     /// Create a new test harness with a unique port
-    pub fn new() -> Self {
+    fn default() -> Self {
         // Use a high port number to avoid conflicts, include thread/process ID for uniqueness
         let thread_id = std::thread::current().id();
         let thread_hash = format!("{:?}", thread_id)
@@ -43,7 +43,9 @@ impl E2ETestHarness {
             server_url,
         }
     }
+}
 
+impl E2ETestHarness {
     /// Start the server in mock mode
     pub async fn start_server(&self) -> Result<()> {
         let mut process_guard = self.server_process.lock().await;
@@ -71,7 +73,7 @@ profiles: {}
 
         // Start the server process in mock mode
         let mut child = Command::new("cargo")
-            .args(&[
+            .args([
                 "run",
                 "-p",
                 "openfan-server",
@@ -165,7 +167,7 @@ profiles: {}
             .build()?;
 
         client
-            .get(&format!("{}/api/v0/info", self.server_url))
+            .get(format!("{}/api/v0/info", self.server_url))
             .send()
             .await
             .map_err(|e| anyhow::anyhow!("Health check failed: {}", e))
@@ -277,7 +279,7 @@ impl Drop for E2ETestHarness {
 
 #[tokio::test]
 async fn test_e2e_server_startup_and_info() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
 
     // Start server
     harness.start_server().await?;
@@ -303,7 +305,7 @@ async fn test_e2e_server_startup_and_info() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_fan_status_and_control() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test fan status
@@ -339,7 +341,7 @@ async fn test_e2e_fan_status_and_control() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_profile_operations() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test listing profiles (should be empty initially)
@@ -389,7 +391,7 @@ async fn test_e2e_profile_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_alias_operations() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test listing aliases (should have defaults)
@@ -423,7 +425,7 @@ async fn test_e2e_alias_operations() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_error_handling() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test invalid fan ID
@@ -478,7 +480,7 @@ async fn test_e2e_error_handling() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_json_output_format() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test JSON info output
@@ -520,7 +522,7 @@ async fn test_e2e_json_output_format() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_health_check() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test health command
@@ -549,7 +551,7 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
     // Try to start server without --mock flag
     let output = timeout(Duration::from_secs(15), async {
         Command::new("cargo")
-            .args(&[
+            .args([
                 "run",
                 "-p",
                 "openfan-server",
@@ -589,7 +591,7 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
 #[tokio::test]
 async fn test_e2e_cli_server_connection_failure() -> Result<()> {
     // Test CLI behavior when server is not running
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     // Note: we don't start the server for this test
 
     let error_output = harness.run_cli_expect_failure(&["info"]).await?;
@@ -608,7 +610,7 @@ async fn test_e2e_cli_server_connection_failure() -> Result<()> {
 
 #[tokio::test]
 async fn test_e2e_profile_with_different_modes() -> Result<()> {
-    let harness = E2ETestHarness::new();
+    let harness = E2ETestHarness::default();
     harness.start_server().await?;
 
     // Test PWM profile

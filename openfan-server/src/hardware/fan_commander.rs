@@ -264,7 +264,6 @@ mod tests {
         // Test PWM percentage to value conversion
         assert_eq!((50 * 255) / 100, 127); // 50% -> 127
         assert_eq!((100 * 255) / 100, 255); // 100% -> 255
-        assert_eq!((0 * 255) / 100, 0); // 0% -> 0
     }
 
     #[test]

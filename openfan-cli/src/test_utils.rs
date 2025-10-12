@@ -14,7 +14,6 @@ use openfan_core::api::{
     AliasResponse, ApiResponse, FanStatusResponse, InfoResponse, ProfileResponse,
 };
 use openfan_core::types::{ControlMode, FanProfile};
-use rand;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -437,7 +436,6 @@ async fn set_alias_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reqwest;
 
     #[tokio::test]
     async fn test_mock_server_startup() {
@@ -460,7 +458,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("{}/api/v0/info", url))
+            .get(format!("{}/api/v0/info", url))
             .send()
             .await
             .unwrap();
@@ -484,7 +482,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let response = client
-            .get(&format!("{}/api/v0/fan/status", url))
+            .get(format!("{}/api/v0/fan/status", url))
             .send()
             .await
             .unwrap();
@@ -512,7 +510,7 @@ mod tests {
 
         // Set PWM
         let response = client
-            .get(&format!("{}/api/v0/fan/0/pwm?value=75", url))
+            .get(format!("{}/api/v0/fan/0/pwm?value=75", url))
             .send()
             .await
             .unwrap();
@@ -532,7 +530,7 @@ mod tests {
 
         // List profiles
         let response = client
-            .get(&format!("{}/api/v0/profiles/list", url))
+            .get(format!("{}/api/v0/profiles/list", url))
             .send()
             .await
             .unwrap();
@@ -550,7 +548,7 @@ mod tests {
 
         // Apply profile
         let response = client
-            .get(&format!("{}/api/v0/profiles/set?name=50% PWM", url))
+            .get(format!("{}/api/v0/profiles/set?name=50% PWM", url))
             .send()
             .await
             .unwrap();
@@ -566,7 +564,7 @@ mod tests {
 
         // Get all aliases
         let response = client
-            .get(&format!("{}/api/v0/alias/all/get", url))
+            .get(format!("{}/api/v0/alias/all/get", url))
             .send()
             .await
             .unwrap();
@@ -574,7 +572,7 @@ mod tests {
 
         // Set alias
         let response = client
-            .get(&format!("{}/api/v0/alias/0/set?alias=CPU Fan", url))
+            .get(format!("{}/api/v0/alias/0/set?alias=CPU Fan", url))
             .send()
             .await
             .unwrap();
@@ -582,7 +580,7 @@ mod tests {
 
         // Get specific alias
         let response = client
-            .get(&format!("{}/api/v0/alias/0/get", url))
+            .get(format!("{}/api/v0/alias/0/get", url))
             .send()
             .await
             .unwrap();
