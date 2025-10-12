@@ -5,7 +5,7 @@
 pub mod handlers;
 
 use crate::config::ConfigManager;
-use crate::hardware::FanCommander;
+use crate::hardware::FanController;
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -26,17 +26,17 @@ pub struct AppState {
     /// Configuration manager
     pub config: Arc<RwLock<ConfigManager>>,
     /// Hardware commander
-    pub fan_commander: Option<Arc<Mutex<FanCommander>>>,
+    pub fan_controller: Option<Arc<Mutex<FanController>>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
 }
 
 impl AppState {
     /// Create new application state
-    pub fn new(config: ConfigManager, fan_commander: Option<FanCommander>) -> Self {
+    pub fn new(config: ConfigManager, fan_controller: Option<FanController>) -> Self {
         Self {
             config: Arc::new(RwLock::new(config)),
-            fan_commander: fan_commander.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
+            fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
             start_time: Instant::now(),
         }
     }

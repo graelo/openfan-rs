@@ -3,10 +3,10 @@
 //! This module provides high-level interfaces for communicating with
 //! the fan controller hardware via serial communication.
 
-pub mod fan_commander;
+pub mod fan_controller;
 pub mod serial_driver;
 
-pub use fan_commander::FanCommander;
+pub use fan_controller::FanController;
 pub use serial_driver::{find_fan_controller, SerialDriver};
 
 /// Hardware initialization and connection utilities
@@ -22,7 +22,7 @@ pub mod connection {
     /// 1. Search by VID/PID (0x2E8A:0x000A)
     /// 2. Use OPENFAN_COMPORT environment variable
     /// 3. Try common device paths
-    pub async fn auto_connect(timeout_ms: u64, debug_uart: bool) -> Result<FanCommander> {
+    pub async fn auto_connect(timeout_ms: u64, debug_uart: bool) -> Result<FanController> {
         info!("Initializing hardware connection...");
 
         // Method 1: Auto-detect by VID/PID
@@ -32,7 +32,7 @@ pub mod connection {
                 match SerialDriver::new(&port_path, timeout_ms, debug_uart) {
                     Ok(driver) => {
                         info!("Successfully connected to fan controller");
-                        return Ok(FanCommander::new(driver));
+                        return Ok(FanController::new(driver));
                     }
                     Err(e) => {
                         warn!("Failed to connect to detected device: {}", e);
@@ -50,7 +50,7 @@ pub mod connection {
             match SerialDriver::new(&port_path, timeout_ms, debug_uart) {
                 Ok(driver) => {
                     info!("Successfully connected via OPENFAN_COMPORT");
-                    return Ok(FanCommander::new(driver));
+                    return Ok(FanController::new(driver));
                 }
                 Err(e) => {
                     warn!("Failed to connect to OPENFAN_COMPORT device: {}", e);
@@ -74,7 +74,7 @@ pub mod connection {
             match SerialDriver::new(path, timeout_ms, debug_uart) {
                 Ok(driver) => {
                     info!("Successfully connected to {}", path);
-                    return Ok(FanCommander::new(driver));
+                    return Ok(FanController::new(driver));
                 }
                 Err(_) => {
                     // Expected to fail for most paths
@@ -87,7 +87,7 @@ pub mod connection {
     }
 
     /// Test hardware connection by getting firmware info
-    pub async fn test_connection(commander: &mut FanCommander) -> Result<()> {
+    pub async fn test_connection(commander: &mut FanController) -> Result<()> {
         info!("Testing hardware connection...");
 
         match commander.get_fw_info().await {

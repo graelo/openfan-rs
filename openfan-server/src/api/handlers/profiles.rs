@@ -175,13 +175,13 @@ pub async fn set_profile(
     drop(config); // Release the read lock
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!("Hardware not available - simulating profile application for testing");
         info!("Applied profile '{}' (mock mode)", profile_name);
         return api_ok!(());
     };
 
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     let mut results = Vec::new();
 
     // Apply profile values to each fan

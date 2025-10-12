@@ -29,7 +29,7 @@ pub async fn get_info(
 ) -> Result<Json<ApiResponse<InfoResponse>>, ApiError> {
     debug!("Request: GET /api/v0/info");
 
-    let hardware_connected = state.fan_commander.is_some();
+    let hardware_connected = state.fan_controller.is_some();
 
     // Calculate actual uptime
     let uptime = state.start_time.elapsed().as_secs();
@@ -38,8 +38,8 @@ pub async fn get_info(
     let software = "OpenFAN Server v1.0.0\r\nBuild: 2024-10-08".to_string();
 
     // Try to get hardware and firmware information if hardware is connected
-    let (hardware_info, firmware_info) = if let Some(fan_commander) = &state.fan_commander {
-        let mut commander = fan_commander.lock().await;
+    let (hardware_info, firmware_info) = if let Some(fan_controller) = &state.fan_controller {
+        let mut commander = fan_controller.lock().await;
 
         let hardware = match commander.get_hw_info().await {
             Ok(hw_info) => {

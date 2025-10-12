@@ -65,22 +65,22 @@ async fn main() -> Result<()> {
     let bind_addr = format!("{}:{}", args.bind, port);
 
     // Initialize hardware connection
-    let fan_commander = if args.mock {
+    let fan_controller = if args.mock {
         info!("Mock mode enabled - running without hardware");
         None
     } else {
         info!("Initializing hardware connection...");
         match connection::auto_connect(2000, args.verbose).await {
-            Ok(mut commander) => {
+            Ok(mut controller) => {
                 info!("Hardware connected successfully");
 
                 // Test the connection
-                if let Err(e) = connection::test_connection(&mut commander).await {
+                if let Err(e) = connection::test_connection(&mut controller).await {
                     warn!("Hardware test failed, but continuing: {}", e);
                 }
 
                 info!("Hardware layer ready");
-                Some(commander)
+                Some(controller)
             }
             Err(e) => {
                 error!("Hardware connection failed: {}", e);
@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
     };
 
     // Create application state
-    let app_state = AppState::new(config_manager, fan_commander);
+    let app_state = AppState::new(config_manager, fan_controller);
 
     // Set up API router
     let app = api::create_router(app_state);

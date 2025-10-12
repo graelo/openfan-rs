@@ -1,4 +1,4 @@
-//! Fan Commander - High-level interface for fan control
+//! Fan Controller - High-level interface for fan control
 //!
 //! Implements the fan control protocol over serial communication.
 
@@ -30,13 +30,13 @@ pub enum Command {
 }
 
 /// Fan controller interface
-pub struct FanCommander {
+pub struct FanController {
     driver: Arc<Mutex<SerialDriver>>,
     fan_rpm_cache: HashMap<u8, u32>,
 }
 
-impl FanCommander {
-    /// Create a new FanCommander with the given serial driver
+impl FanController {
+    /// Create a new FanController with the given serial driver
     pub fn new(driver: SerialDriver) -> Self {
         Self {
             driver: Arc::new(Mutex::new(driver)),
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_parse_fan_rpm_parsing() {
-        // Test just the parsing logic without creating a FanCommander
+        // Test just the parsing logic without creating a FanController
         let response = "<DATA|0:1234;1:5678;2:9ABC;>";
 
         // Parse manually to test the logic

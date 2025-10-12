@@ -28,7 +28,7 @@ pub async fn get_status(
     debug!("Request: GET /api/v0/fan/status");
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!("Hardware not available - returning mock fan status data");
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
@@ -45,7 +45,7 @@ pub async fn get_status(
     };
 
     // Get RPM data from hardware
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     match commander.get_all_fan_rpm().await {
         Ok(rpm_map) => {
             debug!("Fan RPM data retrieved: {:?}", rpm_map);
@@ -83,13 +83,13 @@ pub async fn set_all_fans(
     debug!("Setting all fans to {}% PWM", pwm_value);
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!("Hardware not available - simulating fan PWM set for testing");
         return api_ok!(());
     };
 
     // Send command to hardware
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     match commander.set_all_fan_pwm(pwm_value).await {
         Ok(response) => {
             debug!("Set all fans response: {}", response);
@@ -131,7 +131,7 @@ pub async fn set_fan_pwm(
     debug!("Setting fan {} to {}% PWM", fan_index, pwm_value);
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!(
             "Hardware not available - simulating fan {} PWM set for testing",
             fan_index
@@ -140,7 +140,7 @@ pub async fn set_fan_pwm(
     };
 
     // Send command to hardware
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     match commander.set_fan_pwm(fan_index, pwm_value).await {
         Ok(response) => {
             debug!("Set fan {} PWM response: {}", fan_index, response);
@@ -171,7 +171,7 @@ pub async fn get_fan_rpm(
     }
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!(
             "Hardware not available - returning mock RPM for fan {}",
             fan_index
@@ -181,7 +181,7 @@ pub async fn get_fan_rpm(
     };
 
     // Get single fan RPM from hardware
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     match commander.get_single_fan_rpm(fan_index).await {
         Ok(rpm) => {
             debug!("Fan {} RPM: {}", fan_index, rpm);
@@ -227,7 +227,7 @@ pub async fn set_fan_rpm(
     debug!("Setting fan {} to {} RPM", fan_index, rpm_value);
 
     // Check if hardware is available
-    let Some(fan_commander) = &state.fan_commander else {
+    let Some(fan_controller) = &state.fan_controller else {
         warn!(
             "Hardware not available - simulating fan {} RPM set for testing",
             fan_index
@@ -236,7 +236,7 @@ pub async fn set_fan_rpm(
     };
 
     // Send command to hardware
-    let mut commander = fan_commander.lock().await;
+    let mut commander = fan_controller.lock().await;
     match commander.set_fan_rpm(fan_index, rpm_value).await {
         Ok(response) => {
             debug!("Set fan {} RPM response: {}", fan_index, response);
