@@ -1093,6 +1093,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "openfan-hardware"
+version = "0.1.0"
+dependencies = [
+ "openfan-core",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-serial",
+ "tracing",
+]
+
+[[package]]
 name = "openfan-server"
 version = "1.0.0"
 dependencies = [
@@ -1100,6 +1111,7 @@ dependencies = [
  "axum",
  "clap",
  "openfan-core",
+ "openfan-hardware",
  "serde",
  "serde_json",
  "serde_yaml",

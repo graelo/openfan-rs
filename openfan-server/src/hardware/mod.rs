@@ -1,13 +1,11 @@
 //! Hardware abstraction layer for fan controller
 //!
-//! This module provides high-level interfaces for communicating with
-//! the fan controller hardware via serial communication.
+//! Re-export the hardware interface from the `openfan_hardware` crate so
+//! consumers of `openfan-server` can access the hardware APIs without
+//! depending on the internal module layout.
 
-pub mod fan_controller;
-pub mod serial_driver;
-
-pub use fan_controller::FanController;
-pub use serial_driver::{find_fan_controller, SerialDriver};
+pub use openfan_hardware::FanController;
+pub use openfan_hardware::{find_fan_controller, SerialDriver};
 
 /// Hardware initialization and connection utilities
 pub mod connection {

@@ -1,0 +1,11 @@
+[package]
+name = "openfan-hardware"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+openfan-core = { path = "../openfan-core" }
+tokio.workspace = true
+tokio-serial.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

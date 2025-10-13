@@ -2,7 +2,7 @@
 //!
 //! Implements the fan control protocol over serial communication.
 
-use super::serial_driver::SerialDriver;
+use crate::serial_driver::SerialDriver;
 use openfan_core::{FanRpmMap, OpenFanError, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
