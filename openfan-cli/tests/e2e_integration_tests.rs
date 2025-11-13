@@ -96,8 +96,8 @@ profiles: {}
                 "127.0.0.1",
             ])
             .current_dir(".")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
             .spawn()
             .expect("Failed to start server process");
 
@@ -113,26 +113,6 @@ profiles: {}
         while start_time.elapsed() < SERVER_STARTUP_TIMEOUT {
             if let Ok(response) = self.check_server_health().await {
                 if response.status().is_success() {
-                    // Process has exited - get output for debugging
-                    let mut stdout = String::new();
-                    let mut stderr = String::new();
-                    if let Some(ref mut stdout_handle) =
-                        process_guard.as_mut().unwrap().stdout.as_mut()
-                    {
-                        use std::io::Read;
-                        let _ = stdout_handle.read_to_string(&mut stdout);
-                    }
-                    if let Some(ref mut stderr_handle) =
-                        process_guard.as_mut().unwrap().stderr.as_mut()
-                    {
-                        use std::io::Read;
-                        let _ = stderr_handle.read_to_string(&mut stderr);
-                    }
-
-                    // Clean up config file
-                    let config_path = format!("test_config_{}.yaml", self.server_port);
-                    let _ = std::fs::remove_file(&config_path);
-
                     println!("Server started successfully on port {}", self.server_port);
                     // Give it a moment to fully initialize
                     sleep(Duration::from_millis(500)).await;
@@ -143,32 +123,7 @@ profiles: {}
                 // Check if child process is still running
                 match process_guard.as_mut().unwrap().try_wait() {
                     Ok(Some(status)) => {
-                        // Process has exited - get output for debugging
-                        let mut stdout = String::new();
-                        let mut stderr = String::new();
-                        if let Some(ref mut stdout_handle) =
-                            process_guard.as_mut().unwrap().stdout.as_mut()
-                        {
-                            use std::io::Read;
-                            let _ = stdout_handle.read_to_string(&mut stdout);
-                        }
-                        if let Some(ref mut stderr_handle) =
-                            process_guard.as_mut().unwrap().stderr.as_mut()
-                        {
-                            use std::io::Read;
-                            let _ = stderr_handle.read_to_string(&mut stderr);
-                        }
-
-                        // Clean up config file
-                        let config_path = format!("test_config_{}.yaml", self.server_port);
-                        let _ = std::fs::remove_file(&config_path);
-
-                        anyhow::bail!(
-                            "Server process exited early with status {}\nStdout: {}\nStderr: {}",
-                            status,
-                            stdout,
-                            stderr
-                        );
+                        anyhow::bail!("Server process exited early with status {}", status);
                     }
                     Ok(None) => {
                         // Process is still running
@@ -186,10 +141,6 @@ profiles: {}
         if let Some(ref mut child) = process_guard.as_mut() {
             let _ = child.kill();
         }
-
-        // Clean up config file
-        let config_path = format!("test_config_{}.yaml", self.server_port);
-        let _ = std::fs::remove_file(&config_path);
 
         anyhow::bail!(
             "Server failed to start within {} seconds. Last error: {}",
@@ -237,10 +188,6 @@ profiles: {}
                 }
             }
         }
-
-        // Clean up config file when stopping
-        let config_path = format!("test_config_{}.yaml", self.server_port);
-        let _ = std::fs::remove_file(&config_path);
 
         Ok(())
     }
