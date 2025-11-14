@@ -1,7 +1,7 @@
 //! Hardware abstraction layer for fan controller
 //!
 //! Re-export the hardware interface from the `openfan_hardware` crate so
-//! consumers of `openfan-server` can access the hardware APIs without
+//! consumers of `openfand` can access the hardware APIs without
 //! depending on the internal module layout.
 
 pub use openfan_hardware::FanController;

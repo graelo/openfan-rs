@@ -1,5 +1,5 @@
 [workspace]
-members = ["openfan-core", "openfan-server", "openfan-cli", "openfan-hardware"]
+members = ["openfan-core", "openfand", "openfanctl", "openfan-hardware"]
 resolver = "2"
 
 [workspace.package]

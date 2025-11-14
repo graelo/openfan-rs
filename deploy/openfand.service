@@ -9,13 +9,13 @@ Type=simple
 User=openfan
 Group=openfan
 WorkingDirectory=/opt/openfan
-ExecStart=/opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml
+ExecStart=/opt/openfan/bin/openfand --config /etc/openfan/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=openfan-server
+SyslogIdentifier=openfand
 
 # Security settings
 NoNewPrivileges=true
@@ -49,4 +49,4 @@ Environment=OPENFAN_CONFIG=/etc/openfan/config.yaml
 
 [Install]
 WantedBy=multi-user.target
-Alias=openfan.service
+Alias=openfand.service

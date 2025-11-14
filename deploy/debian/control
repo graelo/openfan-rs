@@ -21,7 +21,7 @@ Description: OpenFAN Controller - Fan Management System
   - Mock mode for testing without hardware
  .
  This package includes:
-  - openfan-server: REST API server daemon
-  - openfan: Command-line interface tool
+  - openfand: REST API server daemon
+  - openfanctl: Command-line interface tool
   - systemd service configuration
   - Default configuration files

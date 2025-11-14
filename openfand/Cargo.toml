@@ -1,5 +1,5 @@
 [package]
-name = "openfan-server"
+name = "openfand"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -7,7 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "openfan-server"
+name = "openfand"
 path = "src/main.rs"
 
 [dependencies]

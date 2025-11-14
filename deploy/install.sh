@@ -1,6 +1,8 @@
 #!/bin/bash
 # OpenFAN Controller Installation Script
-# This script installs the OpenFAN server and CLI tools
+# Usage: Run after building the project with 'cargo build --release'.
+# This script installs the OpenFAN server and CLI tools.
+
 
 set -e  # Exit on any error
 
@@ -18,7 +20,7 @@ DATA_DIR="/var/lib/openfan"
 LOG_DIR="/var/log/openfan"
 USER="openfan"
 GROUP="openfan"
-SERVICE_NAME="openfan-server"
+SERVICE_NAME="openfand"
 
 # Print colored output
 print_status() {
@@ -62,13 +64,13 @@ check_requirements() {
     fi
 
     # Check if binaries exist
-    if [[ ! -f "./target/release/openfan-server" ]]; then
-        print_error "openfan-server binary not found. Please run 'cargo build --release' first"
+    if [[ ! -f "./target/release/openfand" ]]; then
+        print_error "openfand binary not found. Please run 'cargo build --release' first"
         exit 1
     fi
 
-    if [[ ! -f "./target/release/openfan" ]]; then
-        print_error "openfan CLI binary not found. Please run 'cargo build --release' first"
+    if [[ ! -f "./target/release/openfanctl" ]]; then
+        print_error "openfanctl CLI binary not found. Please run 'cargo build --release' first"
         exit 1
     fi
 
@@ -128,13 +130,14 @@ install_binaries() {
     print_status "Installing binaries..."
 
     # Install server binary
-    cp "./target/release/openfan-server" "$INSTALL_DIR/bin/"
-    chmod 755 "$INSTALL_DIR/bin/openfan-server"
-    chown "$USER:$GROUP" "$INSTALL_DIR/bin/openfan-server"
+    cp "./target/release/openfand" "$INSTALL_DIR/bin/"
+    chmod 755 "$INSTALL_DIR/bin/openfand"
+    chown "$USER:$GROUP" "$INSTALL_DIR/bin/openfand"
 
-    # Install CLI binary to system PATH
-    cp "./target/release/openfan" "/usr/local/bin/"
-    chmod 755 "/usr/local/bin/openfan"
+    # Install CLI binary to OpenFAN bin directory
+    cp "./target/release/openfanctl" "$INSTALL_DIR/bin/"
+    chmod 755 "$INSTALL_DIR/bin/openfanctl"
+
 
     print_success "Installed binaries"
 }
@@ -198,12 +201,12 @@ EOF
 install_service() {
     print_status "Installing systemd service..."
 
-    if [[ -f "./deploy/openfan-server.service" ]]; then
-        cp "./deploy/openfan-server.service" "/etc/systemd/system/"
+    if [[ -f "./deploy/openfand.service" ]]; then
+        cp "./deploy/openfand.service" "/etc/systemd/system/"
         systemctl daemon-reload
         print_success "Installed systemd service"
     else
-        print_error "Service file not found at ./deploy/openfan-server.service"
+      print_error "Service file not found at ./deploy/openfand.service"
         exit 1
     fi
 }
@@ -234,17 +237,27 @@ EOF
 install_completion() {
     print_status "Installing shell completion..."
 
-    # Generate completion scripts
+    # Generate completion scripts for both openfanctl and openfand
     if command -v bash &> /dev/null; then
-        "$INSTALL_DIR/bin/openfan" completion bash > "/etc/bash_completion.d/openfan"
-        print_success "Installed bash completion"
+        "$INSTALL_DIR/bin/openfanctl" completion bash > "/etc/bash_completion.d/openfanctl"
+        chown root:root "/etc/bash_completion.d/openfanctl"
+        print_success "Installed bash completion for openfanctl"
+        "$INSTALL_DIR/bin/openfand" completion bash > "/etc/bash_completion.d/openfand"
+        chown root:root "/etc/bash_completion.d/openfand"
+        print_success "Installed bash completion for openfand"
     fi
 
     if command -v zsh &> /dev/null; then
         mkdir -p "/usr/local/share/zsh/site-functions"
-        "$INSTALL_DIR/bin/openfan" completion zsh > "/usr/local/share/zsh/site-functions/_openfan"
-        print_success "Installed zsh completion"
+        "$INSTALL_DIR/bin/openfanctl" completion zsh > "/usr/local/share/zsh/site-functions/_openfanctl"
+        chown root:root "/usr/local/share/zsh/site-functions/_openfanctl"
+        print_success "Installed zsh completion for openfanctl"
+        "$INSTALL_DIR/bin/openfand" completion zsh > "/usr/local/share/zsh/site-functions/_openfand"
+        chown root:root "/usr/local/share/zsh/site-functions/_openfand"
+        print_success "Installed zsh completion for openfand"
     fi
+
+
 }
 
 # Test installation
@@ -252,15 +265,16 @@ test_installation() {
     print_status "Testing installation..."
 
     # Test CLI
-    if /usr/local/bin/openfan --help &>/dev/null; then
+    if "$INSTALL_DIR/bin/openfanctl" --help &>/dev/null; then
         print_success "CLI tool working"
     else
         print_error "CLI tool test failed"
         return 1
     fi
 
+
     # Test server binary
-    if "$INSTALL_DIR/bin/openfan-server" --help &>/dev/null; then
+if "$INSTALL_DIR/bin/openfand" --help &>/dev/null; then
         print_success "Server binary working"
     else
         print_error "Server binary test failed"
@@ -296,17 +310,24 @@ print_instructions() {
     echo "To view logs:"
     echo "  sudo journalctl -u $SERVICE_NAME -f"
     echo
-    echo "CLI usage:"
-    echo "  openfan info                    # System information"
-    echo "  openfan status                  # Fan status"
-    echo "  openfan fan set 0 --pwm 50      # Set fan PWM"
-    echo "  openfan profile list            # List profiles"
-    echo "  openfan --help                  # Show all commands"
+    echo "CLI usage (openfanctl):"
+    echo "  openfanctl info                    # System information"
+    echo "  openfanctl status                  # Fan status"
+    echo "  openfanctl fan set 0 --pwm 50      # Set fan PWM"
+    echo "  openfanctl profile list            # List profiles"
+    echo "  openfanctl --help                  # Show all commands"
     echo
     echo "Configuration:"
     echo "  Edit $CONFIG_DIR/config.yaml to customize settings"
     echo "  Restart service after configuration changes:"
     echo "  sudo systemctl restart $SERVICE_NAME"
+    echo
+    echo "Shell completion:"
+    echo "  Bash: source /etc/bash_completion.d/openfanctl or openfand"
+    echo "  Zsh:  source /usr/local/share/zsh/site-functions/_openfanctl or _openfand"
+    echo
+    echo "Note: To run openfanctl or openfand from anywhere, add $INSTALL_DIR/bin to your PATH:"
+    echo "  export PATH=\"$INSTALL_DIR/bin:\$PATH\""
     echo
     print_warning "Make sure your user is in the 'dialout' group to access hardware:"
     echo "  sudo usermod -a -G dialout \$USER"
@@ -323,10 +344,16 @@ uninstall() {
     systemctl disable "$SERVICE_NAME" 2>/dev/null || true
 
     # Remove files
-    rm -f "/etc/systemd/system/openfan-server.service"
-    rm -f "/usr/local/bin/openfan"
-    rm -f "/etc/bash_completion.d/openfan"
-    rm -f "/usr/local/share/zsh/site-functions/_openfan"
+rm -f "/etc/systemd/system/openfand.service"
+    rm -f "$INSTALL_DIR/bin/openfanctl"
+    rm -f "$INSTALL_DIR/bin/openfand"
+
+
+    rm -f "/etc/bash_completion.d/openfanctl"
+    rm -f "/etc/bash_completion.d/openfand"
+    rm -f "/usr/local/share/zsh/site-functions/_openfanctl"
+    rm -f "/usr/local/share/zsh/site-functions/_openfand"
+
     rm -f "/etc/logrotate.d/openfan"
     rm -rf "$INSTALL_DIR"
 

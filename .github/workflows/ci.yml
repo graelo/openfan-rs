@@ -66,8 +66,8 @@ jobs:
 
     - name: Test CLI help output
       run: |
-        ./target/release/openfan --help
-        ./target/release/openfan-server --help
+        ./target/release/openfanctl --help
+        ./target/release/openfand --help
 
   security_audit:
     name: Security Audit
@@ -166,16 +166,16 @@ jobs:
     - name: Copy binaries (Unix)
       if: runner.os != 'Windows'
       run: |
-        cp target/${{ matrix.target }}/release/openfan-server artifacts/
-        cp target/${{ matrix.target }}/release/openfan artifacts/
+        cp target/${{ matrix.target }}/release/openfand artifacts/
+        cp target/${{ matrix.target }}/release/openfanctl artifacts/
         cp config.yaml artifacts/
         cp README.md artifacts/
 
     - name: Copy binaries (Windows)
       if: runner.os == 'Windows'
       run: |
-        copy target\${{ matrix.target }}\release\openfan-server.exe artifacts\
-        copy target\${{ matrix.target }}\release\openfan.exe artifacts\
+        copy target\${{ matrix.target }}\release\openfand.exe artifacts\
+        copy target\${{ matrix.target }}\release\openfanctl.exe artifacts\
         copy config.yaml artifacts\
         copy README.md artifacts\
 

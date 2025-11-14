@@ -5,9 +5,9 @@ version: '3.8'
 
 services:
   # OpenFAN Server (Production)
-  openfan-server:
+  openfand:
     build: .
-    container_name: openfan-server
+    container_name: openfand
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -28,20 +28,20 @@ services:
     environment:
       - RUST_LOG=info
       - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfan-server", "--config", "/etc/openfan/config.yaml"]
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml"]
     networks:
       - openfan-network
     healthcheck:
-      test: ["/usr/local/bin/openfan", "--server", "http://localhost:8080", "health"]
+      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:8080", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
 
   # OpenFAN Server (Mock Mode for Testing)
-  openfan-server-mock:
+  openfand-mock:
     build: .
-    container_name: openfan-server-mock
+    container_name: openfand-mock
     restart: unless-stopped
     ports:
       - "8081:8080"
@@ -52,11 +52,11 @@ services:
     environment:
       - RUST_LOG=info
       - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfan-server", "--config", "/etc/openfan/config.yaml", "--mock"]
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
     networks:
       - openfan-network
     healthcheck:
-      test: ["/usr/local/bin/openfan", "--server", "http://localhost:8080", "health"]
+      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:8080", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -76,7 +76,7 @@ services:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - nginx-certs:/etc/nginx/certs:ro
     depends_on:
-      - openfan-server
+      - openfand
     networks:
       - openfan-network
     profiles:
@@ -138,6 +138,7 @@ services:
     profiles:
       - monitoring
 
+
 # Volumes for persistent data
 volumes:
   # Production volumes
@@ -190,20 +191,20 @@ networks:
 # Development override example (create docker-compose.override.yml):
 # version: '3.8'
 # services:
-#   openfan-server:
+#   openfand:
 #     build:
 #       context: .
 #       target: builder
 #     volumes:
 #       - .:/usr/src/openfan
-#     command: ["cargo", "run", "--bin", "openfan-server", "--", "--mock"]
+#     command: ["cargo", "run", "--bin", "openfand", "--", "--mock"]
 #     environment:
 #       - RUST_LOG=debug
 
 # Production override example (create docker-compose.prod.yml):
 # version: '3.8'
 # services:
-#   openfan-server:
+#   openfand:
 #     image: openfan/controller:latest
 #     deploy:
 #       replicas: 2

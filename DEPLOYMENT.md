@@ -1,6 +1,7 @@
 # OpenFAN Controller Deployment Guide
 
-This guide covers various deployment methods for the OpenFAN Controller system, from simple binary installation to containerized deployments.
+This guide covers various deployment methods for the OpenFAN Controller system,
+from simple binary installation to containerized deployments.
 
 ## Table of Contents
 
@@ -59,19 +60,19 @@ cd openfan-linux-x86_64
 sudo ./deploy/install.sh
 
 # Start service
-sudo systemctl enable openfan-server
-sudo systemctl start openfan-server
+sudo systemctl enable openfand
+sudo systemctl start openfand
 ```
 
 ### 3. Verify
 
 ```bash
 # Check service status
-sudo systemctl status openfan-server
+sudo systemctl status openfand
 
 # Test CLI
-openfan info
-openfan status
+openfanctl info
+openfanctl status
 ```
 
 ## Installation Methods
@@ -101,6 +102,7 @@ sudo ./install.sh
 ```
 
 The installer will:
+
 - Create `openfan` user and group
 - Install binaries to `/opt/openfan/bin/` and `/usr/local/bin/`
 - Set up configuration in `/etc/openfan/`
@@ -123,15 +125,18 @@ tar -xzf "openfan-linux-${ARCH}.tar.gz"
 
 # Install binaries
 sudo mkdir -p /opt/openfan/bin
-sudo cp openfan-server /opt/openfan/bin/
-sudo cp openfan /usr/local/bin/
+sudo cp openfand /opt/openfan/bin/
+sudo cp openfanctl /usr/local/bin/
 
 # Set permissions
-sudo chmod 755 /opt/openfan/bin/openfan-server
-sudo chmod 755 /usr/local/bin/openfan
+sudo chmod 755 /opt/openfan/bin/openfand
+sudo chmod 755 /usr/local/bin/openfanctl
 
 # Create user
-sudo useradd --system --shell /bin/false --home-dir /var/lib/openfan --create-home openfan
+sudo useradd --system \
+    --shell /bin/false \
+    --home-dir /var/lib/openfan \
+    --create-home openfan
 sudo usermod -a -G dialout openfan
 ```
 
@@ -150,13 +155,14 @@ sudo dpkg -i openfan-controller_1.0.0_amd64.deb
 sudo apt-get install -f
 
 # Start service
-sudo systemctl enable openfan-server
-sudo systemctl start openfan-server
+sudo systemctl enable openfand
+sudo systemctl start openfand
 ```
 
 #### Red Hat/CentOS (.rpm)
 
-*Note: RPM packages are not yet available but can be created using `fpm` or similar tools.*
+*Note: RPM packages are not yet available but can be created using `fpm` or
+similar tools.*
 
 ### Container Deployment
 
@@ -170,7 +176,7 @@ docker pull openfan/controller:latest
 
 # Run server
 docker run -d \
-  --name openfan-server \
+--name openfand \
   --restart unless-stopped \
   -p 8080:8080 \
   -v openfan-config:/etc/openfan \
@@ -183,14 +189,14 @@ docker run -d \
 ```bash
 # Run with device access
 docker run -d \
-  --name openfan-server \
+  --name openfand \
   --restart unless-stopped \
   -p 8080:8080 \
   --device=/dev/ttyUSB0:/dev/ttyUSB0 \
   -v openfan-config:/etc/openfan \
   -v openfan-data:/var/lib/openfan \
   openfan/controller:latest \
-  /opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml
+  /opt/openfan/bin/openfand --config /etc/openfan/config.yaml
 ```
 
 #### Docker Compose
@@ -206,14 +212,14 @@ cd OpenFanController/Software/openfan
 docker-compose up -d
 
 # View logs
-docker-compose logs -f openfan-server
+docker-compose logs -f openfand
 ```
 
 **Mock mode for testing:**
 
 ```bash
 # Start in mock mode
-docker-compose --profile mock up -d openfan-server-mock
+docker-compose --profile mock up -d openfand-mock
 
 # Access at http://localhost:8081
 ```
@@ -238,20 +244,20 @@ Create deployment manifest:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: openfan-server
+  name: openfand
   namespace: openfan
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: openfan-server
+      app: openfand
   template:
     metadata:
       labels:
-        app: openfan-server
+        app: openfand
     spec:
       containers:
-      - name: openfan-server
+      - name: openfand
         image: openfan/controller:latest
         ports:
         - containerPort: 8080
@@ -284,7 +290,7 @@ metadata:
   namespace: openfan
 spec:
   selector:
-    app: openfan-server
+    app: openfand
   ports:
   - port: 8080
     targetPort: 8080
@@ -317,8 +323,8 @@ cd OpenFanController/Software/openfan
 cargo build --release
 
 # Install
-sudo cp target/release/openfan-server /opt/openfan/bin/
-sudo cp target/release/openfan /usr/local/bin/
+sudo cp target/release/openfand /opt/openfan/bin/
+sudo cp target/release/openfanctl /usr/local/bin/
 ```
 
 #### 2. Create System User
@@ -356,9 +362,9 @@ sudo chmod 640 /etc/openfan/config.yaml
 #### 5. Install Systemd Service
 
 ```bash
-sudo cp deploy/openfan-server.service /etc/systemd/system/
+sudo cp deploy/openfand.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable openfan-server
+sudo systemctl enable openfand
 ```
 
 ## Configuration
@@ -440,7 +446,8 @@ sudo iptables-save > /etc/iptables/rules.v4
 
 #### SSL/TLS
 
-For HTTPS, use a reverse proxy with SSL termination or configure the server with TLS certificates.
+For HTTPS, use a reverse proxy with SSL termination or configure the server
+with TLS certificates.
 
 ## Hardware Setup
 
@@ -504,7 +511,8 @@ backend openfan_servers
 
 #### Database Clustering
 
-*Note: OpenFAN currently uses local YAML files. For HA, consider shared storage or implement database backend.*
+*Note: OpenFAN currently uses local YAML files. For HA, consider shared storage
+or implement database backend.*
 
 ### Security Hardening
 
@@ -520,7 +528,7 @@ After=network.target
 Type=simple
 User=openfan
 Group=openfan
-ExecStart=/opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml
+ExecStart=/opt/openfan/bin/openfand --config /etc/openfan/config.yaml
 Restart=always
 RestartSec=5
 
@@ -602,20 +610,20 @@ echo "0 2 * * * /usr/local/bin/backup-openfan.sh" | sudo crontab -
 
 ```bash
 # Check service status
-sudo systemctl status openfan-server
+sudo systemctl status openfand
 
 # View logs
-sudo journalctl -u openfan-server -f
+sudo journalctl -u openfand -f
 
 # Check resource usage
-sudo systemctl show openfan-server --property=MainPID,MemoryCurrent,CPUUsageNSec
+sudo systemctl show openfand --property=MainPID,MemoryCurrent,CPUUsageNSec
 ```
 
 #### Health Checks
 
 ```bash
 # CLI health check
-openfan health
+openfanctl health
 
 # API health check
 curl -s http://localhost:8080/api/v0/info | jq '.software.version'
@@ -625,7 +633,7 @@ curl -s http://localhost:8080/api/v0/info | jq '.software.version'
 # health-check.sh
 
 SERVER_URL="http://localhost:8080"
-CLI_PATH="/usr/local/bin/openfan"
+CLI_PATH="/usr/local/bin/openfanctl"
 
 # Check API availability
 if curl -sf "$SERVER_URL/api/v0/info" >/dev/null; then
@@ -668,7 +676,7 @@ echo "Health check completed"
     notifempty
     create 640 openfan openfan
     postrotate
-        systemctl reload-or-restart openfan-server
+systemctl reload-or-restart openfand
     endscript
 }
 ```
@@ -697,7 +705,8 @@ echo "Health check completed"
 
 #### Prometheus Metrics
 
-*Note: Metrics endpoint not yet implemented in OpenFAN. Consider adding custom metrics exporter.*
+*Note: Metrics endpoint not yet implemented in OpenFAN. Consider adding custom
+metrics exporter.*
 
 ```bash
 # Example metrics script
@@ -737,16 +746,16 @@ echo "Metrics updated"
 
 ```bash
 # Check service status
-sudo systemctl status openfan-server
+sudo systemctl status openfand
 
 # View detailed logs
-sudo journalctl -u openfan-server --no-pager
+sudo journalctl -u openfand --no-pager
 
 # Check configuration
-openfan-server --config /etc/openfan/config.yaml --help
+openfand --config /etc/openfan/config.yaml --help
 
 # Test configuration
-sudo -u openfan /opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml --mock
+sudo -u openfan /opt/openfan/bin/openfand --config /etc/openfan/config.yaml --mock
 ```
 
 #### Permission Denied
@@ -760,7 +769,7 @@ sudo usermod -a -G dialout openfan
 sudo chmod 666 /dev/ttyUSB0
 
 # Restart service
-sudo systemctl restart openfan-server
+sudo systemctl restart openfand
 ```
 
 #### Hardware Not Found
@@ -776,11 +785,11 @@ lsusb | grep -i "2e8a:000a"
 sudo screen /dev/ttyUSB0 115200
 
 # Run in mock mode
-sudo systemctl edit openfan-server
+sudo systemctl edit openfand
 # Add:
 # [Service]
 # ExecStart=
-# ExecStart=/opt/openfan/bin/openfan-server --config /etc/openfan/config.yaml --mock
+# ExecStart=/opt/openfan/bin/openfand --config /etc/openfan/config.yaml --mock
 ```
 
 #### CLI Connection Issues
@@ -806,24 +815,24 @@ RUST_LOG=debug openfan info
 
 ```bash
 # Show startup errors
-sudo journalctl -u openfan-server | grep -i error
+sudo journalctl -u openfand | grep -i error
 
 # Show hardware connection attempts
-sudo journalctl -u openfan-server | grep -i "hardware"
+sudo journalctl -u openfand | grep -i "hardware"
 
 # Show API requests
-sudo journalctl -u openfan-server | grep -i "request"
+sudo journalctl -u openfand | grep -i "request"
 
 # Show configuration loading
-sudo journalctl -u openfan-server | grep -i "config"
+sudo journalctl -u openfand | grep -i "config"
 ```
 
 #### Performance Issues
 
 ```bash
 # Check resource usage
-top -p $(pgrep openfan-server)
-sudo systemctl show openfan-server --property=MemoryCurrent,CPUUsageNSec
+top -p $(pgrep openfand)
+sudo systemctl show openfand --property=MemoryCurrent,CPUUsageNSec
 
 # Check disk space
 df -h /var/lib/openfan /var/log/openfan
@@ -835,7 +844,7 @@ sudo ss -tulpn | grep 8080
 
 ### Getting Help
 
-1. **Check logs**: Always start with `sudo journalctl -u openfan-server`
+1. **Check logs**: Always start with `sudo journalctl -u openfand`
 2. **Test configuration**: Use `--mock` mode to isolate hardware issues
 3. **Verify permissions**: Ensure `openfan` user has device access
 4. **Check network**: Verify firewall and port availability
@@ -843,8 +852,8 @@ sudo ss -tulpn | grep 8080
 
 #### Support Resources
 
-- **GitHub Issues**: https://github.com/graelo/OpenFanController/issues
-- **Documentation**: https://github.com/graelo/OpenFanController/blob/main/Software/openfan/README.md
+- **GitHub Issues**: <https://github.com/graelo/OpenFanController/issues>
+- **Documentation**: <https://github.com/graelo/OpenFanController/blob/main/Software/openfan/README.md>
 - **Discord/Forum**: [Community link if available]
 
 #### Reporting Issues
@@ -857,13 +866,13 @@ uname -a
 cat /etc/os-release
 
 # OpenFAN version
-openfan --version || /opt/openfan/bin/openfan-server --version
+openfan --version || /opt/openfan/bin/openfand --version
 
 # Service status
-sudo systemctl status openfan-server
+sudo systemctl status openfand
 
 # Recent logs
-sudo journalctl -u openfan-server --since "1 hour ago"
+sudo journalctl -u openfand --since "1 hour ago"
 
 # Hardware information
 lsusb
@@ -875,4 +884,6 @@ sudo cat /etc/openfan/config.yaml
 
 ---
 
-This deployment guide covers the most common deployment scenarios. For specific environments or advanced configurations, consult the project documentation or community support channels.
+This deployment guide covers the most common deployment scenarios. For specific
+environments or advanced configurations, consult the project documentation or
+community support channels.
