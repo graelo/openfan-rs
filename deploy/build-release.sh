@@ -36,7 +36,7 @@ print_error() {
 
 # Check if we're in the right directory
 check_environment() {
-    if [[ ! -f "Cargo.toml" ]] || [[ ! -d "openfan-server" ]] || [[ ! -d "openfan-cli" ]]; then
+    if [[ ! -f "Cargo.toml" ]] || [[ ! -d "openfand" ]] || [[ ! -d "openfanctl" ]]; then
         print_error "This script must be run from the openfan workspace root directory"
         exit 1
     fi
@@ -62,7 +62,8 @@ check_requirements() {
     fi
 
     # Check version
-    local rust_version=$(rustc --version)
+    local rust_version
+    rust_version=$(rustc --version)
     print_status "Using Rust: $rust_version"
 
     # Check for release profile optimization
@@ -82,12 +83,12 @@ build_release() {
     RUSTFLAGS="-C target-cpu=native" cargo build --release
 
     # Verify binaries were created
-    if [[ ! -f "$TARGET_DIR/openfan-server" ]]; then
+if [[ ! -f "$TARGET_DIR/openfand" ]]; then
         print_error "Server binary not found after build"
         exit 1
     fi
 
-    if [[ ! -f "$TARGET_DIR/openfan" ]]; then
+    if [[ ! -f "$TARGET_DIR/openfanctl" ]]; then
         print_error "CLI binary not found after build"
         exit 1
     fi
@@ -113,8 +114,8 @@ strip_binaries() {
     print_status "Optimizing binary sizes..."
 
     if command -v strip &> /dev/null; then
-        strip "$TARGET_DIR/openfan-server"
-        strip "$TARGET_DIR/openfan"
+        strip "$TARGET_DIR/openfand"
+        strip "$TARGET_DIR/openfanctl"
         print_success "Binaries stripped"
     else
         print_warning "strip command not found, skipping binary optimization"
@@ -125,15 +126,15 @@ strip_binaries() {
 get_binary_info() {
     print_status "Binary information:"
 
-    local server_size=$(du -h "$TARGET_DIR/openfan-server" | cut -f1)
-    local cli_size=$(du -h "$TARGET_DIR/openfan" | cut -f1)
+    local server_size=$(du -h "$TARGET_DIR/openfand" | cut -f1)
+    local cli_size=$(du -h "$TARGET_DIR/openfanctl" | cut -f1)
 
-    echo "  openfan-server: $server_size"
-    echo "  openfan:        $cli_size"
+    echo "  openfand: $server_size"
+    echo "  openfanctl:        $cli_size"
 
-    if command -v file &> /dev/null; then
-        echo "  Server arch:    $(file "$TARGET_DIR/openfan-server" | cut -d: -f2 | xargs)"
-        echo "  CLI arch:       $(file "$TARGET_DIR/openfan" | cut -d: -f2 | xargs)"
+if command -v file &> /dev/null; then
+        echo "  Server arch:    $(file "$TARGET_DIR/openfand" | cut -d: -f2 | xargs)"
+        echo "  CLI arch:       $(file "$TARGET_DIR/openfanctl" | cut -d: -f2 | xargs)"
     fi
 }
 
@@ -142,16 +143,31 @@ create_distribution() {
     print_status "Creating distribution package..."
 
     # Copy binaries
-    cp "$TARGET_DIR/openfan-server" "$BUILD_DIR/"
-    cp "$TARGET_DIR/openfan" "$BUILD_DIR/"
+cp "$TARGET_DIR/openfand" "$BUILD_DIR/"
+    cp "$TARGET_DIR/openfanctl" "$BUILD_DIR/"
 
     # Copy configuration files
-    cp config.yaml "$BUILD_DIR/"
-    cp README.md "$BUILD_DIR/"
+    if [[ -f config.yaml ]]; then
+        cp config.yaml "$BUILD_DIR/"
+    else
+        print_warning "config.yaml not found, skipping."
+    fi
+    if [[ -f README.md ]]; then
+        cp README.md "$BUILD_DIR/"
+    else
+        print_warning "README.md not found, skipping."
+    fi
 
-    # Copy deployment files
+
+    # Copy deployment files (only necessary files)
     mkdir -p "$BUILD_DIR/deploy"
-    cp -r deploy/* "$BUILD_DIR/deploy/"
+    if [[ -f "deploy/openfand.service" ]]; then
+        cp "deploy/openfand.service" "$BUILD_DIR/deploy/"
+    else
+        print_warning "deploy/openfand.service not found, skipping."
+    fi
+    # Add more files here if needed, e.g. udev rules
+
 
     # Create version file
     cat > "$BUILD_DIR/VERSION" << EOF
@@ -164,7 +180,7 @@ EOF
     # Create checksums
     cd "$BUILD_DIR"
     if command -v sha256sum &> /dev/null; then
-        sha256sum openfan-server openfan > checksums.sha256
+sha256sum openfand openfanctl > checksums.sha256
         print_success "Created SHA256 checksums"
     fi
     cd ..
@@ -191,7 +207,7 @@ verify_release() {
     print_status "Verifying release package..."
 
     # Test server binary
-    if "$BUILD_DIR/openfan-server" --help &>/dev/null; then
+if "$BUILD_DIR/openfand" --help &>/dev/null; then
         print_success "Server binary verified"
     else
         print_error "Server binary verification failed"
@@ -199,7 +215,7 @@ verify_release() {
     fi
 
     # Test CLI binary
-    if "$BUILD_DIR/openfan" --help &>/dev/null; then
+    if "$BUILD_DIR/openfanctl" --help &>/dev/null; then
         print_success "CLI binary verified"
     else
         print_error "CLI binary verification failed"
@@ -236,12 +252,12 @@ print_release_info() {
     echo "Installation:"
     echo "  1. Extract the archive to your target system"
     echo "  2. Run: sudo ./deploy/install.sh"
-    echo "  3. Start service: sudo systemctl enable --now openfan-server"
+echo "  3. Start service: sudo systemctl enable --now openfand"
     echo
     echo "Manual installation:"
     echo "  1. Copy binaries to desired location"
     echo "  2. Copy config.yaml to /etc/openfan/"
-    echo "  3. Set up systemd service using deploy/openfan-server.service"
+echo "  3. Set up systemd service using deploy/openfand.service"
     echo
     print_warning "Note: This build is optimized for $(uname -m) architecture"
     echo
@@ -267,8 +283,8 @@ cross_compile() {
     # Create target-specific distribution
     local target_dir="$BUILD_DIR/$target"
     mkdir -p "$target_dir"
-    cp "target/$target/release/openfan-server" "$target_dir/"
-    cp "target/$target/release/openfan" "$target_dir/"
+cp "target/$target/release/openfand" "$target_dir/"
+    cp "target/$target/release/openfanctl" "$target_dir/"
 
     print_success "Cross-compilation completed for $target"
 }
@@ -326,3 +342,5 @@ main() {
 
 # Run main function with all arguments
 main "$@"
+
+# vim: set ts=4 sts=4 sw=4 expandtab:

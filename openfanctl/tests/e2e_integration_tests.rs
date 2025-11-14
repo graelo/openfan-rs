@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 
 /// Test configuration
-const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
+const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_millis(2000);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -83,9 +83,9 @@ profiles: {}
             .args([
                 "run",
                 "-p",
-                "openfan-server",
+                "openfand",
                 "--bin",
-                "openfan-server",
+                "openfand",
                 "--",
                 "--mock",
                 "--config",
@@ -110,12 +110,13 @@ profiles: {}
         // Wait for server to be ready
         let start_time = std::time::Instant::now();
         let mut last_error = String::new();
+
         while start_time.elapsed() < SERVER_STARTUP_TIMEOUT {
+            let poll_start = std::time::Instant::now();
             if let Ok(response) = self.check_server_health().await {
                 if response.status().is_success() {
-                    println!("Server started successfully on port {}", self.server_port);
-                    // Give it a moment to fully initialize
-                    sleep(Duration::from_millis(500)).await;
+                    // Minimal sleep after health check (reduce from 500ms to 20ms)
+                    sleep(Duration::from_millis(20)).await;
                     return Ok(());
                 }
                 last_error = format!("HTTP status: {}", response.status());
@@ -134,7 +135,8 @@ profiles: {}
                     }
                 }
             }
-            sleep(Duration::from_millis(200)).await;
+            let _poll_elapsed = poll_start.elapsed();
+            sleep(Duration::from_millis(20)).await;
         }
 
         // Kill the child process if startup failed
@@ -197,9 +199,9 @@ profiles: {}
         let mut cmd_args = vec![
             "run",
             "-p",
-            "openfan-cli",
+            "openfanctl",
             "--bin",
-            "openfan",
+            "openfanctl",
             "--",
             "--server",
             &self.server_url,
@@ -540,9 +542,9 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
             .args([
                 "run",
                 "-p",
-                "openfan-server",
+                "openfand",
                 "--bin",
-                "openfan-server",
+                "openfand",
                 "--",
                 "--port",
                 &server_port.to_string(),

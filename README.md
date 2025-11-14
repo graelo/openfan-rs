@@ -13,10 +13,10 @@ openfan/
 │       ├── lib.rs         # Module exports
 │       ├── error.rs       # Error types
 │       └── types.rs       # Core types and API models
-├── openfan-server/        # API server binary
+openfand/             # API server crate (binary: openfand)
 │   └── src/
 │       └── main.rs        # Server entry point
-└── openfan-cli/           # CLI tool binary
+openfanctl/            # CLI tool crate (binary: openfanctl)
     └── src/
         └── main.rs        # CLI entry point
 ```
@@ -33,7 +33,7 @@ Shared library containing:
 
 This crate is used by both the server and CLI to ensure type safety across components.
 
-### `openfan-server`
+### `openfand` (binary: openfand)
 
 REST API server that:
 - Communicates with fan hardware via serial port
@@ -43,10 +43,10 @@ REST API server that:
 
 **Status**: Phase 3 complete (REST API). CLI implementation pending (Phase 4).
 
-### `openfan-cli`
+### `openfanctl` (binary: openfanctl)
 
 Command-line interface that:
-- Provides git-style commands (`openfan status`, `openfan fan set`, etc.)
+- Provides git-style commands (`openfanctl status`, `openfanctl fan set`, etc.)
 - Communicates with the API server via HTTP
 - Supports table and JSON output formats
 - Generates shell completion scripts
@@ -63,8 +63,8 @@ cargo build
 Build specific crate:
 ```bash
 cargo build -p openfan-core
-cargo build -p openfan-server
-cargo build -p openfan-cli
+cargo build -p openfand
+cargo build -p openfanctl
 ```
 
 Build release binaries:
@@ -100,50 +100,50 @@ cargo test --lib
 
 ```bash
 # Development (with mock hardware)
-cargo run -p openfan-server -- --mock
+cargo run -p openfand --bin openfand -- --mock
 
 # Production (requires hardware)
-cargo run -p openfan-server
+cargo run -p openfand --bin openfand
 
 # With options
-cargo run -p openfan-server -- --config config.yaml --port 3000 --verbose --mock
+cargo run -p openfand --bin openfand -- --config config.yaml --port 3000 --verbose --mock
 
 # Release binary
-./target/release/openfan-server --mock
+./target/release/openfand --mock
 ```
 
 ### CLI
 
 ```bash
 # Development
-cargo run -p openfan-cli -- status
+cargo run -p openfanctl --bin openfanctl -- status
 
 # With options
-cargo run -p openfan-cli -- --server http://localhost:3000 status
+cargo run -p openfanctl --bin openfanctl -- --server http://localhost:3000 status
 
 # Show help
-cargo run -p openfan-cli -- --help
+cargo run -p openfanctl --bin openfanctl -- --help
 
 # Generate shell completion
-cargo run -p openfan-cli -- completion bash > openfan.bash
+cargo run -p openfanctl --bin openfanctl -- completion bash > openfanctl.bash
 ```
 
 ## CLI Commands
 
 ```bash
-openfan info                          # System information
-openfan status                        # Fan status
-openfan fan set 0 --pwm 50           # Set fan PWM
-openfan fan set 0 --rpm 1000         # Set fan RPM
-openfan fan rpm 0                    # Get fan RPM
-openfan fan pwm 0                    # Get fan PWM
-openfan profile list                 # List profiles
-openfan profile apply "Gaming"       # Apply profile
-openfan profile add "Custom" pwm 50,50,50,50,50,50,50,50,50,50
-openfan profile remove "Custom"      # Remove profile
-openfan alias list                   # List aliases
-openfan alias get 0                  # Get alias
-openfan alias set 0 "CPU Fan"        # Set alias
+openfanctl info                          # System information
+openfanctl status                        # Fan status
+openfanctl fan set 0 --pwm 50           # Set fan PWM
+openfanctl fan set 0 --rpm 1000         # Set fan RPM
+openfanctl fan rpm 0                    # Get fan RPM
+openfanctl fan pwm 0                    # Get fan PWM
+openfanctl profile list                 # List profiles
+openfanctl profile apply "Gaming"       # Apply profile
+openfanctl profile add "Custom" pwm 50,50,50,50,50,50,50,50,50,50
+openfanctl profile remove "Custom"      # Remove profile
+openfanctl alias list                   # List aliases
+openfanctl alias get 0                  # Get alias
+openfanctl alias set 0 "CPU Fan"        # Set alias
 ```
 
 ## Development Status
@@ -156,11 +156,11 @@ openfan alias set 0 "CPU Fan"        # Set alias
   - [x] Error handling
   - [x] API response structures
   - [x] Tests passing (4/4)
-- [x] `openfan-server` skeleton
+- [x] `openfand` skeleton
   - [x] CLI argument parsing
   - [x] Logging infrastructure
   - [x] Dependencies configured
-- [x] `openfan-cli` skeleton
+- [x] `openfanctl` skeleton
   - [x] Command structure (clap)
   - [x] All command definitions
   - [x] Shell completion support
@@ -258,10 +258,10 @@ fan_aliases:
 ## Architecture
 
 ```
-┌─────────────────┐          ┌──────────────────┐
-│  openfan-cli    │          │  openfan-server  │
-│  (HTTP Client)  │◄────────►│  (REST API)      │
-└─────────────────┘   HTTP   │                  │
+┌─────────────────┐          ┌───────────────┐
+│ openfanctl      │          │  openfand     │
+│ (HTTP Client)   │◄────────►│  (REST API)   │
+└─────────────────┘   HTTP   │               │
                               │  ┌────────────┐  │
         ┌─────────────────────┤  │ Hardware   │  │
         │  openfan-core       │  │ Layer      │  │

@@ -11,7 +11,7 @@ The OpenFAN Controller Rust implementation has been successfully completed, deli
 **Status**: 100% Complete
 
 **Deliverables**:
-- [x] Rust workspace structure with 3 crates (`openfan-core`, `openfan-server`, `openfan-cli`)
+- [x] Rust workspace structure with 3 crates (`openfan-core`, `openfand`, `openfanctl`) (binaries: openfand, openfanctl)
 - [x] Core type system and API models
 - [x] Comprehensive error handling framework
 - [x] Shared library architecture for type safety
@@ -101,9 +101,9 @@ The OpenFAN Controller Rust implementation has been successfully completed, deli
 
 **Deliverables**:
 - [x] Automated installation scripts
-- [x] Systemd service configuration
+- [x] Systemd service configuration (openfand)
 - [x] Debian package (.deb) generation
-- [x] Docker containerization
+- [x] Docker containerization (openfand, openfanctl)
 - [x] GitHub Actions CI/CD pipeline
 - [x] Release build optimization
 - [x] Comprehensive deployment documentation

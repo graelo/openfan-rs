@@ -17,7 +17,7 @@ use tracing::{error, info, warn};
 
 /// OpenFAN API Server
 #[derive(Parser, Debug)]
-#[command(name = "openfan-server")]
+#[command(name = "openfand")]
 #[command(version, about = "OpenFAN Controller API Server", long_about = None)]
 struct Args {
     /// Path to configuration file

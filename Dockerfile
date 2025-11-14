@@ -16,8 +16,8 @@ WORKDIR /usr/src/openfan
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 COPY openfan-core/ ./openfan-core/
-COPY openfan-server/ ./openfan-server/
-COPY openfan-cli/ ./openfan-cli/
+COPY openfand/ ./openfand/
+COPY openfanctl/ ./openfanctl/
 
 # Build release binaries
 RUN cargo build --release --target x86_64-unknown-linux-musl
@@ -45,15 +45,15 @@ RUN mkdir -p /opt/openfan/bin \
     /var/log/openfan
 
 # Copy binaries from builder
-COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfan-server /opt/openfan/bin/
-COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfan /usr/local/bin/
+COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfand /opt/openfan/bin/
+COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfanctl /usr/local/bin/
 
 # Copy configuration
 COPY config.yaml /etc/openfan/
 
 # Set permissions
-RUN chmod 755 /opt/openfan/bin/openfan-server \
-    /usr/local/bin/openfan && \
+RUN chmod 755 /opt/openfan/bin/openfand \
+    /usr/local/bin/openfanctl && \
     chmod 640 /etc/openfan/config.yaml && \
     chown openfan:openfan /etc/openfan/config.yaml
 
@@ -68,14 +68,14 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD /usr/local/bin/openfan --server http://localhost:8080 health || exit 1
+    CMD /usr/local/bin/openfanctl --server http://localhost:8080 health || exit 1
 
 # Set environment variables
 ENV RUST_LOG=info
 ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
 
 # Default command
-CMD ["/opt/openfan/bin/openfan-server", "--config", "/etc/openfan/config.yaml", "--mock"]
+CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
 
 # Labels
 LABEL maintainer="OpenFAN Contributors <maintainer@example.com>" \

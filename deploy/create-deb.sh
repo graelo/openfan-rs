@@ -20,101 +20,102 @@ DEB_DIR="$PACKAGE_DIR/DEBIAN"
 
 # Print colored output
 print_status() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+  echo -e "${BLUE}[INFO]${NC} $1"
 }
 
 print_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+  echo -e "${GREEN}[SUCCESS]${NC} $1"
 }
 
 print_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+  echo -e "${YELLOW}[WARNING]${NC} $1"
 }
 
 print_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+  echo -e "${RED}[ERROR]${NC} $1"
 }
 
 # Check if we're in the right directory
 check_environment() {
-    if [[ ! -f "Cargo.toml" ]] || [[ ! -d "openfan-server" ]] || [[ ! -d "openfan-cli" ]]; then
-        print_error "This script must be run from the openfan workspace root directory"
-        exit 1
-    fi
+  if [[ ! -f "Cargo.toml" ]] || [[ ! -d "openfand" ]] || [[ ! -d "openfanctl" ]]; then
+    print_error "This script must be run from the openfan workspace root directory"
+    exit 1
+  fi
 }
 
 # Check build requirements
 check_requirements() {
-    print_status "Checking requirements..."
+  print_status "Checking requirements..."
 
-    if ! command -v dpkg-deb &> /dev/null; then
-        print_error "dpkg-deb not found. Please install dpkg-dev package"
-        exit 1
-    fi
+  if ! command -v dpkg-deb &> /dev/null; then
+    print_error "dpkg-deb not found. Please install dpkg-dev package"
+    exit 1
+  fi
 
-    if [[ ! -f "target/release/openfan-server" ]] || [[ ! -f "target/release/openfan" ]]; then
-        print_error "Release binaries not found. Please run 'cargo build --release' first"
-        exit 1
-    fi
+  if [[ ! -f "target/release/openfand" ]] || [[ ! -f "target/release/openfanctl" ]]; then
+    print_error "Release binaries not found. Please run 'cargo build --release' first"
+    exit 1
+  fi
 
-    print_success "Requirements satisfied"
+  print_success "Requirements satisfied"
 }
 
 # Clean previous package builds
 clean_package() {
-    print_status "Cleaning previous package builds..."
-    rm -rf "$PACKAGE_DIR"
-    rm -f "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
-    print_success "Cleaned package environment"
+  print_status "Cleaning previous package builds..."
+  rm -rf "$PACKAGE_DIR"
+  rm -f "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  print_success "Cleaned package environment"
 }
 
 # Create package directory structure
 create_package_structure() {
-    print_status "Creating package structure..."
+  print_status "Creating package structure..."
 
-    # Create base directories
-    mkdir -p "$DEB_DIR"
-    mkdir -p "$PACKAGE_DIR/opt/openfan/bin"
-    mkdir -p "$PACKAGE_DIR/etc/openfan"
-    mkdir -p "$PACKAGE_DIR/etc/systemd/system"
-    mkdir -p "$PACKAGE_DIR/usr/local/bin"
-    mkdir -p "$PACKAGE_DIR/etc/bash_completion.d"
-    mkdir -p "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME"
-    mkdir -p "$PACKAGE_DIR/var/lib/openfan"
-    mkdir -p "$PACKAGE_DIR/var/log/openfan"
+  # Create base directories
+  mkdir -p "$DEB_DIR"
+  mkdir -p "$PACKAGE_DIR/opt/openfan/bin"
+  mkdir -p "$PACKAGE_DIR/etc/openfan"
+  mkdir -p "$PACKAGE_DIR/etc/systemd/system"
+  mkdir -p "$PACKAGE_DIR/usr/local/bin"
+  mkdir -p "$PACKAGE_DIR/etc/bash_completion.d"
+  mkdir -p "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME"
+  mkdir -p "$PACKAGE_DIR/var/lib/openfan"
+  mkdir -p "$PACKAGE_DIR/var/log/openfan"
 
-    print_success "Package structure created"
+  print_success "Package structure created"
 }
 
 # Copy binaries and files
 copy_files() {
-    print_status "Copying files..."
+  print_status "Copying files..."
 
-    # Copy binaries
-    cp target/release/openfan-server "$PACKAGE_DIR/opt/openfan/bin/"
-    cp target/release/openfan "$PACKAGE_DIR/usr/local/bin/"
+  # Copy binaries
+  cp target/release/openfand "$PACKAGE_DIR/opt/openfan/bin/"
+  cp target/release/openfanctl "$PACKAGE_DIR/usr/local/bin/"
 
-    # Copy configuration
-    cp config.yaml "$PACKAGE_DIR/etc/openfan/"
+  # Copy configuration
+  cp config.yaml "$PACKAGE_DIR/etc/openfan/"
 
-    # Copy systemd service
-    cp deploy/openfan-server.service "$PACKAGE_DIR/etc/systemd/system/"
+  # Copy systemd service
+  cp deploy/openfand.service "$PACKAGE_DIR/etc/systemd/system/"
 
-    # Copy documentation
-    cp README.md "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/"
+  # Copy documentation
+  cp README.md "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/"
 
-    # Generate bash completion
-    target/release/openfan completion bash > "$PACKAGE_DIR/etc/bash_completion.d/openfan" || true
+  # Generate bash completion
+  target/release/openfanctl completion bash > "$PACKAGE_DIR/etc/bash_completion.d/openfanctl" || true
 
-    print_success "Files copied"
+  print_success "Files copied"
 }
 
 # Create control file
 create_control_file() {
-    print_status "Creating control file..."
+  print_status "Creating control file..."
 
-    # Get installed size (in KB)
-    local installed_size=$(du -sk "$PACKAGE_DIR" | cut -f1)
+  # Get installed size (in KB)
+  local installed_size
+  installed_size=$(du -sk "$PACKAGE_DIR" | cut -f1)
 
     cat > "$DEB_DIR/control" << EOF
 Package: $PACKAGE_NAME
@@ -141,18 +142,18 @@ Description: OpenFAN Controller - Fan Management System
   - Mock mode for testing without hardware
  .
  This package includes:
-  - openfan-server: REST API server daemon
-  - openfan: Command-line interface tool
+  - openfand: REST API server daemon
+  - openfanctl: Command-line interface tool
   - systemd service configuration
   - Default configuration files
 EOF
 
-    print_success "Control file created"
+  print_success "Control file created"
 }
 
 # Create post-installation script
 create_postinst() {
-    print_status "Creating post-installation script..."
+  print_status "Creating post-installation script..."
 
     cat > "$DEB_DIR/postinst" << 'EOF'
 #!/bin/bash
@@ -160,13 +161,13 @@ set -e
 
 # Create user and group
 if ! getent group openfan >/dev/null 2>&1; then
-    groupadd --system openfan
+  groupadd --system openfan
 fi
 
 if ! getent passwd openfan >/dev/null 2>&1; then
-    useradd --system --gid openfan --shell /bin/false \
-            --home-dir /var/lib/openfan --create-home \
-            --comment "OpenFAN Controller" openfan
+  useradd --system --gid openfan --shell /bin/false \
+    --home-dir /var/lib/openfan --create-home \
+    --comment "OpenFAN Controller" openfan
 fi
 
 # Add user to dialout group for serial port access
@@ -185,186 +186,186 @@ chmod 750 /var/log/openfan
 chmod 640 /etc/openfan/config.yaml
 
 # Set binary permissions
-chmod 755 /opt/openfan/bin/openfan-server
-chmod 755 /usr/local/bin/openfan
+chmod 755 /opt/openfan/bin/openfand
+chmod 755 /usr/local/bin/openfanctl
 
 # Reload systemd
 systemctl daemon-reload
 
 # Enable service (but don't start it automatically)
-if systemctl is-enabled openfan-server >/dev/null 2>&1; then
-    echo "Service already enabled"
+if systemctl is-enabled openfand >/dev/null 2>&1; then
+  echo "Service already enabled"
 else
-    echo "To enable the service, run: sudo systemctl enable openfan-server"
+  echo "To enable the service, run: sudo systemctl enable openfand"
 fi
 
 echo "OpenFAN Controller installed successfully!"
 echo "Configuration: /etc/openfan/config.yaml"
-echo "To start: sudo systemctl start openfan-server"
-echo "CLI usage: openfan --help"
+echo "To start: sudo systemctl start openfand"
+echo "CLI usage: openfanctl --help"
 EOF
 
-    chmod 755 "$DEB_DIR/postinst"
-    print_success "Post-installation script created"
+  chmod 755 "$DEB_DIR/postinst"
+  print_success "Post-installation script created"
 }
 
 # Create pre-removal script
 create_prerm() {
-    print_status "Creating pre-removal script..."
+  print_status "Creating pre-removal script..."
 
     cat > "$DEB_DIR/prerm" << 'EOF'
 #!/bin/bash
 set -e
 
 # Stop service if running
-if systemctl is-active openfan-server >/dev/null 2>&1; then
-    systemctl stop openfan-server
+if systemctl is-active openfand >/dev/null 2>&1; then
+  systemctl stop openfand
 fi
 
 # Disable service if enabled
-if systemctl is-enabled openfan-server >/dev/null 2>&1; then
-    systemctl disable openfan-server
+if systemctl is-enabled openfand >/dev/null 2>&1; then
+  systemctl disable openfand
 fi
 EOF
 
-    chmod 755 "$DEB_DIR/prerm"
-    print_success "Pre-removal script created"
+  chmod 755 "$DEB_DIR/prerm"
+  print_success "Pre-removal script created"
 }
 
 # Create post-removal script
 create_postrm() {
-    print_status "Creating post-removal script..."
+  print_status "Creating post-removal script..."
 
     cat > "$DEB_DIR/postrm" << 'EOF'
 #!/bin/bash
 set -e
 
 case "$1" in
-    purge)
-        # Remove user and group
-        if getent passwd openfan >/dev/null 2>&1; then
-            userdel openfan
-        fi
-        if getent group openfan >/dev/null 2>&1; then
-            groupdel openfan
-        fi
+  purge)
+    # Remove user and group
+    if getent passwd openfan >/dev/null 2>&1; then
+      userdel openfan
+    fi
+    if getent group openfan >/dev/null 2>&1; then
+      groupdel openfan
+    fi
 
-        # Remove data directories
-        rm -rf /var/lib/openfan
-        rm -rf /var/log/openfan
-        rm -rf /etc/openfan
+    # Remove data directories
+    rm -rf /var/lib/openfan
+    rm -rf /var/log/openfan
+    rm -rf /etc/openfan
 
-        echo "OpenFAN Controller completely removed"
-        ;;
-    remove)
-        # Reload systemd
-        systemctl daemon-reload
-        echo "OpenFAN Controller removed (config preserved)"
-        ;;
+    echo "OpenFAN Controller completely removed"
+    ;;
+  remove)
+    # Reload systemd
+    systemctl daemon-reload
+    echo "OpenFAN Controller removed (config preserved)"
+    ;;
 esac
 EOF
 
-    chmod 755 "$DEB_DIR/postrm"
-    print_success "Post-removal script created"
+  chmod 755 "$DEB_DIR/postrm"
+  print_success "Post-removal script created"
 }
 
 # Set file permissions
 set_permissions() {
-    print_status "Setting file permissions..."
+  print_status "Setting file permissions..."
 
-    # Set binary permissions
-    chmod 755 "$PACKAGE_DIR/opt/openfan/bin/openfan-server"
-    chmod 755 "$PACKAGE_DIR/usr/local/bin/openfan"
+  # Set binary permissions
+  chmod 755 "$PACKAGE_DIR/opt/openfan/bin/openfand"
+  chmod 755 "$PACKAGE_DIR/usr/local/bin/openfanctl"
 
-    # Set config permissions
-    chmod 644 "$PACKAGE_DIR/etc/openfan/config.yaml"
-    chmod 644 "$PACKAGE_DIR/etc/systemd/system/openfan-server.service"
+  # Set config permissions
+  chmod 644 "$PACKAGE_DIR/etc/openfan/config.yaml"
+  chmod 644 "$PACKAGE_DIR/etc/systemd/system/openfand.service"
 
-    # Set documentation permissions
-    chmod 644 "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/README.md"
+  # Set documentation permissions
+  chmod 644 "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/README.md"
 
-    print_success "Permissions set"
+  print_success "Permissions set"
 }
 
 # Build the package
 build_package() {
-    print_status "Building Debian package..."
+  print_status "Building Debian package..."
 
-    dpkg-deb --build "$PACKAGE_DIR" "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  dpkg-deb --build "$PACKAGE_DIR" "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
 
-    print_success "Package built: ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  print_success "Package built: ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
 }
 
 # Verify the package
 verify_package() {
-    print_status "Verifying package..."
+  print_status "Verifying package..."
 
-    # Check package info
-    dpkg-deb --info "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  # Check package info
+  dpkg-deb --info "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
 
-    # List package contents
-    echo
-    print_status "Package contents:"
-    dpkg-deb --contents "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  # List package contents
+  echo
+  print_status "Package contents:"
+  dpkg-deb --contents "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
 
-    print_success "Package verification completed"
+  print_success "Package verification completed"
 }
 
 # Print installation instructions
 print_instructions() {
-    echo
-    echo "============================================"
-    print_success "Debian package created successfully!"
-    echo "============================================"
-    echo
-    echo "Package: ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
-    echo "Size:    $(du -h "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb" | cut -f1)"
-    echo
-    echo "Installation:"
-    echo "  sudo dpkg -i ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
-    echo "  sudo apt-get install -f  # Fix dependencies if needed"
-    echo
-    echo "Start service:"
-    echo "  sudo systemctl enable openfan-server"
-    echo "  sudo systemctl start openfan-server"
-    echo
-    echo "Usage:"
-    echo "  openfan --help"
-    echo "  openfan info"
-    echo "  openfan status"
-    echo
-    echo "Configuration:"
-    echo "  /etc/openfan/config.yaml"
-    echo
-    echo "Logs:"
-    echo "  sudo journalctl -u openfan-server"
-    echo
-    echo "Uninstall:"
-    echo "  sudo apt remove $PACKAGE_NAME"
-    echo "  sudo apt purge $PACKAGE_NAME  # Remove all files"
-    echo
+  echo
+  echo "============================================"
+  print_success "Debian package created successfully!"
+  echo "============================================"
+  echo
+  echo "Package: ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  echo "Size:    $(du -h "${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb" | cut -f1)"
+  echo
+  echo "Installation:"
+  echo "  sudo dpkg -i ${PACKAGE_NAME}_${VERSION}_${ARCHITECTURE}.deb"
+  echo "  sudo apt-get install -f  # Fix dependencies if needed"
+  echo
+  echo "Start service:"
+  echo "  sudo systemctl enable openfand"
+  echo "  sudo systemctl start openfand"
+  echo
+  echo "Usage:"
+  echo "  openfan --help"
+  echo "  openfan info"
+  echo "  openfan status"
+  echo
+  echo "Configuration:"
+  echo "  /etc/openfan/config.yaml"
+  echo
+  echo "Logs:"
+  echo "  sudo journalctl -u openfand"
+  echo
+  echo "Uninstall:"
+  echo "  sudo apt remove $PACKAGE_NAME"
+  echo "  sudo apt purge $PACKAGE_NAME  # Remove all files"
+  echo
 }
 
 # Main function
 main() {
-    echo "OpenFAN Controller Debian Package Builder"
-    echo "========================================="
-    echo "Version: $VERSION"
-    echo
+  echo "OpenFAN Controller Debian Package Builder"
+  echo "========================================="
+  echo "Version: $VERSION"
+  echo
 
-    check_environment
-    check_requirements
-    clean_package
-    create_package_structure
-    copy_files
-    create_control_file
-    create_postinst
-    create_prerm
-    create_postrm
-    set_permissions
-    build_package
-    verify_package
-    print_instructions
+  check_environment
+  check_requirements
+  clean_package
+  create_package_structure
+  copy_files
+  create_control_file
+  create_postinst
+  create_prerm
+  create_postrm
+  set_permissions
+  build_package
+  verify_package
+  print_instructions
 }
 
 # Run main function

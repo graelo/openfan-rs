@@ -1061,7 +1061,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4895175b425cb1f87721b59f0f286c2092bd4af812243672510e1ac53e2e0ad"
 
 [[package]]
-name = "openfan-cli"
+name = "openfan-core"
+version = "1.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "openfan-hardware"
+version = "0.1.0"
+dependencies = [
+ "openfan-core",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-serial",
+ "tracing",
+]
+
+[[package]]
+name = "openfanctl"
 version = "1.0.0"
 dependencies = [
  "anyhow",
@@ -1084,27 +1104,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "openfan-core"
-version = "1.0.0"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "openfan-hardware"
-version = "0.1.0"
-dependencies = [
- "openfan-core",
- "thiserror 1.0.69",
- "tokio",
- "tokio-serial",
- "tracing",
-]
-
-[[package]]
-name = "openfan-server"
+name = "openfand"
 version = "1.0.0"
 dependencies = [
  "anyhow",
