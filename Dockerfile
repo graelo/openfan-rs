@@ -2,13 +2,15 @@
 # Multi-stage build for optimized container size
 
 # Build stage
-FROM rust:1.75-alpine AS builder
+FROM rust:1.91-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
     musl-dev \
     libc6-compat \
-    build-base
+    build-base \
+    pkgconfig \
+    openssl-dev
 
 # Set working directory
 WORKDIR /usr/src/openfan
@@ -16,14 +18,17 @@ WORKDIR /usr/src/openfan
 # Copy workspace files
 COPY Cargo.toml Cargo.lock ./
 COPY openfan-core/ ./openfan-core/
+COPY openfan-hardware/ ./openfan-hardware/
 COPY openfand/ ./openfand/
 COPY openfanctl/ ./openfanctl/
 
+# Add musl target for static linking
+RUN rustup target add x86_64-unknown-linux-musl
 # Build release binaries
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Runtime stage
-FROM alpine:3.18
+FROM alpine:3.22
 
 # Install runtime dependencies
 RUN apk add --no-cache \
