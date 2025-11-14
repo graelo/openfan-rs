@@ -101,7 +101,8 @@ jobs:
       run: cargo install cargo-tarpaulin
 
     - name: Generate coverage report
-      run: cargo tarpaulin --verbose --workspace --timeout 120 --out xml --exclude-tests e2e_integration_tests
+      run: cargo tarpaulin --verbose --workspace --timeout 120 --out xml --exclude-files openfanctl/tests/e2e_integration_tests.rs
+
 
 
     - name: Upload coverage to Codecov
