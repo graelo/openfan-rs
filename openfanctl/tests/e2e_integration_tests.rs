@@ -197,9 +197,9 @@ profiles: {}
         let mut cmd_args = vec![
             "run",
             "-p",
-    "openfanctl",
-    "--bin",
-    "openfanctl",
+            "openfanctl",
+            "--bin",
+            "openfanctl",
             "--",
             "--server",
             &self.server_url,

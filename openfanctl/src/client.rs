@@ -32,7 +32,7 @@ impl OpenFanClient {
     ) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(timeout_secs))
-.user_agent("openfanctl/1.0.0")
+            .user_agent("openfanctl/1.0.0")
             .build()
             .context("Failed to create HTTP client")?;
 

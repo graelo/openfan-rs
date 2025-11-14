@@ -4,8 +4,8 @@
 //! and mock responses without spawning background servers.
 
 use anyhow::Result;
-use openfanctl::client::OpenFanClient;
 use openfan_core::types::{ControlMode, FanProfile};
+use openfanctl::client::OpenFanClient;
 
 #[tokio::test]
 async fn test_client_creation_and_validation() -> Result<()> {
