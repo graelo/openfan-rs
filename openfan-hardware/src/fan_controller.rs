@@ -33,6 +33,7 @@ pub enum Command {
 pub struct FanController {
     driver: Arc<Mutex<SerialDriver>>,
     fan_rpm_cache: HashMap<u8, u32>,
+    fan_pwm_cache: HashMap<u8, u32>,
 }
 
 impl FanController {
@@ -41,6 +42,7 @@ impl FanController {
         Self {
             driver: Arc::new(Mutex::new(driver)),
             fan_rpm_cache: HashMap::new(),
+            fan_pwm_cache: HashMap::new(),
         }
     }
 
@@ -128,6 +130,15 @@ impl FanController {
         self.parse_fan_rpm(&response)
     }
 
+    /// Get cached PWM values for all fans
+    ///
+    /// Note: The hardware does not support reading PWM values directly.
+    /// This returns the last PWM values that were set via set_fan_pwm() or set_all_fan_pwm().
+    /// Returns an empty map if no PWM values have been set yet.
+    pub fn get_all_fan_pwm(&self) -> HashMap<u8, u32> {
+        self.fan_pwm_cache.clone()
+    }
+
     /// Get RPM for a single fan
     pub async fn get_single_fan_rpm(&mut self, fan_id: u8) -> Result<u32> {
         if fan_id >= 10 {
@@ -144,6 +155,15 @@ impl FanController {
             .get(&fan_id)
             .copied()
             .ok_or_else(|| OpenFanError::Hardware(format!("No RPM data for fan {}", fan_id)))
+    }
+
+    /// Get cached PWM value for a single fan
+    ///
+    /// Note: The hardware does not support reading PWM values directly.
+    /// This returns the last PWM value that was set for this fan.
+    /// Returns None if no PWM value has been set for this fan yet.
+    pub fn get_single_fan_pwm(&self, fan_id: u8) -> Option<u32> {
+        self.fan_pwm_cache.get(&fan_id).copied()
     }
 
     /// Set PWM for a single fan
@@ -163,7 +183,12 @@ impl FanController {
         let pwm_value = (pwm_percent * 255) / 100;
         let data = [fan_id, pwm_value as u8];
 
-        self.send_command(Command::SetFanPwm, Some(&data)).await
+        let result = self.send_command(Command::SetFanPwm, Some(&data)).await?;
+
+        // Cache the PWM value on successful write
+        self.fan_pwm_cache.insert(fan_id, pwm_percent);
+
+        Ok(result)
     }
 
     /// Set PWM for all fans
@@ -179,7 +204,16 @@ impl FanController {
         let pwm_value = (pwm_percent * 255) / 100;
         let data = [pwm_value as u8];
 
-        self.send_command(Command::SetAllFanPwm, Some(&data)).await
+        let result = self
+            .send_command(Command::SetAllFanPwm, Some(&data))
+            .await?;
+
+        // Cache the PWM value for all fans on successful write
+        for fan_id in 0..10 {
+            self.fan_pwm_cache.insert(fan_id, pwm_percent);
+        }
+
+        Ok(result)
     }
 
     /// Set target RPM for a single fan

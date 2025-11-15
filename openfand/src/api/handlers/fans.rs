@@ -49,9 +49,10 @@ pub async fn get_status(
     match commander.get_all_fan_rpm().await {
         Ok(rpm_map) => {
             debug!("Fan RPM data retrieved: {:?}", rpm_map);
-            // TODO: Get actual PWM data from hardware when available
-            // For now, return empty PWM map
-            let pwm_map = HashMap::new();
+            // Get cached PWM data
+            // Note: Hardware does not support reading PWM values, so we return cached values
+            let pwm_map = commander.get_all_fan_pwm();
+            debug!("Cached PWM data: {:?}", pwm_map);
             let status = FanStatusResponse {
                 rpms: rpm_map,
                 pwms: pwm_map,
