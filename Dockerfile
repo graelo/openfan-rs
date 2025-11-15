@@ -4,6 +4,9 @@
 # Build stage
 FROM rust:1.91-alpine AS builder
 
+# Use Docker's automatic platform detection
+ARG TARGETPLATFORM
+
 # Install build dependencies
 RUN apk add --no-cache \
     musl-dev \
@@ -22,10 +25,18 @@ COPY openfan-hardware/ ./openfan-hardware/
 COPY openfand/ ./openfand/
 COPY openfanctl/ ./openfanctl/
 
+# Determine Rust target based on Docker platform
+RUN case "$TARGETPLATFORM" in \
+        "linux/amd64") echo "x86_64-unknown-linux-musl" > /tmp/rust-target ;; \
+        "linux/arm64") echo "aarch64-unknown-linux-musl" > /tmp/rust-target ;; \
+        *) echo "Unsupported platform: $TARGETPLATFORM" && exit 1 ;; \
+    esac
+
 # Add musl target for static linking
-RUN rustup target add x86_64-unknown-linux-musl
+RUN rustup target add $(cat /tmp/rust-target)
+
 # Build release binaries
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target $(cat /tmp/rust-target)
 
 # Runtime stage
 FROM alpine:3.22
@@ -49,9 +60,9 @@ RUN mkdir -p /opt/openfan/bin \
     /var/lib/openfan \
     /var/log/openfan
 
-# Copy binaries from builder
-COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfand /opt/openfan/bin/
-COPY --from=builder /usr/src/openfan/target/x86_64-unknown-linux-musl/release/openfanctl /usr/local/bin/
+# Copy binaries from builder (use wildcard to match both x86_64 and aarch64)
+COPY --from=builder /usr/src/openfan/target/*/release/openfand /opt/openfan/bin/
+COPY --from=builder /usr/src/openfan/target/*/release/openfanctl /usr/local/bin/
 
 # Copy configuration
 COPY config.yaml /etc/openfan/
@@ -83,11 +94,11 @@ ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
 CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
 
 # Labels
-LABEL maintainer="OpenFAN Contributors <maintainer@example.com>" \
+LABEL maintainer="OpenFAN Contributors" \
     description="OpenFAN Controller - Fan Management System" \
-    version="1.0.0" \
+    version="0.1.0" \
     org.opencontainers.image.title="OpenFAN Controller" \
     org.opencontainers.image.description="High-performance fan management system" \
     org.opencontainers.image.vendor="OpenFAN Project" \
-    org.opencontainers.image.source="https://github.com/graelo/OpenFanController" \
-    org.opencontainers.image.documentation="https://github.com/graelo/OpenFanController/blob/main/Software/openfan/README.md"
+    org.opencontainers.image.source="https://github.com/graelo/openfan-rs" \
+    org.opencontainers.image.documentation="https://github.com/graelo/openfan-rs/blob/main/README.md"
