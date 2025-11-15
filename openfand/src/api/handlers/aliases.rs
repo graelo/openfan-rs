@@ -11,7 +11,7 @@ use openfan_core::api::{AliasResponse, ApiResponse};
 use openfan_core::MAX_FANS;
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Query parameters for alias operations
 #[derive(Deserialize)]
@@ -108,7 +108,6 @@ pub async fn set_alias(
 
     // Save configuration
     if let Err(e) = config.save().await {
-        warn!("Failed to save configuration: {}", e);
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e

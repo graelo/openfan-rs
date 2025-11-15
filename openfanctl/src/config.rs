@@ -80,27 +80,6 @@ impl CliConfig {
         Ok(config_dir.join("openfan").join("cli.toml"))
     }
 
-    /// Update configuration with environment variables
-    pub fn apply_env_overrides(&mut self) {
-        if let Ok(server_url) = std::env::var("OPENFAN_SERVER") {
-            self.server_url = server_url;
-        }
-
-        if let Ok(format) = std::env::var("OPENFAN_FORMAT") {
-            self.output_format = format;
-        }
-
-        if let Ok(verbose) = std::env::var("OPENFAN_VERBOSE") {
-            self.verbose = verbose.to_lowercase() == "true" || verbose == "1";
-        }
-
-        if let Ok(timeout) = std::env::var("OPENFAN_TIMEOUT") {
-            if let Ok(timeout) = timeout.parse() {
-                self.timeout = timeout;
-            }
-        }
-    }
-
     /// Create a new builder for constructing configuration
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::new()
@@ -148,13 +127,6 @@ impl ConfigBuilder {
     pub fn with_verbose(mut self, verbose: bool) -> Self {
         self.verbose = Some(verbose);
         self
-    }
-
-    /// Set timeout (with validation)
-    pub fn with_timeout(mut self, timeout: u64) -> Result<Self> {
-        Self::validate_timeout(timeout)?;
-        self.timeout = Some(timeout);
-        Ok(self)
     }
 
     /// Load configuration from file
@@ -289,6 +261,7 @@ impl ConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn test_default_config() {
@@ -311,28 +284,6 @@ mod tests {
         assert_eq!(config.timeout, parsed.timeout);
     }
 
-    #[test]
-    fn test_env_overrides() {
-        std::env::set_var("OPENFAN_SERVER", "http://example.com:8080");
-        std::env::set_var("OPENFAN_FORMAT", "json");
-        std::env::set_var("OPENFAN_VERBOSE", "true");
-        std::env::set_var("OPENFAN_TIMEOUT", "30");
-
-        let mut config = CliConfig::default();
-        config.apply_env_overrides();
-
-        assert_eq!(config.server_url, "http://example.com:8080");
-        assert_eq!(config.output_format, "json");
-        assert!(config.verbose);
-        assert_eq!(config.timeout, 30);
-
-        // Clean up
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_FORMAT");
-        std::env::remove_var("OPENFAN_VERBOSE");
-        std::env::remove_var("OPENFAN_TIMEOUT");
-    }
-
     // ConfigBuilder tests
 
     #[test]
@@ -350,15 +301,14 @@ mod tests {
             .with_output_format("json")
             .unwrap()
             .with_verbose(true)
-            .with_timeout(30)
-            .unwrap()
             .build()
             .unwrap();
 
         assert_eq!(config.server_url, "http://example.com:8080");
         assert_eq!(config.output_format, "json");
         assert!(config.verbose);
-        assert_eq!(config.timeout, 30);
+        // Timeout uses default value
+        assert_eq!(config.timeout, 10);
     }
 
     #[test]
@@ -392,19 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_timeout_validation() {
-        // Zero timeout
-        assert!(ConfigBuilder::new().with_timeout(0).is_err());
-
-        // Timeout too large
-        assert!(ConfigBuilder::new().with_timeout(301).is_err());
-
-        // Valid timeouts
-        assert!(ConfigBuilder::new().with_timeout(1).is_ok());
-        assert!(ConfigBuilder::new().with_timeout(300).is_ok());
-    }
-
-    #[test]
+    #[serial]
     fn test_builder_with_env_overrides() {
         // Clean environment first
         std::env::remove_var("OPENFAN_SERVER");
@@ -433,6 +371,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_priority_chain() {
         // Clean environment
         std::env::remove_var("OPENFAN_SERVER");
@@ -461,6 +400,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_env_priority_over_defaults() {
         // Clean environment
         std::env::remove_var("OPENFAN_VERBOSE");
@@ -476,6 +416,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_builder_invalid_env_values_ignored() {
         // Clean environment first to avoid interference from other tests
         std::env::remove_var("OPENFAN_SERVER");

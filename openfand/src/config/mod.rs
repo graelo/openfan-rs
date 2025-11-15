@@ -6,7 +6,7 @@ use openfan_core::{Config, OpenFanError, Result, MAX_FANS};
 use std::collections::hash_map::Entry;
 use std::path::Path;
 use tokio::fs;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Configuration manager
 pub struct ConfigManager {
@@ -40,10 +40,9 @@ impl ConfigManager {
         }
 
         // Read file contents
-        let contents = fs::read_to_string(&self.path).await.map_err(|e| {
-            error!("Failed to read config file: {}", e);
-            OpenFanError::Config(format!("Failed to read config file: {}", e))
-        })?;
+        let contents = fs::read_to_string(&self.path)
+            .await
+            .map_err(|e| OpenFanError::Config(format!("Failed to read config file: {}", e)))?;
 
         // Parse YAML
         match serde_yaml::from_str::<Config>(&contents) {
@@ -63,8 +62,7 @@ impl ConfigManager {
                 Ok(())
             }
             Err(e) => {
-                error!("Failed to parse config file: {}", e);
-                warn!("Using default configuration");
+                warn!("Failed to parse config file, using defaults: {}", e);
                 self.config = Config::default();
                 self.init_default_config().await
             }
@@ -75,15 +73,12 @@ impl ConfigManager {
     pub async fn save(&self) -> Result<()> {
         debug!("Saving configuration to: {}", self.path.display());
 
-        let yaml = serde_yaml::to_string(&self.config).map_err(|e| {
-            error!("Failed to serialize config: {}", e);
-            OpenFanError::Config(format!("Failed to serialize config: {}", e))
-        })?;
+        let yaml = serde_yaml::to_string(&self.config)
+            .map_err(|e| OpenFanError::Config(format!("Failed to serialize config: {}", e)))?;
 
-        fs::write(&self.path, yaml).await.map_err(|e| {
-            error!("Failed to write config file: {}", e);
-            OpenFanError::Config(format!("Failed to write config file: {}", e))
-        })?;
+        fs::write(&self.path, yaml)
+            .await
+            .map_err(|e| OpenFanError::Config(format!("Failed to write config file: {}", e)))?;
 
         info!("Configuration saved successfully");
         Ok(())

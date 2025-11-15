@@ -60,10 +60,7 @@ pub async fn get_status(
             };
             api_ok!(status)
         }
-        Err(e) => {
-            warn!("Failed to get fan RPM: {}", e);
-            Err(ApiError::from(e))
-        }
+        Err(e) => Err(ApiError::from(e)),
     }
 }
 
@@ -97,10 +94,7 @@ pub async fn set_all_fans(
             debug!("Set all fans response: {}", response);
             api_ok!(())
         }
-        Err(e) => {
-            warn!("Failed to set all fans PWM: {}", e);
-            Err(ApiError::from(e))
-        }
+        Err(e) => Err(ApiError::from(e)),
     }
 }
 
@@ -148,10 +142,10 @@ pub async fn set_fan_pwm(
             debug!("Set fan {} PWM response: {}", fan_index, response);
             api_ok!(())
         }
-        Err(e) => {
-            warn!("Failed to set fan {} PWM: {}", fan_index, e);
-            Err(ApiError::from(e))
-        }
+        Err(e) => Err(ApiError::service_unavailable(format!(
+            "Failed to set fan {} PWM: {}",
+            fan_index, e
+        ))),
     }
 }
 
@@ -189,10 +183,10 @@ pub async fn get_fan_rpm(
             debug!("Fan {} RPM: {}", fan_index, rpm);
             api_ok!(rpm)
         }
-        Err(e) => {
-            warn!("Failed to get fan {} RPM: {}", fan_index, e);
-            Err(ApiError::from(e))
-        }
+        Err(e) => Err(ApiError::service_unavailable(format!(
+            "Failed to get fan {} RPM: {}",
+            fan_index, e
+        ))),
     }
 }
 
@@ -244,10 +238,10 @@ pub async fn set_fan_rpm(
             debug!("Set fan {} RPM response: {}", fan_index, response);
             api_ok!(())
         }
-        Err(e) => {
-            warn!("Failed to set fan {} RPM: {}", fan_index, e);
-            Err(ApiError::from(e))
-        }
+        Err(e) => Err(ApiError::service_unavailable(format!(
+            "Failed to set fan {} RPM: {}",
+            fan_index, e
+        ))),
     }
 }
 

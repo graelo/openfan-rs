@@ -53,10 +53,7 @@ async fn main() -> Result<()> {
 
     // Load configuration
     let mut config_manager = ConfigManager::new(&args.config);
-    if let Err(e) = config_manager.load().await {
-        error!("Failed to load configuration: {}", e);
-        return Err(e.into());
-    }
+    config_manager.load().await?;
     info!("Configuration loaded successfully");
 
     // Get server config
@@ -100,12 +97,7 @@ async fn main() -> Result<()> {
 
     // Start server
     info!("Starting server on {}", bind_addr);
-    let listener = tokio::net::TcpListener::bind(&bind_addr)
-        .await
-        .map_err(|e| {
-            error!("Failed to bind to {}: {}", bind_addr, e);
-            e
-        })?;
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     info!("OpenFAN API Server listening on {}", bind_addr);
     info!("Phase 3 API layer complete. Server ready!");
@@ -113,11 +105,7 @@ async fn main() -> Result<()> {
     // Run server with graceful shutdown
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|e| {
-            error!("Server error: {}", e);
-            e
-        })?;
+        .await?;
 
     info!("Server shutdown complete");
     Ok(())

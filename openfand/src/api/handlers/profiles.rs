@@ -103,7 +103,6 @@ pub async fn add_profile(
 
     // Save configuration
     if let Err(e) = config.save().await {
-        warn!("Failed to save configuration: {}", e);
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -133,7 +132,6 @@ pub async fn remove_profile(
     if removed.is_some() {
         // Save configuration
         if let Err(e) = config.save().await {
-            warn!("Failed to save configuration: {}", e);
             return Err(ApiError::internal_error(format!(
                 "Failed to save configuration: {}",
                 e
