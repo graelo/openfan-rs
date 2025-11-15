@@ -214,33 +214,49 @@ enum ConfigCommands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Load and merge configuration
-    let config = if cli.no_config {
-        CliConfig::default()
-    } else {
-        match CliConfig::load() {
-            Ok(mut config) => {
-                // Apply environment variable overrides
-                config.apply_env_overrides();
-                config
+    // Build configuration using priority chain: defaults → file → env → CLI args
+    let mut builder = CliConfig::builder();
+
+    // Load config file (unless --no-config is specified)
+    builder = builder.with_config_file(!cli.no_config)?;
+
+    // Apply environment variable overrides
+    builder = builder.with_env_overrides();
+
+    // Apply CLI argument overrides (highest priority)
+    if let Some(ref server) = cli.server {
+        builder = builder.with_server_url(server)?;
+    }
+    if let Some(ref format) = cli.format {
+        let format_str = match format {
+            OutputFormat::Table => "table",
+            OutputFormat::Json => "json",
+        };
+        builder = builder.with_output_format(format_str)?;
+    }
+    if let Some(verbose) = cli.verbose {
+        builder = builder.with_verbose(verbose);
+    }
+
+    // Build final configuration with validation
+    let config = match builder.build() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Configuration error: {}", e);
+            if cli.verbose.unwrap_or(false) {
+                eprintln!("Error details: {:?}", e);
             }
-            Err(e) => {
-                if cli.verbose.unwrap_or(false) {
-                    eprintln!("Warning: Failed to load config file: {}", e);
-                    eprintln!("Using default configuration.");
-                }
-                CliConfig::default()
-            }
+            std::process::exit(1);
         }
     };
 
-    // Determine final settings (CLI args override config file)
-    let server_url = cli.server.unwrap_or_else(|| config.server_url.clone());
-    let output_format = cli.format.unwrap_or(match config.output_format.as_str() {
+    // Determine final settings from validated config
+    let server_url = &config.server_url;
+    let output_format = match config.output_format.as_str() {
         "json" => OutputFormat::Json,
         _ => OutputFormat::Table,
-    });
-    let verbose = cli.verbose.unwrap_or(config.verbose);
+    };
+    let verbose = config.verbose;
 
     // Initialize logging if verbose
     if verbose {
