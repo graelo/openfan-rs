@@ -7,6 +7,7 @@ use openfan_core::{
         ProfileResponse,
     },
     types::FanProfile,
+    MAX_FANS,
 };
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
@@ -145,8 +146,12 @@ impl OpenFanClient {
 
     /// Get RPM for a specific fan
     pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<FanRpmResponse> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
+        if fan_id as usize >= MAX_FANS {
+            return Err(anyhow::anyhow!(
+                "Invalid fan ID: {}. Must be 0-{}",
+                fan_id,
+                MAX_FANS - 1
+            ));
         }
 
         let url = format!("{}/api/v0/fan/{}/rpm/get", self.base_url, fan_id);
@@ -161,8 +166,12 @@ impl OpenFanClient {
 
     /// Set fan PWM
     pub async fn set_fan_pwm(&self, fan_id: u8, pwm: u32) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
+        if fan_id as usize >= MAX_FANS {
+            return Err(anyhow::anyhow!(
+                "Invalid fan ID: {}. Must be 0-{}",
+                fan_id,
+                MAX_FANS - 1
+            ));
         }
         if pwm > 100 {
             return Err(anyhow::anyhow!("Invalid PWM value: {}. Must be 0-100", pwm));
@@ -178,8 +187,12 @@ impl OpenFanClient {
 
     /// Set fan RPM
     pub async fn set_fan_rpm(&self, fan_id: u8, rpm: u32) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
+        if fan_id as usize >= MAX_FANS {
+            return Err(anyhow::anyhow!(
+                "Invalid fan ID: {}. Must be 0-{}",
+                fan_id,
+                MAX_FANS - 1
+            ));
         }
         if rpm > 10000 {
             return Err(anyhow::anyhow!(
@@ -284,8 +297,12 @@ impl OpenFanClient {
 
     /// Get alias for a specific fan
     pub async fn get_alias(&self, fan_id: u8) -> Result<AliasResponse> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
+        if fan_id as usize >= MAX_FANS {
+            return Err(anyhow::anyhow!(
+                "Invalid fan ID: {}. Must be 0-{}",
+                fan_id,
+                MAX_FANS - 1
+            ));
         }
 
         let url = format!("{}/api/v0/alias/{}/get", self.base_url, fan_id);
@@ -297,8 +314,12 @@ impl OpenFanClient {
 
     /// Set alias for a fan
     pub async fn set_alias(&self, fan_id: u8, alias: &str) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
+        if fan_id as usize >= MAX_FANS {
+            return Err(anyhow::anyhow!(
+                "Invalid fan ID: {}. Must be 0-{}",
+                fan_id,
+                MAX_FANS - 1
+            ));
         }
         if alias.trim().is_empty() {
             return Err(anyhow::anyhow!("Alias cannot be empty"));

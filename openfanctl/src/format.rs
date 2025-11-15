@@ -5,6 +5,7 @@
 use anyhow::Result;
 use colored::*;
 use openfan_core::api::{AliasResponse, FanStatusResponse, InfoResponse, ProfileResponse};
+use openfan_core::MAX_FANS;
 
 use tabled::{settings::Style, Table, Tabled};
 
@@ -72,7 +73,7 @@ pub fn format_fan_status(status: &FanStatusResponse, format: &OutputFormat) -> R
             }
 
             let mut rows = Vec::new();
-            for fan_id in 0..10 {
+            for fan_id in 0..MAX_FANS as u8 {
                 let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
                 let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
 
@@ -146,7 +147,7 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
             }
 
             let mut rows = Vec::new();
-            for fan_id in 0..10 {
+            for fan_id in 0..MAX_FANS as u8 {
                 let alias = aliases
                     .aliases
                     .get(&fan_id)

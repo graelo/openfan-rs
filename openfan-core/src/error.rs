@@ -1,5 +1,6 @@
 //! Error types for the OpenFAN system
 
+use crate::MAX_FANS;
 use thiserror::Error;
 
 /// Core error type for OpenFAN operations
@@ -30,7 +31,7 @@ pub enum OpenFanError {
     AliasNotFound(u8),
 
     /// Fan ID out of range
-    #[error("Fan ID out of range: {0} (must be 0-9)")]
+    #[error("Fan ID out of range: {0} (must be 0-{max})", max = MAX_FANS - 1)]
     InvalidFanId(u8),
 
     /// Parsing errors

@@ -15,6 +15,7 @@ use client::OpenFanClient;
 use config::CliConfig;
 use format::format_success;
 use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::MAX_FANS;
 
 /// OpenFAN Controller CLI
 #[derive(Parser, Debug)]
@@ -360,8 +361,11 @@ async fn handle_fan_command(
 ) -> Result<()> {
     match command {
         FanCommands::Set { fan_id, pwm, rpm } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
+            if fan_id as usize >= MAX_FANS {
+                return Err(anyhow::anyhow!(
+                    "Fan ID must be between 0 and {}",
+                    MAX_FANS - 1
+                ));
             }
 
             match (pwm, rpm) {
@@ -388,8 +392,11 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Rpm { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
+            if fan_id as usize >= MAX_FANS {
+                return Err(anyhow::anyhow!(
+                    "Fan ID must be between 0 and {}",
+                    MAX_FANS - 1
+                ));
             }
 
             let rpm_response = client.get_fan_rpm(fan_id).await?;
@@ -404,8 +411,11 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Pwm { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
+            if fan_id as usize >= MAX_FANS {
+                return Err(anyhow::anyhow!(
+                    "Fan ID must be between 0 and {}",
+                    MAX_FANS - 1
+                ));
             }
 
             let status = client.get_fan_status_by_id(fan_id).await?;
@@ -507,8 +517,11 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Get { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
+            if fan_id as usize >= MAX_FANS {
+                return Err(anyhow::anyhow!(
+                    "Fan ID must be between 0 and {}",
+                    MAX_FANS - 1
+                ));
             }
 
             let alias_response = client.get_alias(fan_id).await?;
@@ -532,8 +545,11 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Set { fan_id, name } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
+            if fan_id as usize >= MAX_FANS {
+                return Err(anyhow::anyhow!(
+                    "Fan ID must be between 0 and {}",
+                    MAX_FANS - 1
+                ));
             }
 
             client.set_alias(fan_id, &name).await?;

@@ -3,7 +3,7 @@
 //! Implements the fan control protocol over serial communication.
 
 use crate::serial_driver::SerialDriver;
-use openfan_core::{FanRpmMap, OpenFanError, Result};
+use openfan_core::{FanRpmMap, OpenFanError, Result, MAX_FANS};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -141,7 +141,7 @@ impl FanController {
 
     /// Get RPM for a single fan
     pub async fn get_single_fan_rpm(&mut self, fan_id: u8) -> Result<u32> {
-        if fan_id >= 10 {
+        if fan_id as usize >= MAX_FANS {
             return Err(OpenFanError::InvalidFanId(fan_id));
         }
 
@@ -168,7 +168,7 @@ impl FanController {
 
     /// Set PWM for a single fan
     pub async fn set_fan_pwm(&mut self, fan_id: u8, pwm_percent: u32) -> Result<String> {
-        if fan_id >= 10 {
+        if fan_id as usize >= MAX_FANS {
             return Err(OpenFanError::InvalidFanId(fan_id));
         }
 
@@ -209,7 +209,7 @@ impl FanController {
             .await?;
 
         // Cache the PWM value for all fans on successful write
-        for fan_id in 0..10 {
+        for fan_id in 0..MAX_FANS as u8 {
             self.fan_pwm_cache.insert(fan_id, pwm_percent);
         }
 
@@ -218,7 +218,7 @@ impl FanController {
 
     /// Set target RPM for a single fan
     pub async fn set_fan_rpm(&mut self, fan_id: u8, rpm: u32) -> Result<String> {
-        if fan_id >= 10 {
+        if fan_id as usize >= MAX_FANS {
             return Err(OpenFanError::InvalidFanId(fan_id));
         }
 

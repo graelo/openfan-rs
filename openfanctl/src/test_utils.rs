@@ -14,6 +14,7 @@ use openfan_core::api::{
     AliasResponse, ApiResponse, FanStatusResponse, InfoResponse, ProfileResponse,
 };
 use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::MAX_FANS;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -43,9 +44,9 @@ impl Default for MockServerState {
         let mut aliases = HashMap::new();
 
         // Initialize with default values
-        for i in 0..10 {
-            rpms.insert(i.to_string(), 1200 + i as u32 * 100);
-            pwms.insert(i.to_string(), 50 + i as u32 * 5);
+        for i in 0..MAX_FANS as u32 {
+            rpms.insert(i.to_string(), 1200 + i * 100);
+            pwms.insert(i.to_string(), 50 + i * 5);
             aliases.insert(i.to_string(), format!("Fan #{}", i + 1));
         }
 
