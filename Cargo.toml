@@ -3,11 +3,11 @@ members = ["openfan-core", "openfand", "openfanctl", "openfan-hardware"]
 resolver = "2"
 
 [workspace.package]
-version = "1.0.0"
+version = "0.1.0"
 edition = "2021"
 authors = ["OpenFAN Contributors"]
 license = "MIT"
-repository = "https://github.com/graelo/OpenFanController"
+repository = "https://github.com/graelo/openfan-rs"
 
 [workspace.dependencies]
 # Shared dependencies
