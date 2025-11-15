@@ -205,7 +205,7 @@ networks:
 # version: '3.8'
 # services:
 #   openfand:
-#     image: openfan/controller:latest
+#     image: graelo/openfan:latest
 #     deploy:
 #       replicas: 2
 #       update_config:

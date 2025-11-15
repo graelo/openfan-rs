@@ -91,12 +91,12 @@ fan_aliases:
 
 ```bash
 # Run with mock hardware
-docker run -p 8080:8080 openfan/controller:latest
+docker run -p 8080:8080 graelo/openfan:latest
 
 # Run with real hardware
 docker run -p 8080:8080 \
   --device=/dev/ttyUSB0 \
-  openfan/controller:latest \
+  graelo/openfan:latest \
   openfand --config /etc/openfan/config.yaml
 ```
 
