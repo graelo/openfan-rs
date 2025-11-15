@@ -8,10 +8,21 @@ OpenFAN connects to your fan controller hardware over serial and lets you manage
 
 ## Quick Start
 
-**Install:**
+**Install on Debian/Ubuntu:**
 
 ```bash
-# Download latest release
+# Download package
+curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_0.1.0_amd64.deb
+
+# Install
+sudo dpkg -i openfan-controller_0.1.0_amd64.deb
+sudo apt-get install -f  # Fix dependencies if needed
+```
+
+**Install on other Linux:**
+
+```bash
+# Download release
 curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-linux-x86_64.tar.gz
 tar xzf openfan-linux-x86_64.tar.gz
 cd openfan-linux-x86_64

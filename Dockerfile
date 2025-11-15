@@ -6,6 +6,7 @@ FROM rust:1.91-alpine AS builder
 
 # Use Docker's automatic platform detection
 ARG TARGETPLATFORM
+ARG VERSION=0.1.0
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -94,11 +95,13 @@ ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
 CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
 
 # Labels
+ARG VERSION
 LABEL maintainer="OpenFAN Contributors" \
     description="OpenFAN Controller - Fan Management System" \
-    version="0.1.0" \
+    version="${VERSION}" \
     org.opencontainers.image.title="OpenFAN Controller" \
     org.opencontainers.image.description="High-performance fan management system" \
     org.opencontainers.image.vendor="OpenFAN Project" \
+    org.opencontainers.image.version="${VERSION}" \
     org.opencontainers.image.source="https://github.com/graelo/openfan-rs" \
     org.opencontainers.image.documentation="https://github.com/graelo/openfan-rs/blob/main/README.md"
