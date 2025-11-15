@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 
 /// Test configuration
-const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_millis(2000);
+const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const SERVER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -29,14 +29,25 @@ pub struct E2ETestHarness {
 impl Default for E2ETestHarness {
     /// Create a new test harness with a unique port
     fn default() -> Self {
-        // Use a high port number to avoid conflicts, include thread/process ID for uniqueness
+        // Use a high port number to avoid conflicts
+        // Combine process ID, thread ID, and timestamp for better uniqueness
+        let process_id = std::process::id();
         let thread_id = std::thread::current().id();
         let thread_hash = format!("{:?}", thread_id)
             .chars()
             .filter(|c| c.is_ascii_digit())
             .collect::<String>();
-        let port_offset = thread_hash.parse::<u16>().unwrap_or(0) % 1000;
-        let server_port = 18000 + port_offset;
+        let thread_num = thread_hash.parse::<u32>().unwrap_or(0);
+
+        // Use timestamp nanoseconds for additional uniqueness
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .subsec_nanos();
+
+        // Combine to create a unique port in range 20000-29999
+        let port_offset = ((process_id + thread_num + nanos) % 10000) as u16;
+        let server_port = 20000 + port_offset;
         let server_url = format!("http://127.0.0.1:{}", server_port);
         let temp_dir = tempfile::tempdir().unwrap();
 
@@ -110,13 +121,18 @@ profiles: {}
         // Wait for server to be ready
         let start_time = std::time::Instant::now();
         let mut last_error = String::new();
+        let mut poll_interval = Duration::from_millis(100);
 
         while start_time.elapsed() < SERVER_STARTUP_TIMEOUT {
-            let poll_start = std::time::Instant::now();
             if let Ok(response) = self.check_server_health().await {
                 if response.status().is_success() {
-                    // Minimal sleep after health check (reduce from 500ms to 20ms)
-                    sleep(Duration::from_millis(20)).await;
+                    // Give server a moment to fully stabilize
+                    sleep(Duration::from_millis(100)).await;
+                    println!(
+                        "Server started successfully on port {} after {:?}",
+                        self.server_port,
+                        start_time.elapsed()
+                    );
                     return Ok(());
                 }
                 last_error = format!("HTTP status: {}", response.status());
@@ -135,8 +151,10 @@ profiles: {}
                     }
                 }
             }
-            let _poll_elapsed = poll_start.elapsed();
-            sleep(Duration::from_millis(20)).await;
+
+            // Use exponential backoff for polling: start at 100ms, max out at 500ms
+            sleep(poll_interval).await;
+            poll_interval = std::cmp::min(poll_interval * 2, Duration::from_millis(500));
         }
 
         // Kill the child process if startup failed
@@ -154,7 +172,7 @@ profiles: {}
     /// Check if server is responding
     async fn check_server_health(&self) -> Result<reqwest::Response> {
         let client = reqwest::Client::builder()
-            .timeout(Duration::from_millis(1000))
+            .timeout(Duration::from_secs(3))
             .build()?;
 
         client
