@@ -28,7 +28,7 @@ tower = "0.4"
 
 # CLI dependencies
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 tabled = "0.15"
 colored = "2"
 clap_complete = "4"
