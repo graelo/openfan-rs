@@ -7,6 +7,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+  packages: write
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -298,12 +302,15 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: graelo/openfan
+          flavor: |
+            suffix=-amd64
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push AMD64 image
         uses: docker/build-push-action@v4
@@ -311,7 +318,7 @@ jobs:
           context: .
           platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}-amd64
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=amd64
           cache-to: type=gha,mode=max,scope=amd64
@@ -350,12 +357,15 @@ jobs:
         uses: docker/metadata-action@v4
         with:
           images: graelo/openfan
+          flavor: |
+            suffix=-arm64
           tags: |
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push ARM64 image
         uses: docker/build-push-action@v4
@@ -363,7 +373,7 @@ jobs:
           context: .
           platforms: linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}-arm64
+          tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
@@ -401,14 +411,15 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create and push multi-arch manifest
         if: github.event_name != 'pull_request'
         run: |
-          # Get the first tag from metadata output
-          TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          
-          # Create and push manifest list
-          docker buildx imagetools create -t ${TAG} \
-            ${TAG}-amd64 \
-            ${TAG}-arm64
+          # Loop through all tags and create a manifest for each
+          echo "${{ steps.meta.outputs.tags }}" | while IFS= read -r TAG; do
+            echo "Creating manifest for ${TAG}"
+            docker buildx imagetools create -t ${TAG} \
+              ${TAG}-amd64 \
+              ${TAG}-arm64
+          done

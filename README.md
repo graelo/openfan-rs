@@ -8,6 +8,8 @@ OpenFAN connects to your fan controller hardware over serial and lets you manage
 
 ## Quick Start
 
+### Installation on Linux
+
 **Install on Debian/Ubuntu:**
 
 ```bash
@@ -30,6 +32,8 @@ cd openfan-linux-x86_64
 # Install (creates systemd service)
 sudo ./deploy/install.sh
 ```
+
+### Basic Usage
 
 **Start the server:**
 
