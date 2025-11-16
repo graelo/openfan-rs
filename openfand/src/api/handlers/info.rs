@@ -8,8 +8,18 @@ use openfan_core::api::{ApiResponse, InfoResponse};
 use serde_json::{json, Value};
 use tracing::{debug, warn};
 
-/// Root endpoint handler
-/// GET /
+/// Handle the root endpoint.
+///
+/// Provide basic service identification and status. Useful for health checks
+/// and verifying the API is accessible.
+///
+/// # Endpoint
+///
+/// `GET /`
+///
+/// # Returns
+///
+/// Return service name, version, and status.
 pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
     debug!("Request: GET /");
 
@@ -22,8 +32,28 @@ pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
     Ok(Json(ApiResponse::success(data)))
 }
 
-/// System information handler
-/// GET /api/v0/info
+/// Retrieve comprehensive system information.
+///
+/// Provide details about the server software, hardware connection status,
+/// uptime, and hardware/firmware information if available.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/info`
+///
+/// # Returns
+///
+/// - `version` - Server version
+/// - `hardware_connected` - Whether fan controller hardware is connected
+/// - `uptime` - Server uptime in seconds
+/// - `software` - Software version and build information
+/// - `hardware` - Hardware information (if connected, may be None on error)
+/// - `firmware` - Firmware version (if connected, may be None on error)
+///
+/// # Behavior
+///
+/// - If hardware is not connected, hardware and firmware fields are None
+/// - Hardware/firmware queries are logged but failures don't cause errors
 pub async fn get_info(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<InfoResponse>>, ApiError> {

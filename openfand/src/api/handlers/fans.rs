@@ -14,15 +14,29 @@ use std::collections::HashMap;
 
 use tracing::debug;
 
-/// Query parameters for fan control endpoints
+/// Query parameters for fan control endpoints.
 #[derive(Deserialize)]
 pub struct FanControlQuery {
-    /// Value to set (PWM percentage or RPM)
+    /// Value to set - PWM percentage (0-100) or RPM (0-16000)
     pub value: Option<f64>,
 }
 
-/// Get status of all fans
-/// GET /api/v0/fan/status
+/// Retrieves the current status of all fans.
+///
+/// Returns RPM readings and cached PWM values for all fans in the system.
+///
+/// # Behavior
+///
+/// - With hardware: Returns actual RPM readings and cached PWM values
+/// - Mock mode: Returns simulated fan data for testing
+///
+/// # Note
+///
+/// PWM values are cached because the hardware does not support reading them back.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/fan/status`
 pub async fn get_status(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<FanStatusResponse>>, ApiError> {
@@ -66,8 +80,20 @@ pub async fn get_status(
     }
 }
 
-/// Set PWM for all fans
-/// GET /api/v0/fan/all/set?value=50
+/// Sets the PWM value for all fans simultaneously.
+///
+/// # Validation
+///
+/// - PWM values are automatically clamped to 0-100 range
+/// - Values outside this range are adjusted without error
+///
+/// # Endpoint
+///
+/// `GET /api/v0/fan/all/set?value=50`
+///
+/// # Query Parameters
+///
+/// - `value` - PWM percentage (0-100, automatically clamped)
 pub async fn set_all_fans(
     State(state): State<AppState>,
     Query(params): Query<FanControlQuery>,
@@ -100,9 +126,25 @@ pub async fn set_all_fans(
     }
 }
 
-/// Set PWM for a specific fan
-/// GET /api/v0/fan/:id/pwm?value=50
-/// GET /api/v0/fan/:id/set?value=50 (legacy)
+/// Sets the PWM value for a specific fan.
+///
+/// # Validation
+///
+/// - Fan ID must be 0-9 (corresponding to 10 fans)
+/// - PWM values are automatically clamped to 0-100 range
+///
+/// # Endpoints
+///
+/// - `GET /api/v0/fan/:id/pwm?value=50` (current)
+/// - `GET /api/v0/fan/:id/set?value=50` (legacy)
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
+///
+/// # Query Parameters
+///
+/// - `value` - PWM percentage (0-100, automatically clamped)
 pub async fn set_fan_pwm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
@@ -151,8 +193,24 @@ pub async fn set_fan_pwm(
     }
 }
 
-/// Set RPM for a specific fan
-/// GET /api/v0/fan/:id/rpm/get
+/// Retrieves the current RPM reading for a specific fan.
+///
+/// # Validation
+///
+/// - Fan ID must be 0-9 (corresponding to 10 fans)
+///
+/// # Behavior
+///
+/// - With hardware: Returns actual RPM reading from the fan
+/// - Mock mode: Returns simulated RPM value
+///
+/// # Endpoint
+///
+/// `GET /api/v0/fan/:id/rpm/get`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
 pub async fn get_fan_rpm(
     Path(fan_id): Path<String>,
     State(state): State<AppState>,
@@ -192,7 +250,25 @@ pub async fn get_fan_rpm(
     }
 }
 
-/// GET /api/v0/fan/:id/rpm?value=1000
+/// Sets the target RPM for a specific fan.
+///
+/// # Validation
+///
+/// - Fan ID must be 0-9 (corresponding to 10 fans)
+/// - RPM values are clamped: values > 16000 become 16000, values < 480 become 0
+/// - Minimum operational RPM is 480 (below this, fan is set to 0/off)
+///
+/// # Endpoint
+///
+/// `GET /api/v0/fan/:id/rpm?value=1000`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
+///
+/// # Query Parameters
+///
+/// - `value` - Target RPM (0-16000, with automatic clamping)
 pub async fn set_fan_rpm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,

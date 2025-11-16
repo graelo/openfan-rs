@@ -16,24 +16,29 @@ use serde::Deserialize;
 
 use tracing::{debug, info, warn};
 
-/// Query parameters for profile operations
+/// Query parameters for profile operations.
 #[derive(Deserialize)]
 pub struct ProfileQuery {
-    /// Profile name
+    /// Profile name (case-sensitive)
     pub name: Option<String>,
 }
 
-/// Request body for adding a new profile
+/// Request body for adding a new profile.
 #[derive(Deserialize)]
 pub struct AddProfileRequest {
-    /// Profile name
+    /// Profile name (must be non-empty after trimming whitespace)
     pub name: String,
-    /// Profile data
+    /// Profile data (must have exactly 10 values with appropriate ranges)
     pub profile: FanProfile,
 }
 
-/// List all available profiles
-/// GET /api/v0/profiles/list
+/// Lists all available fan profiles.
+///
+/// Returns all configured profiles with their control modes and fan values.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/list`
 pub async fn list_profiles(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
@@ -50,8 +55,32 @@ pub async fn list_profiles(
     api_ok!(response)
 }
 
-/// Add a new profile
-/// POST /api/v0/profiles/add
+/// Adds a new fan profile to the configuration.
+///
+/// Validates the profile data and saves it to the configuration file.
+///
+/// # Validation Rules
+///
+/// - Profile name must not be empty after trimming whitespace
+/// - Must have exactly 10 values (one per fan)
+/// - PWM mode: values must be 0-100 (percentage)
+/// - RPM mode: values must be 0-16000 (revolutions per minute)
+///
+/// # Endpoint
+///
+/// `POST /api/v0/profiles/add`
+///
+/// # Request Body
+///
+/// ```json
+/// {
+///   "name": "Gaming",
+///   "profile": {
+///     "control_mode": "pwm",
+///     "values": [50, 60, 70, 80, 90, 100, 90, 80, 70, 60]
+///   }
+/// }
+/// ```
 pub async fn add_profile(
     State(state): State<AppState>,
     Json(request): Json<AddProfileRequest>,
@@ -114,8 +143,18 @@ pub async fn add_profile(
     api_ok!(())
 }
 
-/// Remove a profile
-/// GET /api/v0/profiles/remove?name=Custom
+/// Removes a profile from the configuration.
+///
+/// The profile name is case-sensitive. If the profile exists, it is removed
+/// and the configuration is saved.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/remove?name=Custom`
+///
+/// # Query Parameters
+///
+/// - `name` - Name of the profile to remove (case-sensitive)
 pub async fn remove_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
@@ -149,8 +188,24 @@ pub async fn remove_profile(
     }
 }
 
-/// Apply a profile (set all fans to profile values)
-/// GET /api/v0/profiles/set?name=Gaming
+/// Applies a profile to all fans.
+///
+/// Sets all fans to the values defined in the profile. The control mode
+/// (PWM or RPM) determines how the values are applied.
+///
+/// # Behavior
+///
+/// - In mock mode (no hardware): simulates applying the profile
+/// - With hardware: sets each fan individually based on control mode
+/// - Partial failures are logged but don't prevent other fans from being set
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/set?name=Gaming`
+///
+/// # Query Parameters
+///
+/// - `name` - Name of the profile to apply (case-sensitive)
 pub async fn set_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
