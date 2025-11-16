@@ -151,9 +151,9 @@ pub mod error {
         fn from(err: openfan_core::OpenFanError) -> Self {
             match err {
                 openfan_core::OpenFanError::InvalidInput(msg) => Self::bad_request(msg),
-                openfan_core::OpenFanError::InvalidFanId(id) => {
-                    Self::bad_request(format!("Invalid fan ID: {} (must be 0-9)", id))
-                }
+                openfan_core::OpenFanError::InvalidFanId { fan_id, max_fans } => Self::bad_request(
+                    format!("Invalid fan ID: {} (must be 0-{})", fan_id, max_fans - 1),
+                ),
                 openfan_core::OpenFanError::ProfileNotFound(name) => {
                     Self::bad_request(format!("Profile not found: {}", name))
                 }

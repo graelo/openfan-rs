@@ -2,22 +2,24 @@
 //!
 //! Provides async serial I/O with the fan controller hardware.
 
-use openfan_core::{OpenFanError, Result};
+use openfan_core::{BoardConfig, OpenFanError, Result};
+use std::marker::PhantomData;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_serial::{SerialPort, SerialPortBuilderExt, SerialStream};
 use tracing::{debug, error, warn};
 
 /// Serial driver for hardware communication
-pub struct SerialDriver {
+pub struct SerialDriver<B: BoardConfig = openfan_core::DefaultBoard> {
     port: SerialStream,
     prefix: String,
     suffix: String,
     timeout_duration: Duration,
     debug_uart: bool,
+    _board: PhantomData<B>,
 }
 
-impl SerialDriver {
+impl<B: BoardConfig> SerialDriver<B> {
     /// Create a new serial driver
     ///
     /// # Arguments
@@ -27,7 +29,7 @@ impl SerialDriver {
     pub fn new(port_path: &str, timeout_ms: u64, debug_uart: bool) -> Result<Self> {
         debug!("Opening serial port: {}", port_path);
 
-        let port = tokio_serial::new(port_path, 115200)
+        let port = tokio_serial::new(port_path, B::BAUD_RATE)
             .timeout(Duration::from_millis(timeout_ms))
             .data_bits(tokio_serial::DataBits::Eight)
             .parity(tokio_serial::Parity::None)
@@ -51,6 +53,7 @@ impl SerialDriver {
             suffix: "\r\n".to_string(),
             timeout_duration: Duration::from_millis(timeout_ms),
             debug_uart,
+            _board: PhantomData,
         })
     }
 
@@ -170,9 +173,14 @@ impl SerialDriver {
 
 /// Find the fan controller device by VID/PID
 ///
-/// Searches for device with VID:0x2E8A and PID:0x000A
-pub fn find_fan_controller() -> Result<String> {
-    debug!("Searching for fan controller (VID:0x2E8A, PID:0x000A)");
+/// Searches for device matching the board's USB VID/PID
+pub fn find_fan_controller<B: BoardConfig>() -> Result<String> {
+    debug!(
+        "Searching for {} (VID:0x{:04X}, PID:0x{:04X})",
+        B::NAME,
+        B::USB_VID,
+        B::USB_PID
+    );
 
     let ports = tokio_serial::available_ports().map_err(|e| {
         error!("Failed to enumerate serial ports: {}", e);
@@ -185,14 +193,14 @@ pub fn find_fan_controller() -> Result<String> {
         if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
             debug!("  USB Device - VID:{:04X} PID:{:04X}", info.vid, info.pid);
 
-            if info.vid == 0x2E8A && info.pid == 0x000A {
-                debug!("Found fan controller at: {}", port.port_name);
+            if info.vid == B::USB_VID && info.pid == B::USB_PID {
+                debug!("Found {} at: {}", B::NAME, port.port_name);
                 return Ok(port.port_name);
             }
         }
     }
 
-    error!("Fan controller not found");
+    error!("{} not found", B::NAME);
     Err(OpenFanError::DeviceNotFound)
 }
 
@@ -210,7 +218,7 @@ mod tests {
     #[test]
     fn test_find_fan_controller() {
         // This will fail if hardware isn't connected, which is expected
-        let result = find_fan_controller();
+        let result = find_fan_controller::<openfan_core::DefaultBoard>();
         // Just verify the function runs without panicking
         let _ = result;
     }

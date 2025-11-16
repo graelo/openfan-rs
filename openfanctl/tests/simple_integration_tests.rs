@@ -4,7 +4,8 @@
 //! and mock responses without spawning background servers.
 
 use anyhow::Result;
-use openfan_core::types::{ControlMode, FanProfile, MAX_FANS};
+use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::{BoardConfig, DefaultBoard};
 use openfanctl::client::OpenFanClient;
 
 #[tokio::test]
@@ -137,7 +138,7 @@ async fn test_profile_validation() -> Result<()> {
     // Test empty profile name
     let valid_profile = FanProfile {
         control_mode: ControlMode::Pwm,
-        values: vec![50; MAX_FANS],
+        values: vec![50; DefaultBoard::FAN_COUNT],
     };
 
     let result = client.add_profile("", valid_profile.clone()).await;

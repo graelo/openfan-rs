@@ -8,7 +8,7 @@ use axum::{
     Json,
 };
 use openfan_core::api::{ApiResponse, FanStatusResponse};
-use openfan_core::MAX_FANS;
+use openfan_core::{BoardConfig, DefaultBoard};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -48,7 +48,7 @@ pub async fn get_status(
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
         let mut mock_pwms = HashMap::new();
-        for i in 0..MAX_FANS as u8 {
+        for i in 0..DefaultBoard::FAN_COUNT as u8 {
             mock_rpms.insert(i, 1500 + (i as u32 * 100)); // Mock RPM values
             mock_pwms.insert(i, 50 + (i as u32 * 5)); // Mock PWM values
         }
@@ -157,8 +157,11 @@ pub async fn set_fan_pwm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= MAX_FANS {
-        return api_fail!(format!("Invalid fan index (0<={fan_index}<{})", MAX_FANS));
+    if fan_index as usize >= DefaultBoard::FAN_COUNT {
+        return api_fail!(format!(
+            "Invalid fan index (0<={fan_index}<{})",
+            DefaultBoard::FAN_COUNT
+        ));
     }
 
     let Some(value) = params.value else {
@@ -222,8 +225,11 @@ pub async fn get_fan_rpm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= MAX_FANS {
-        return api_fail!(format!("Invalid fan index (0<={fan_index}<{})", MAX_FANS));
+    if fan_index as usize >= DefaultBoard::FAN_COUNT {
+        return api_fail!(format!(
+            "Invalid fan index (0<={fan_index}<{})",
+            DefaultBoard::FAN_COUNT
+        ));
     }
 
     // Check if hardware is available
@@ -281,8 +287,11 @@ pub async fn set_fan_rpm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= MAX_FANS {
-        return api_fail!(format!("Invalid fan index (0<={fan_index}<{})", MAX_FANS));
+    if fan_index as usize >= DefaultBoard::FAN_COUNT {
+        return api_fail!(format!(
+            "Invalid fan index (0<={fan_index}<{})",
+            DefaultBoard::FAN_COUNT
+        ));
     }
 
     let Some(value) = params.value else {

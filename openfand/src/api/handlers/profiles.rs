@@ -9,8 +9,7 @@ use axum::{
 };
 use openfan_core::{
     api::{ApiResponse, ProfileResponse},
-    types::MAX_FANS,
-    ControlMode, FanProfile,
+    BoardConfig, ControlMode, DefaultBoard, FanProfile,
 };
 use serde::Deserialize;
 
@@ -96,8 +95,11 @@ pub async fn add_profile(
     let profile = request.profile;
 
     // Validate values count
-    if profile.values.len() != MAX_FANS {
-        return api_fail!(format!("Profile must have exactly {} values!", MAX_FANS));
+    if profile.values.len() != DefaultBoard::FAN_COUNT {
+        return api_fail!(format!(
+            "Profile must have exactly {} values!",
+            DefaultBoard::FAN_COUNT
+        ));
     }
 
     // Validate value ranges
@@ -376,7 +378,7 @@ mod tests {
         };
 
         // Verify that the validation would catch this
-        assert_eq!(profile.values.len(), MAX_FANS);
+        assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
         let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 100);
         assert!(invalid_value.is_some(), "Should find PWM value > 100");
         assert_eq!(
@@ -397,7 +399,7 @@ mod tests {
         };
 
         // Verify that the validation would catch this
-        assert_eq!(profile.values.len(), MAX_FANS);
+        assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
         let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 16000);
         assert!(invalid_value.is_some(), "Should find RPM value > 16000");
         assert_eq!(
@@ -416,19 +418,31 @@ mod tests {
             control_mode: ControlMode::Pwm,
             values: vec![50, 50, 50], // Only 3 values
         };
-        assert_ne!(too_few.values.len(), MAX_FANS, "Should have wrong count");
+        assert_ne!(
+            too_few.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have wrong count"
+        );
 
         let too_many = FanProfile {
             control_mode: ControlMode::Pwm,
             values: vec![50; 15], // 15 values
         };
-        assert_ne!(too_many.values.len(), MAX_FANS, "Should have wrong count");
+        assert_ne!(
+            too_many.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have wrong count"
+        );
 
         let correct = FanProfile {
             control_mode: ControlMode::Pwm,
-            values: vec![50; MAX_FANS],
+            values: vec![50; DefaultBoard::FAN_COUNT],
         };
-        assert_eq!(correct.values.len(), MAX_FANS, "Should have correct count");
+        assert_eq!(
+            correct.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have correct count"
+        );
     }
 
     #[test]

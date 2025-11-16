@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Maximum number of fans supported
-pub const MAX_FANS: usize = 10;
+// Import MAX_FANS from hardware abstraction layer
+use crate::hardware::MAX_FANS;
 
 /// Fan control mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

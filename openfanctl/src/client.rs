@@ -7,7 +7,7 @@ use openfan_core::{
         ProfileResponse,
     },
     types::FanProfile,
-    MAX_FANS,
+    BoardConfig, DefaultBoard,
 };
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
@@ -237,11 +237,11 @@ impl OpenFanClient {
     ///
     /// Returns an error if the fan ID is invalid (>= 10).
     pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<FanRpmResponse> {
-        if fan_id as usize >= MAX_FANS {
+        if fan_id as usize >= DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Invalid fan ID: {}. Must be 0-{}",
                 fan_id,
-                MAX_FANS - 1
+                DefaultBoard::FAN_COUNT - 1
             ));
         }
 
@@ -270,11 +270,11 @@ impl OpenFanClient {
     /// - The fan ID is invalid (>= 10)
     /// - The PWM value is out of range (> 100)
     pub async fn set_fan_pwm(&self, fan_id: u8, pwm: u32) -> Result<()> {
-        if fan_id as usize >= MAX_FANS {
+        if fan_id as usize >= DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Invalid fan ID: {}. Must be 0-{}",
                 fan_id,
-                MAX_FANS - 1
+                DefaultBoard::FAN_COUNT - 1
             ));
         }
         if pwm > 100 {
@@ -304,11 +304,11 @@ impl OpenFanClient {
     /// - The fan ID is invalid (>= 10)
     /// - The RPM value is unreasonable (>= 10000)
     pub async fn set_fan_rpm(&self, fan_id: u8, rpm: u32) -> Result<()> {
-        if fan_id as usize >= MAX_FANS {
+        if fan_id as usize >= DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Invalid fan ID: {}. Must be 0-{}",
                 fan_id,
-                MAX_FANS - 1
+                DefaultBoard::FAN_COUNT - 1
             ));
         }
         if rpm > 10000 {
@@ -383,10 +383,10 @@ impl OpenFanClient {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Profile name cannot be empty"));
         }
-        if profile.values.len() != MAX_FANS {
+        if profile.values.len() != DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Profile must have exactly {} values, got {}",
-                MAX_FANS,
+                DefaultBoard::FAN_COUNT,
                 profile.values.len()
             ));
         }
@@ -460,11 +460,11 @@ impl OpenFanClient {
     ///
     /// Returns an error if the fan ID is invalid (>= 10).
     pub async fn get_alias(&self, fan_id: u8) -> Result<AliasResponse> {
-        if fan_id as usize >= MAX_FANS {
+        if fan_id as usize >= DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Invalid fan ID: {}. Must be 0-{}",
                 fan_id,
-                MAX_FANS - 1
+                DefaultBoard::FAN_COUNT - 1
             ));
         }
 
@@ -489,11 +489,11 @@ impl OpenFanClient {
     /// - The alias is empty or whitespace
     /// - The alias exceeds 100 characters
     pub async fn set_alias(&self, fan_id: u8, alias: &str) -> Result<()> {
-        if fan_id as usize >= MAX_FANS {
+        if fan_id as usize >= DefaultBoard::FAN_COUNT {
             return Err(anyhow::anyhow!(
                 "Invalid fan ID: {}. Must be 0-{}",
                 fan_id,
-                MAX_FANS - 1
+                DefaultBoard::FAN_COUNT - 1
             ));
         }
         if alias.trim().is_empty() {

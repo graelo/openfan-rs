@@ -163,6 +163,7 @@ This is a Rust workspace with 4 crates:
 ## Troubleshooting
 
 **Server won't start:**
+
 ```bash
 # Check logs
 sudo journalctl -u openfand -f
@@ -172,6 +173,7 @@ openfand --mock
 ```
 
 **Permission denied on /dev/ttyUSB0:**
+
 ```bash
 # Add user to dialout group
 sudo usermod -a -G dialout $USER
@@ -179,6 +181,7 @@ sudo usermod -a -G dialout $USER
 ```
 
 **CLI can't connect:**
+
 ```bash
 # Check server is running
 curl http://localhost:8080/api/v0/info

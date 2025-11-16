@@ -15,7 +15,7 @@ use client::OpenFanClient;
 use config::CliConfig;
 use format::format_success;
 use openfan_core::types::{ControlMode, FanProfile};
-use openfan_core::MAX_FANS;
+use openfan_core::{BoardConfig, DefaultBoard};
 
 /// OpenFAN Controller CLI
 #[derive(Parser, Debug)]
@@ -377,10 +377,10 @@ async fn handle_fan_command(
 ) -> Result<()> {
     match command {
         FanCommands::Set { fan_id, pwm, rpm } => {
-            if fan_id as usize >= MAX_FANS {
+            if fan_id as usize >= DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Fan ID must be between 0 and {}",
-                    MAX_FANS - 1
+                    DefaultBoard::FAN_COUNT - 1
                 ));
             }
 
@@ -408,10 +408,10 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Rpm { fan_id } => {
-            if fan_id as usize >= MAX_FANS {
+            if fan_id as usize >= DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Fan ID must be between 0 and {}",
-                    MAX_FANS - 1
+                    DefaultBoard::FAN_COUNT - 1
                 ));
             }
 
@@ -427,10 +427,10 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Pwm { fan_id } => {
-            if fan_id as usize >= MAX_FANS {
+            if fan_id as usize >= DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Fan ID must be between 0 and {}",
-                    MAX_FANS - 1
+                    DefaultBoard::FAN_COUNT - 1
                 ));
             }
 
@@ -484,10 +484,10 @@ async fn handle_profile_command(
                 values.split(',').map(|s| s.trim().parse::<u32>()).collect();
 
             let values_vec = values_vec?;
-            if values_vec.len() != MAX_FANS {
+            if values_vec.len() != DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Must provide exactly {} comma-separated values",
-                    MAX_FANS
+                    DefaultBoard::FAN_COUNT
                 ));
             }
 
@@ -534,10 +534,10 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Get { fan_id } => {
-            if fan_id as usize >= MAX_FANS {
+            if fan_id as usize >= DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Fan ID must be between 0 and {}",
-                    MAX_FANS - 1
+                    DefaultBoard::FAN_COUNT - 1
                 ));
             }
 
@@ -562,10 +562,10 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Set { fan_id, name } => {
-            if fan_id as usize >= MAX_FANS {
+            if fan_id as usize >= DefaultBoard::FAN_COUNT {
                 return Err(anyhow::anyhow!(
                     "Fan ID must be between 0 and {}",
-                    MAX_FANS - 1
+                    DefaultBoard::FAN_COUNT - 1
                 ));
             }
 

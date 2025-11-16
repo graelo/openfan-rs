@@ -14,6 +14,10 @@
 pub mod fan_controller;
 pub mod serial_driver;
 
+// Re-export with default board type for convenience
+pub type DefaultFanController = fan_controller::FanController<openfan_core::DefaultBoard>;
+pub type DefaultSerialDriver = serial_driver::SerialDriver<openfan_core::DefaultBoard>;
+
 pub use fan_controller::FanController;
 pub use serial_driver::{find_fan_controller, SerialDriver};
 

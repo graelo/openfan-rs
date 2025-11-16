@@ -3,8 +3,9 @@
 //! Implements the fan control protocol over serial communication.
 
 use crate::serial_driver::SerialDriver;
-use openfan_core::{FanRpmMap, OpenFanError, Result, MAX_FANS};
+use openfan_core::{BoardConfig, FanRpmMap, OpenFanError, Result};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
@@ -30,20 +31,33 @@ pub enum Command {
 }
 
 /// Fan controller interface
-pub struct FanController {
-    driver: Arc<Mutex<SerialDriver>>,
+pub struct FanController<B: BoardConfig = openfan_core::DefaultBoard> {
+    driver: Arc<Mutex<SerialDriver<B>>>,
     fan_rpm_cache: HashMap<u8, u32>,
     fan_pwm_cache: HashMap<u8, u32>,
+    _board: PhantomData<B>,
 }
 
-impl FanController {
+impl<B: BoardConfig> FanController<B> {
     /// Create a new FanController with the given serial driver
-    pub fn new(driver: SerialDriver) -> Self {
+    pub fn new(driver: SerialDriver<B>) -> Self {
         Self {
             driver: Arc::new(Mutex::new(driver)),
             fan_rpm_cache: HashMap::new(),
             fan_pwm_cache: HashMap::new(),
+            _board: PhantomData,
         }
+    }
+
+    /// Validate a fan ID against this board's fan count
+    fn validate_fan_id(&self, fan_id: u8) -> Result<()> {
+        if fan_id as usize >= B::FAN_COUNT {
+            return Err(OpenFanError::InvalidFanId {
+                fan_id,
+                max_fans: B::FAN_COUNT,
+            });
+        }
+        Ok(())
     }
 
     /// Send a command to the hardware
@@ -141,9 +155,7 @@ impl FanController {
 
     /// Get RPM for a single fan
     pub async fn get_single_fan_rpm(&mut self, fan_id: u8) -> Result<u32> {
-        if fan_id as usize >= MAX_FANS {
-            return Err(OpenFanError::InvalidFanId(fan_id));
-        }
+        self.validate_fan_id(fan_id)?;
 
         let data = [fan_id];
         let response = self
@@ -168,11 +180,9 @@ impl FanController {
 
     /// Set PWM for a single fan
     pub async fn set_fan_pwm(&mut self, fan_id: u8, pwm_percent: u32) -> Result<String> {
-        if fan_id as usize >= MAX_FANS {
-            return Err(OpenFanError::InvalidFanId(fan_id));
-        }
+        self.validate_fan_id(fan_id)?;
 
-        if pwm_percent > 100 {
+        if pwm_percent > B::MAX_PWM {
             return Err(OpenFanError::InvalidInput(format!(
                 "PWM percentage must be 0-100, got {}",
                 pwm_percent
@@ -193,7 +203,7 @@ impl FanController {
 
     /// Set PWM for all fans
     pub async fn set_all_fan_pwm(&mut self, pwm_percent: u32) -> Result<String> {
-        if pwm_percent > 100 {
+        if pwm_percent > B::MAX_PWM {
             return Err(OpenFanError::InvalidInput(format!(
                 "PWM percentage must be 0-100, got {}",
                 pwm_percent
@@ -209,7 +219,7 @@ impl FanController {
             .await?;
 
         // Cache the PWM value for all fans on successful write
-        for fan_id in 0..MAX_FANS as u8 {
+        for fan_id in 0..B::FAN_COUNT as u8 {
             self.fan_pwm_cache.insert(fan_id, pwm_percent);
         }
 
@@ -218,9 +228,7 @@ impl FanController {
 
     /// Set target RPM for a single fan
     pub async fn set_fan_rpm(&mut self, fan_id: u8, rpm: u32) -> Result<String> {
-        if fan_id as usize >= MAX_FANS {
-            return Err(OpenFanError::InvalidFanId(fan_id));
-        }
+        self.validate_fan_id(fan_id)?;
 
         if rpm > 65535 {
             return Err(OpenFanError::InvalidInput(format!(

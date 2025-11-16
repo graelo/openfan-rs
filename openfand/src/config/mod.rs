@@ -2,7 +2,7 @@
 //!
 //! Handles loading, saving, and managing the YAML configuration file.
 
-use openfan_core::{Config, OpenFanError, Result, MAX_FANS};
+use openfan_core::{BoardConfig, Config, DefaultBoard, OpenFanError, Result};
 use std::collections::hash_map::Entry;
 use std::path::Path;
 use tokio::fs;
@@ -109,7 +109,7 @@ impl ConfigManager {
         }
 
         // Ensure we have all fan aliases
-        for i in 0..MAX_FANS as u8 {
+        for i in 0..DefaultBoard::FAN_COUNT as u8 {
             if let Entry::Vacant(e) = self.config.fan_aliases.entry(i) {
                 debug!("Missing alias for fan {}, adding default", i);
                 e.insert(format!("Fan #{}", i + 1));
@@ -138,7 +138,7 @@ impl ConfigManager {
             );
         }
         debug!("--- Fan Aliases ---");
-        for i in 0..MAX_FANS as u8 {
+        for i in 0..DefaultBoard::FAN_COUNT as u8 {
             if let Some(alias) = self.config.fan_aliases.get(&i) {
                 debug!("  Fan {}: {}", i, alias);
             }
