@@ -6,12 +6,12 @@ use crate::api::AppState;
 use axum::{extract::State, Json};
 use openfan_core::api::{ApiResponse, InfoResponse};
 use serde_json::{json, Value};
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Root endpoint handler
 /// GET /
 pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
-    debug!("Root handler");
+    debug!("Request: GET /");
 
     let data = json!({
         "service": "OpenFAN Controller API Server",
@@ -47,7 +47,7 @@ pub async fn get_info(
                 Some(hw_info)
             }
             Err(e) => {
-                debug!("Failed to get hardware info: {}", e);
+                warn!("Failed to retrieve hardware info: {}", e);
                 None
             }
         };
@@ -58,7 +58,7 @@ pub async fn get_info(
                 Some(fw_info)
             }
             Err(e) => {
-                debug!("Failed to get firmware info: {}", e);
+                warn!("Failed to retrieve firmware info: {}", e);
                 None
             }
         };

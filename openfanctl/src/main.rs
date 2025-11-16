@@ -484,9 +484,10 @@ async fn handle_profile_command(
                 values.split(',').map(|s| s.trim().parse::<u32>()).collect();
 
             let values_vec = values_vec?;
-            if values_vec.len() != 10 {
+            if values_vec.len() != MAX_FANS {
                 return Err(anyhow::anyhow!(
-                    "Must provide exactly 10 comma-separated values"
+                    "Must provide exactly {} comma-separated values",
+                    MAX_FANS
                 ));
             }
 

@@ -227,7 +227,7 @@ mod tests {
             "Test Profile".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![50; 10],
+                values: vec![50; MAX_FANS],
             },
         );
 

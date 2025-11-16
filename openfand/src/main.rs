@@ -80,9 +80,9 @@ async fn main() -> Result<()> {
                 Some(controller)
             }
             Err(e) => {
-                error!("Hardware connection failed: {}", e);
                 error!(
-                    "Server cannot start without hardware. Use --mock flag to run in mock mode."
+                    "Hardware connection failed: {}. Server cannot start without hardware. Use --mock flag to run in mock mode.",
+                    e
                 );
                 std::process::exit(1);
             }

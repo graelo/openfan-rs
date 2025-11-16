@@ -6,7 +6,7 @@ use openfan_core::{Config, OpenFanError, Result, MAX_FANS};
 use std::collections::hash_map::Entry;
 use std::path::Path;
 use tokio::fs;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Configuration manager
 pub struct ConfigManager {
@@ -32,7 +32,7 @@ impl ConfigManager {
 
         // Check if config file exists
         if !self.path.exists() {
-            warn!(
+            info!(
                 "Configuration file not found: {}. Creating with defaults.",
                 self.path.display()
             );
@@ -47,22 +47,23 @@ impl ConfigManager {
         // Parse YAML
         match serde_yaml::from_str::<Config>(&contents) {
             Ok(loaded_config) => {
-                info!("Configuration loaded successfully");
                 self.config = loaded_config;
 
                 // Validate and fill missing data
                 let needs_save = self.validate_and_fill_defaults();
 
                 if needs_save {
-                    warn!("Configuration was incomplete. Filling with defaults and saving.");
+                    info!("Configuration loaded with missing values. Filling with defaults and saving.");
                     self.save().await?;
+                } else {
+                    info!("Configuration loaded successfully");
                 }
 
                 self.debug_config();
                 Ok(())
             }
             Err(e) => {
-                warn!("Failed to parse config file, using defaults: {}", e);
+                info!("Configuration file parse failed: {}. Using defaults.", e);
                 self.config = Config::default();
                 self.init_default_config().await
             }

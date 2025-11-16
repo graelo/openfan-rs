@@ -12,7 +12,7 @@ use openfan_core::MAX_FANS;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// Query parameters for fan control endpoints
 #[derive(Deserialize)]
@@ -30,7 +30,7 @@ pub async fn get_status(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!("Hardware not available - returning mock fan status data");
+        debug!("Hardware not available - returning mock fan status data");
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
         let mut mock_pwms = HashMap::new();
@@ -49,11 +49,13 @@ pub async fn get_status(
     let mut commander = fan_controller.lock().await;
     match commander.get_all_fan_rpm().await {
         Ok(rpm_map) => {
-            debug!("Fan RPM data retrieved: {:?}", rpm_map);
             // Get cached PWM data
             // Note: Hardware does not support reading PWM values, so we return cached values
             let pwm_map = commander.get_all_fan_pwm();
-            debug!("Cached PWM data: {:?}", pwm_map);
+            debug!(
+                "Fan status retrieved - RPM: {:?}, PWM: {:?}",
+                rpm_map, pwm_map
+            );
             let status = FanStatusResponse {
                 rpms: rpm_map,
                 pwms: pwm_map,
@@ -83,7 +85,7 @@ pub async fn set_all_fans(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!("Hardware not available - simulating fan PWM set for testing");
+        debug!("Hardware not available - simulating fan PWM set for testing");
         return api_ok!(());
     };
 
@@ -128,7 +130,7 @@ pub async fn set_fan_pwm(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!(
+        debug!(
             "Hardware not available - simulating fan {} PWM set for testing",
             fan_index
         );
@@ -168,7 +170,7 @@ pub async fn get_fan_rpm(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!(
+        debug!(
             "Hardware not available - returning mock RPM for fan {}",
             fan_index
         );
@@ -224,7 +226,7 @@ pub async fn set_fan_rpm(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!(
+        debug!(
             "Hardware not available - simulating fan {} RPM set for testing",
             fan_index
         );

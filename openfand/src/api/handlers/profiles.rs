@@ -9,6 +9,7 @@ use axum::{
 };
 use openfan_core::{
     api::{ApiResponse, ProfileResponse},
+    types::MAX_FANS,
     ControlMode, FanProfile,
 };
 use serde::Deserialize;
@@ -66,8 +67,8 @@ pub async fn add_profile(
     let profile = request.profile;
 
     // Validate values count
-    if profile.values.len() != 10 {
-        return api_fail!("Profile must have exactly 10 values!");
+    if profile.values.len() != MAX_FANS {
+        return api_fail!(format!("Profile must have exactly {} values!", MAX_FANS));
     }
 
     // Validate value ranges
@@ -174,7 +175,7 @@ pub async fn set_profile(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!("Hardware not available - simulating profile application for testing");
+        debug!("Hardware not available - simulating profile application for testing");
         info!("Applied profile '{}' (mock mode)", profile_name);
         return api_ok!(());
     };
@@ -190,14 +191,20 @@ pub async fn set_profile(
             ControlMode::Pwm => match commander.set_fan_pwm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {}% PWM", fan_id, value),
                 Err(e) => {
-                    warn!("Failed to set fan {} PWM: {}", fan_id, e);
+                    warn!(
+                        "Failed to set fan {} PWM while applying profile '{}': {}",
+                        fan_id, profile_name, e
+                    );
                     format!("Fan {} failed: {}", fan_id, e)
                 }
             },
             ControlMode::Rpm => match commander.set_fan_rpm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {} RPM", fan_id, value),
                 Err(e) => {
-                    warn!("Failed to set fan {} RPM: {}", fan_id, e);
+                    warn!(
+                        "Failed to set fan {} RPM while applying profile '{}': {}",
+                        fan_id, profile_name, e
+                    );
                     format!("Fan {} failed: {}", fan_id, e)
                 }
             },

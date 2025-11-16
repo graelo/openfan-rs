@@ -74,8 +74,8 @@ pub mod connection {
                     info!("Successfully connected to {}", path);
                     return Ok(FanController::new(driver));
                 }
-                Err(_) => {
-                    // Expected to fail for most paths
+                Err(e) => {
+                    debug!("Failed to connect to {}: {}", path, e);
                     continue;
                 }
             }

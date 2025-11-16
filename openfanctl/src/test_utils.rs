@@ -54,21 +54,21 @@ impl Default for MockServerState {
             "50% PWM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![50; 10],
+                values: vec![50; MAX_FANS],
             },
         );
         profiles.insert(
             "100% PWM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![100; 10],
+                values: vec![100; MAX_FANS],
             },
         );
         profiles.insert(
             "1000 RPM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Rpm,
-                values: vec![1000; 10],
+                values: vec![1000; MAX_FANS],
             },
         );
 

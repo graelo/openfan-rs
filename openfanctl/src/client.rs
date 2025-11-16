@@ -241,9 +241,10 @@ impl OpenFanClient {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Profile name cannot be empty"));
         }
-        if profile.values.len() != 10 {
+        if profile.values.len() != MAX_FANS {
             return Err(anyhow::anyhow!(
-                "Profile must have exactly 10 values, got {}",
+                "Profile must have exactly {} values, got {}",
+                MAX_FANS,
                 profile.values.len()
             ));
         }

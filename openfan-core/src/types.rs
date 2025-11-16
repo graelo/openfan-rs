@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_fan_profile_validation() {
-        let profile = FanProfile::new(ControlMode::Pwm, vec![50; 10]);
+        let profile = FanProfile::new(ControlMode::Pwm, vec![50; MAX_FANS]);
         assert!(profile.validate().is_ok());
 
         let invalid_profile = FanProfile::new(ControlMode::Pwm, vec![50; 5]);
@@ -311,7 +311,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.fan_profiles.len(), 3);
-        assert_eq!(config.fan_aliases.len(), 10);
+        assert_eq!(config.fan_aliases.len(), MAX_FANS);
         assert_eq!(config.server.port, 3000);
     }
 
