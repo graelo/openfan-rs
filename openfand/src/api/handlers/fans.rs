@@ -8,7 +8,6 @@ use axum::{
     Json,
 };
 use openfan_core::api::{ApiResponse, FanStatusResponse};
-use openfan_core::{BoardConfig, DefaultBoard};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -48,7 +47,7 @@ pub async fn get_status(
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
         let mut mock_pwms = HashMap::new();
-        for i in 0..DefaultBoard::FAN_COUNT as u8 {
+        for i in 0..state.board_info.fan_count as u8 {
             mock_rpms.insert(i, 1500 + (i as u32 * 100)); // Mock RPM values
             mock_pwms.insert(i, 50 + (i as u32 * 5)); // Mock PWM values
         }
@@ -157,12 +156,8 @@ pub async fn set_fan_pwm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= DefaultBoard::FAN_COUNT {
-        return api_fail!(format!(
-            "Invalid fan index (0<={fan_index}<{})",
-            DefaultBoard::FAN_COUNT
-        ));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let Some(value) = params.value else {
         return api_fail!("Missing 'value' parameter");
@@ -225,12 +220,8 @@ pub async fn get_fan_rpm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= DefaultBoard::FAN_COUNT {
-        return api_fail!(format!(
-            "Invalid fan index (0<={fan_index}<{})",
-            DefaultBoard::FAN_COUNT
-        ));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
@@ -287,12 +278,8 @@ pub async fn set_fan_rpm(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= DefaultBoard::FAN_COUNT {
-        return api_fail!(format!(
-            "Invalid fan index (0<={fan_index}<{})",
-            DefaultBoard::FAN_COUNT
-        ));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let Some(value) = params.value else {
         return api_fail!("Missing 'value' parameter");

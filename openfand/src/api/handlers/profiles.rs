@@ -9,7 +9,7 @@ use axum::{
 };
 use openfan_core::{
     api::{ApiResponse, ProfileResponse},
-    BoardConfig, ControlMode, DefaultBoard, FanProfile,
+    ControlMode, FanProfile,
 };
 use serde::Deserialize;
 
@@ -94,11 +94,11 @@ pub async fn add_profile(
 
     let profile = request.profile;
 
-    // Validate values count
-    if profile.values.len() != DefaultBoard::FAN_COUNT {
+    // Validate values count against board configuration
+    if profile.values.len() != state.board_info.fan_count {
         return api_fail!(format!(
-            "Profile must have exactly {} values!",
-            DefaultBoard::FAN_COUNT
+            "Profile must have exactly {} values for {}!",
+            state.board_info.fan_count, state.board_info.name
         ));
     }
 
@@ -276,7 +276,7 @@ pub async fn set_profile(
 
 #[cfg(test)]
 mod tests {
-    // Test imports removed - not used
+    use openfan_core::{BoardConfig, DefaultBoard};
 
     #[test]
     fn test_profile_validation() {

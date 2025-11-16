@@ -11,7 +11,9 @@ use api::AppState;
 use clap::Parser;
 use config::ConfigManager;
 use hardware::connection;
+use openfan_core::BoardType;
 use std::path::PathBuf;
+use std::str::FromStr;
 use tokio::signal;
 use tracing::{error, info, warn};
 
@@ -39,6 +41,10 @@ struct Args {
     /// Enable mock mode (run without hardware for testing/development)
     #[arg(long)]
     mock: bool,
+
+    /// Board type to emulate in mock mode (v1, mini)
+    #[arg(long, default_value = "v1", requires = "mock")]
+    board: String,
 }
 
 #[tokio::main]
@@ -51,19 +57,77 @@ async fn main() -> Result<()> {
     info!("OpenFAN Server starting...");
     info!("Configuration file: {}", args.config.display());
 
-    // Load configuration
+    // Step 1: Detect board type (before loading config)
+    let board_type = if args.mock {
+        info!("Mock mode enabled - running without hardware");
+        BoardType::from_str(&args.board).unwrap_or_else(|e| {
+            error!("Invalid board type '{}': {}", args.board, e);
+            std::process::exit(1);
+        })
+    } else {
+        info!("Detecting hardware board type...");
+        match hardware::detect_board_from_usb() {
+            Ok(board) => {
+                info!("Detected board: {}", board.name());
+                board
+            }
+            Err(e) => {
+                error!(
+                    "Failed to detect hardware board: {}. Use --mock flag to run in mock mode.",
+                    e
+                );
+                std::process::exit(1);
+            }
+        }
+    };
+
+    let board_info = board_type.to_board_info();
+    info!(
+        "Board: {} ({} fans, VID:0x{:04X}, PID:0x{:04X})",
+        board_info.name, board_info.fan_count, board_info.usb_vid, board_info.usb_pid
+    );
+
+    // Step 2: Load configuration
     let mut config_manager = ConfigManager::new(&args.config);
     config_manager.load().await?;
     info!("Configuration loaded successfully");
+
+    // Step 3: Validate configuration against detected board
+    match config_manager.validate_for_board(&board_info) {
+        Ok(()) => {
+            info!(
+                "Configuration validated successfully for {}",
+                board_info.name
+            );
+        }
+        Err(errors) => {
+            error!("Configuration validation failed!");
+            error!(
+                "Board detected: {} ({} fans)",
+                board_info.name, board_info.fan_count
+            );
+            error!("Configuration file: {}", args.config.display());
+            error!("");
+            for err in &errors {
+                error!("  - {}", err);
+            }
+            error!("");
+            error!("Please update your configuration file to match your board.");
+            error!("You can delete the file to regenerate defaults for your board.");
+            std::process::exit(1);
+        }
+    }
+
+    // Auto-fill missing defaults
+    config_manager.fill_defaults_for_board(&board_info).await?;
 
     // Get server config
     let server_config = config_manager.config().server.clone();
     let port = args.port.unwrap_or(server_config.port);
     let bind_addr = format!("{}:{}", args.bind, port);
 
-    // Initialize hardware connection
+    // Step 4: Initialize hardware connection
     let fan_controller = if args.mock {
-        info!("Mock mode enabled - running without hardware");
         None
     } else {
         info!("Initializing hardware connection...");
@@ -89,8 +153,8 @@ async fn main() -> Result<()> {
         }
     };
 
-    // Create application state
-    let app_state = AppState::new(config_manager, fan_controller);
+    // Step 5: Create application state with board info
+    let app_state = AppState::new(board_info, config_manager, fan_controller);
 
     // Set up API router
     let app = api::create_router(app_state);

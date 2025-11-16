@@ -8,6 +8,7 @@
 //! - `fan_controller::FanController` — high-level controller for fan operations
 //! - `serial_driver::SerialDriver` — low-level serial I/O driver
 //! - `serial_driver::find_fan_controller` — helper to locate the device by VID/PID
+//! - `serial_driver::detect_board_from_usb` — detect board type from USB VID/PID
 
 // Re-export modules so consumers can use `openfan_hardware::FanController` and
 // `openfan_hardware::SerialDriver`.
@@ -19,7 +20,7 @@ pub type DefaultFanController = fan_controller::FanController<openfan_core::Defa
 pub type DefaultSerialDriver = serial_driver::SerialDriver<openfan_core::DefaultBoard>;
 
 pub use fan_controller::FanController;
-pub use serial_driver::{find_fan_controller, SerialDriver};
+pub use serial_driver::{detect_board_from_usb, find_fan_controller, SerialDriver};
 
 #[cfg(test)]
 mod tests {

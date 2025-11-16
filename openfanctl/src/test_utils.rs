@@ -72,8 +72,10 @@ impl Default for MockServerState {
             },
         );
 
+        let board_info = openfan_core::BoardType::OpenFanV1.to_board_info();
         let info = InfoResponse {
             version: "1.0.0-test".to_string(),
+            board_info,
             hardware_connected: true,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0-test\r\nBuild: test".to_string(),

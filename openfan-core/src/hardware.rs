@@ -77,6 +77,201 @@ impl BoardConfig for OpenFanV1 {
     const MIN_RPM: u32 = 480;
 }
 
+/// Runtime board type enumeration
+///
+/// Unlike the compile-time `BoardConfig` trait, this enum represents
+/// board types that can be detected and used at runtime.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum BoardType {
+    /// OpenFAN v1.0 - Standard 10-fan controller
+    OpenFanV1,
+    /// OpenFAN Mini - Compact 4-fan controller (future support)
+    OpenFanMini,
+}
+
+impl std::str::FromStr for BoardType {
+    type Err = crate::OpenFanError;
+
+    /// Parse board type from string (for CLI --board flag)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// use openfan_core::hardware::BoardType;
+    ///
+    /// assert!(BoardType::from_str("v1").is_ok());
+    /// assert!(BoardType::from_str("mini").is_ok());
+    /// assert!(BoardType::from_str("unknown").is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "v1" | "openfan-v1" => Ok(BoardType::OpenFanV1),
+            "mini" | "openfan-mini" => Ok(BoardType::OpenFanMini),
+            _ => Err(crate::OpenFanError::InvalidInput(format!(
+                "Unknown board type: '{}'. Valid options: v1, mini",
+                s
+            ))),
+        }
+    }
+}
+
+impl BoardType {
+    /// Get human-readable board name
+    pub fn name(&self) -> &'static str {
+        match self {
+            BoardType::OpenFanV1 => OpenFanV1::NAME,
+            BoardType::OpenFanMini => "OpenFAN Mini", // TODO: Add OpenFanMini BoardConfig
+        }
+    }
+
+    /// Get fan count for this board type
+    pub fn fan_count(&self) -> usize {
+        match self {
+            BoardType::OpenFanV1 => OpenFanV1::FAN_COUNT,
+            BoardType::OpenFanMini => 4, // TODO: Use OpenFanMini::FAN_COUNT
+        }
+    }
+
+    /// Get USB VID for this board type
+    pub fn usb_vid(&self) -> u16 {
+        match self {
+            BoardType::OpenFanV1 => OpenFanV1::USB_VID,
+            BoardType::OpenFanMini => 0x2E8A,
+        }
+    }
+
+    /// Get USB PID for this board type
+    pub fn usb_pid(&self) -> u16 {
+        match self {
+            BoardType::OpenFanV1 => OpenFanV1::USB_PID,
+            BoardType::OpenFanMini => 0x000B,
+        }
+    }
+
+    /// Convert to runtime board info
+    pub fn to_board_info(self) -> BoardInfo {
+        match self {
+            BoardType::OpenFanV1 => BoardInfo {
+                board_type: BoardType::OpenFanV1,
+                name: OpenFanV1::NAME.to_string(),
+                fan_count: OpenFanV1::FAN_COUNT,
+                usb_vid: OpenFanV1::USB_VID,
+                usb_pid: OpenFanV1::USB_PID,
+                max_pwm: OpenFanV1::MAX_PWM,
+                max_rpm: OpenFanV1::MAX_RPM,
+                min_rpm: OpenFanV1::MIN_RPM,
+                baud_rate: OpenFanV1::BAUD_RATE,
+            },
+            BoardType::OpenFanMini => BoardInfo {
+                board_type: BoardType::OpenFanMini,
+                name: "OpenFAN Mini".to_string(),
+                fan_count: 4,
+                usb_vid: 0x2E8A,
+                usb_pid: 0x000B,
+                max_pwm: 100,
+                max_rpm: 16000,
+                min_rpm: 480,
+                baud_rate: 115200,
+            },
+        }
+    }
+}
+
+/// Runtime board information (non-generic)
+///
+/// This struct contains all board configuration at runtime without requiring
+/// generic type parameters. It's designed to be stored in `Arc<BoardInfo>` and
+/// shared across the application.
+///
+/// Unlike `BoardConfig` which is a compile-time trait, `BoardInfo` provides
+/// runtime flexibility for dynamic board detection.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BoardInfo {
+    /// Board type variant
+    pub board_type: BoardType,
+    /// Human-readable board name
+    pub name: String,
+    /// Number of fan channels supported
+    pub fan_count: usize,
+    /// USB Vendor ID
+    pub usb_vid: u16,
+    /// USB Product ID
+    pub usb_pid: u16,
+    /// Maximum PWM percentage value
+    pub max_pwm: u32,
+    /// Maximum RPM value
+    pub max_rpm: u32,
+    /// Minimum operational RPM
+    pub min_rpm: u32,
+    /// Serial communication baud rate
+    pub baud_rate: u32,
+}
+
+impl BoardInfo {
+    /// Validate a fan ID against this board's fan count
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fan ID is out of range (>= fan_count)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use openfan_core::hardware::BoardType;
+    ///
+    /// let board = BoardType::OpenFanV1.to_board_info();
+    /// assert!(board.validate_fan_id(0).is_ok());
+    /// assert!(board.validate_fan_id(9).is_ok());
+    /// assert!(board.validate_fan_id(10).is_err());
+    /// ```
+    pub fn validate_fan_id(&self, fan_id: u8) -> crate::Result<()> {
+        if fan_id as usize >= self.fan_count {
+            return Err(crate::OpenFanError::InvalidFanId {
+                fan_id,
+                max_fans: self.fan_count,
+            });
+        }
+        Ok(())
+    }
+
+    /// Validate a PWM value against this board's maximum
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the PWM value exceeds max_pwm
+    pub fn validate_pwm(&self, pwm: u32) -> crate::Result<()> {
+        if pwm > self.max_pwm {
+            return Err(crate::OpenFanError::InvalidInput(format!(
+                "PWM must be 0-{}, got {}",
+                self.max_pwm, pwm
+            )));
+        }
+        Ok(())
+    }
+
+    /// Validate an RPM value against this board's range
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the RPM value exceeds max_rpm
+    pub fn validate_rpm(&self, rpm: u32) -> crate::Result<()> {
+        if rpm > 0 && rpm < self.min_rpm {
+            return Err(crate::OpenFanError::InvalidInput(format!(
+                "RPM must be 0 or >= {}, got {}",
+                self.min_rpm, rpm
+            )));
+        }
+        if rpm > self.max_rpm {
+            return Err(crate::OpenFanError::InvalidInput(format!(
+                "RPM must be <= {}, got {}",
+                self.max_rpm, rpm
+            )));
+        }
+        Ok(())
+    }
+}
+
 /// Default board type used throughout the codebase
 ///
 /// Currently set to OpenFanV1. When adding new board support, this can be

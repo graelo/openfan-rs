@@ -8,7 +8,6 @@ use axum::{
     Json,
 };
 use openfan_core::api::{AliasResponse, ApiResponse};
-use openfan_core::{BoardConfig, DefaultBoard};
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::{debug, info};
@@ -64,12 +63,8 @@ pub async fn get_alias(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= DefaultBoard::FAN_COUNT {
-        return api_fail!(format!(
-            "Invalid fan index (0<={fan_index}<{})",
-            DefaultBoard::FAN_COUNT
-        ));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let config = state.config.read().await;
     let alias = config
@@ -127,12 +122,8 @@ pub async fn set_alias(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index as usize >= DefaultBoard::FAN_COUNT {
-        return api_fail!(format!(
-            "Invalid fan index (0<={fan_index}<{})",
-            DefaultBoard::FAN_COUNT
-        ));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let Some(alias_value) = params.value else {
         return api_fail!("Fan alias cannot be none!");
@@ -188,6 +179,7 @@ fn is_valid_alias(alias: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openfan_core::{BoardConfig, DefaultBoard};
 
     #[test]
     fn test_fan_id_validation() {

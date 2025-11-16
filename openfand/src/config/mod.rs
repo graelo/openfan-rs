@@ -2,11 +2,41 @@
 //!
 //! Handles loading, saving, and managing the YAML configuration file.
 
-use openfan_core::{BoardConfig, Config, DefaultBoard, OpenFanError, Result};
+use openfan_core::{BoardConfig, BoardInfo, Config, DefaultBoard, OpenFanError, Result};
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::path::Path;
 use tokio::fs;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
+
+/// Configuration validation errors
+#[derive(Debug, thiserror::Error)]
+pub enum ValidationError {
+    /// Profile has too many fan values for the detected board
+    #[error("Profile '{profile_name}' has {config_fans} values but board '{board_name}' only supports {board_fans} fans")]
+    TooManyFans {
+        profile_name: String,
+        config_fans: usize,
+        board_fans: usize,
+        board_name: String,
+    },
+    /// Profile has too few fan values (will be auto-filled)
+    #[error("Profile '{profile_name}' has {config_fans} values but board '{board_name}' supports {board_fans} fans")]
+    TooFewFans {
+        profile_name: String,
+        config_fans: usize,
+        board_fans: usize,
+        board_name: String,
+    },
+    /// Fan alias ID exceeds board's fan count
+    #[error("Invalid alias for fan {fan_id} (board '{board_name}' only has {board_fans} fans, max ID is {max_allowed})")]
+    InvalidAliasId {
+        fan_id: u8,
+        max_allowed: u8,
+        board_fans: usize,
+        board_name: String,
+    },
+}
 
 /// Configuration manager
 pub struct ConfigManager {
@@ -144,6 +174,100 @@ impl ConfigManager {
             }
         }
         debug!("--------------------");
+    }
+
+    /// Validate configuration against detected board
+    ///
+    /// Checks that:
+    /// - All fan profiles have the correct number of values for the board
+    /// - All fan aliases are within the valid range for the board
+    ///
+    /// # Errors
+    ///
+    /// Returns validation errors if:
+    /// - Any profile has too many fans (hard error)
+    /// - Any profile has too few fans (warning, will auto-fill)
+    /// - Any alias ID is out of range for the board
+    pub fn validate_for_board(
+        &self,
+        board: &BoardInfo,
+    ) -> std::result::Result<(), Vec<ValidationError>> {
+        let mut errors = Vec::new();
+        let mut warnings = Vec::new();
+
+        // Validate fan profiles
+        for (name, profile) in &self.config.fan_profiles {
+            match profile.values.len().cmp(&board.fan_count) {
+                Ordering::Greater => {
+                    errors.push(ValidationError::TooManyFans {
+                        profile_name: name.clone(),
+                        config_fans: profile.values.len(),
+                        board_fans: board.fan_count,
+                        board_name: board.name.to_string(),
+                    });
+                }
+                Ordering::Less => {
+                    warnings.push(ValidationError::TooFewFans {
+                        profile_name: name.clone(),
+                        config_fans: profile.values.len(),
+                        board_fans: board.fan_count,
+                        board_name: board.name.to_string(),
+                    });
+                }
+                Ordering::Equal => {}
+            }
+        }
+
+        // Validate fan aliases
+        if let Some(&max_id) = self.config.fan_aliases.keys().max() {
+            if max_id >= board.fan_count as u8 {
+                errors.push(ValidationError::InvalidAliasId {
+                    fan_id: max_id,
+                    max_allowed: (board.fan_count - 1) as u8,
+                    board_fans: board.fan_count,
+                    board_name: board.name.to_string(),
+                });
+            }
+        }
+
+        // Log warnings (non-fatal)
+        for warning in warnings {
+            warn!("{}", warning);
+        }
+
+        // Return errors if any
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Fill missing defaults for the detected board
+    ///
+    /// Ensures all fan aliases exist for the board's fan count.
+    /// This is called after validation to auto-fill partial configs.
+    pub async fn fill_defaults_for_board(&mut self, board: &BoardInfo) -> Result<()> {
+        let mut modified = false;
+
+        // Add missing fan aliases
+        for i in 0..board.fan_count as u8 {
+            if let Entry::Vacant(e) = self.config.fan_aliases.entry(i) {
+                debug!("Adding missing alias for fan {}", i);
+                e.insert(format!("Fan #{}", i + 1));
+                modified = true;
+            }
+        }
+
+        if modified {
+            self.save().await?;
+            info!(
+                "Configuration updated with missing defaults for {}",
+                board.name
+            );
+        }
+
+        Ok(())
     }
 
     /// Get immutable reference to configuration

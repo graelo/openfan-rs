@@ -204,6 +204,44 @@ pub fn find_fan_controller<B: BoardConfig>() -> Result<String> {
     Err(OpenFanError::DeviceNotFound)
 }
 
+/// Detect board type from USB VID/PID
+///
+/// Scans available serial ports and matches against known board USB identifiers.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No serial ports are found
+/// - No matching OpenFAN device is detected
+/// - Serial port enumeration fails
+pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
+    use openfan_core::BoardType;
+
+    let ports = tokio_serial::available_ports().map_err(|e| {
+        error!("Failed to enumerate serial ports: {}", e);
+        OpenFanError::Serial(format!("Failed to enumerate USB ports: {}", e))
+    })?;
+
+    for port in ports {
+        if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
+            match (info.vid, info.pid) {
+                (0x2E8A, 0x000A) => {
+                    debug!("Detected OpenFAN v1 at: {}", port.port_name);
+                    return Ok(BoardType::OpenFanV1);
+                }
+                (0x2E8A, 0x000B) => {
+                    debug!("Detected OpenFAN Mini at: {}", port.port_name);
+                    return Ok(BoardType::OpenFanMini);
+                }
+                _ => continue,
+            }
+        }
+    }
+
+    error!("No OpenFAN device detected");
+    Err(OpenFanError::DeviceNotFound)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

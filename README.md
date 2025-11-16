@@ -38,11 +38,12 @@ sudo ./deploy/install.sh
 **Start the server:**
 
 ```bash
-# With hardware
+# With hardware (auto-detects board type)
 sudo systemctl start openfand
 
-# Or in mock mode (no hardware needed)
-openfand --mock
+# Or in mock mode (requires explicit board type)
+openfand --mock --board v1      # Test with OpenFAN v1.0 (10 fans)
+openfand --mock --board mini    # Test with OpenFAN Mini (4 fans)
 ```
 
 **Use the CLI:**
@@ -105,10 +106,10 @@ fan_aliases:
 ## Docker
 
 ```bash
-# Run with mock hardware
-docker run -p 8080:8080 graelo/openfan:latest
+# Run with mock hardware (requires board type)
+docker run -p 8080:8080 graelo/openfan:latest openfand --mock --board v1
 
-# Run with real hardware
+# Run with real hardware (auto-detects board)
 docker run -p 8080:8080 \
   --device=/dev/ttyUSB0 \
   graelo/openfan:latest \
@@ -147,7 +148,7 @@ cd openfan-rs
 cargo build --release
 
 # Binaries are in target/release/
-./target/release/openfand --mock
+./target/release/openfand --mock --board v1
 ./target/release/openfanctl info
 ```
 
@@ -168,8 +169,8 @@ This is a Rust workspace with 4 crates:
 # Check logs
 sudo journalctl -u openfand -f
 
-# Test in mock mode
-openfand --mock
+# Test in mock mode (requires board type)
+openfand --mock --board v1
 ```
 
 **Permission denied on /dev/ttyUSB0:**

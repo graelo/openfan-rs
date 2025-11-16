@@ -100,6 +100,7 @@ pub async fn get_info(
 
     let info_response = InfoResponse {
         version: "1.0.0".to_string(),
+        board_info: (*state.board_info).clone(),
         hardware_connected,
         uptime,
         software,

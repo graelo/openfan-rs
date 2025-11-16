@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use openfan_core::BoardInfo;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -23,6 +24,8 @@ use tracing::info;
 /// Application state shared across all handlers
 #[derive(Clone)]
 pub struct AppState {
+    /// Runtime board information
+    pub board_info: Arc<BoardInfo>,
     /// Configuration manager
     pub config: Arc<RwLock<ConfigManager>>,
     /// Hardware commander
@@ -33,8 +36,13 @@ pub struct AppState {
 
 impl AppState {
     /// Create new application state
-    pub fn new(config: ConfigManager, fan_controller: Option<FanController>) -> Self {
+    pub fn new(
+        board_info: BoardInfo,
+        config: ConfigManager,
+        fan_controller: Option<FanController>,
+    ) -> Self {
         Self {
+            board_info: Arc::new(board_info),
             config: Arc::new(RwLock::new(config)),
             fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
             start_time: Instant::now(),

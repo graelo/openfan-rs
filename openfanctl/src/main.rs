@@ -15,7 +15,6 @@ use client::OpenFanClient;
 use config::CliConfig;
 use format::format_success;
 use openfan_core::types::{ControlMode, FanProfile};
-use openfan_core::{BoardConfig, DefaultBoard};
 
 /// OpenFAN Controller CLI
 #[derive(Parser, Debug)]
@@ -266,42 +265,35 @@ async fn main() -> Result<()> {
     }
 
     // Create HTTP client with config-based timeout
-    let client = OpenFanClient::with_config(
+    // This fetches board info from the server during initialization
+    if verbose {
+        eprintln!("Connecting to server and fetching board info...");
+    }
+
+    let client = match OpenFanClient::with_config(
         server_url.clone(),
         config.timeout,
         3,                                     // max_retries
         std::time::Duration::from_millis(500), // retry_delay
-    )?;
-
-    // Test connectivity with enhanced error reporting
-    if verbose {
-        eprintln!("Testing server connectivity...");
-    }
-
-    if !client.ping().await? {
-        eprintln!("Error: Cannot connect to OpenFAN server at {}", server_url);
-        eprintln!("Make sure the server is running and accessible.");
-
-        if verbose {
-            eprintln!("Attempting detailed health check...");
-            match client.health_check().await {
-                Ok(health) => {
-                    eprintln!(
-                        "Health check results: {}",
-                        serde_json::to_string_pretty(&health)?
-                    );
-                }
-                Err(e) => {
-                    eprintln!("Health check failed: {}", e);
-                }
-            }
+    )
+    .await
+    {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Error: Cannot connect to OpenFAN server at {}", server_url);
+            eprintln!("Make sure the server is running and accessible.");
+            eprintln!("Connection error: {}", e);
+            std::process::exit(1);
         }
-
-        std::process::exit(1);
-    }
+    };
 
     if verbose {
         eprintln!("Successfully connected to server");
+        eprintln!(
+            "Board: {} ({} fans)",
+            client.board_info().name,
+            client.board_info().fan_count
+        );
     }
 
     // Execute commands with proper error handling
@@ -377,18 +369,9 @@ async fn handle_fan_command(
 ) -> Result<()> {
     match command {
         FanCommands::Set { fan_id, pwm, rpm } => {
-            if fan_id as usize >= DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Fan ID must be between 0 and {}",
-                    DefaultBoard::FAN_COUNT - 1
-                ));
-            }
-
+            // Validation is now handled by client methods using board info
             match (pwm, rpm) {
                 (Some(pwm), None) => {
-                    if pwm > 100 {
-                        return Err(anyhow::anyhow!("PWM must be between 0 and 100"));
-                    }
                     client.set_fan_pwm(fan_id, pwm).await?;
                     println!(
                         "{}",
@@ -408,13 +391,7 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Rpm { fan_id } => {
-            if fan_id as usize >= DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Fan ID must be between 0 and {}",
-                    DefaultBoard::FAN_COUNT - 1
-                ));
-            }
-
+            // Validation is handled by client method
             let rpm_response = client.get_fan_rpm(fan_id).await?;
 
             match format {
@@ -427,13 +404,7 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Pwm { fan_id } => {
-            if fan_id as usize >= DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Fan ID must be between 0 and {}",
-                    DefaultBoard::FAN_COUNT - 1
-                ));
-            }
-
+            // Validation is handled by client method
             let status = client.get_fan_status_by_id(fan_id).await?;
             let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
 
@@ -484,12 +455,7 @@ async fn handle_profile_command(
                 values.split(',').map(|s| s.trim().parse::<u32>()).collect();
 
             let values_vec = values_vec?;
-            if values_vec.len() != DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Must provide exactly {} comma-separated values",
-                    DefaultBoard::FAN_COUNT
-                ));
-            }
+            // Validation of value count is handled by client method using board info
 
             let control_mode = match mode {
                 ProfileMode::Pwm => ControlMode::Pwm,
@@ -534,13 +500,7 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Get { fan_id } => {
-            if fan_id as usize >= DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Fan ID must be between 0 and {}",
-                    DefaultBoard::FAN_COUNT - 1
-                ));
-            }
-
+            // Validation is handled by client method
             let alias_response = client.get_alias(fan_id).await?;
             let default_alias = format!("Fan #{}", fan_id);
             let alias = alias_response
@@ -562,13 +522,7 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Set { fan_id, name } => {
-            if fan_id as usize >= DefaultBoard::FAN_COUNT {
-                return Err(anyhow::anyhow!(
-                    "Fan ID must be between 0 and {}",
-                    DefaultBoard::FAN_COUNT - 1
-                ));
-            }
-
+            // Validation is handled by client method
             client.set_alias(fan_id, &name).await?;
             println!(
                 "{}",

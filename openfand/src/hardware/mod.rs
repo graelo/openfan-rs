@@ -4,8 +4,9 @@
 //! consumers of `openfand` can access the hardware APIs without
 //! depending on the internal module layout.
 
-pub use openfan_hardware::FanController;
-pub use openfan_hardware::{find_fan_controller, SerialDriver};
+pub use openfan_hardware::{
+    detect_board_from_usb, find_fan_controller, FanController, SerialDriver,
+};
 
 /// Hardware initialization and connection utilities
 pub mod connection {
