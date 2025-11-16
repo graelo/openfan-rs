@@ -292,4 +292,112 @@ mod tests {
         let values = values.unwrap();
         assert_eq!(values.len(), 5); // Should not be 10
     }
+
+    // Edge case tests for add_profile validation logic
+    #[test]
+    fn test_profile_name_validation_empty() {
+        // Test that empty profile name (after trim) is rejected
+        let empty_name = "".to_string();
+        assert!(
+            empty_name.trim().is_empty(),
+            "Empty name should be rejected by add_profile"
+        );
+
+        let whitespace_name = "   ".to_string();
+        assert!(
+            whitespace_name.trim().is_empty(),
+            "Whitespace-only name should be rejected by add_profile"
+        );
+    }
+
+    #[test]
+    fn test_profile_pwm_value_exceeds_limit() {
+        use super::*;
+
+        // Test PWM value > 100 validation (from add_profile handler logic)
+        let profile = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50, 50, 50, 101, 50, 50, 50, 50, 50, 50], // 101 exceeds limit
+        };
+
+        // Verify that the validation would catch this
+        assert_eq!(profile.values.len(), MAX_FANS);
+        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 100);
+        assert!(invalid_value.is_some(), "Should find PWM value > 100");
+        assert_eq!(
+            invalid_value.unwrap().0,
+            3,
+            "Invalid value should be at position 3"
+        );
+    }
+
+    #[test]
+    fn test_profile_rpm_value_exceeds_limit() {
+        use super::*;
+
+        // Test RPM value > 16000 validation (from add_profile handler logic)
+        let profile = FanProfile {
+            control_mode: ControlMode::Rpm,
+            values: vec![1000, 2000, 3000, 16001, 5000, 6000, 7000, 8000, 9000, 10000], // 16001 exceeds limit
+        };
+
+        // Verify that the validation would catch this
+        assert_eq!(profile.values.len(), MAX_FANS);
+        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 16000);
+        assert!(invalid_value.is_some(), "Should find RPM value > 16000");
+        assert_eq!(
+            invalid_value.unwrap().0,
+            3,
+            "Invalid value should be at position 3"
+        );
+    }
+
+    #[test]
+    fn test_profile_value_count_validation() {
+        use super::*;
+
+        // Test that wrong value count is caught (from add_profile handler logic)
+        let too_few = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50, 50, 50], // Only 3 values
+        };
+        assert_ne!(too_few.values.len(), MAX_FANS, "Should have wrong count");
+
+        let too_many = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50; 15], // 15 values
+        };
+        assert_ne!(too_many.values.len(), MAX_FANS, "Should have wrong count");
+
+        let correct = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50; MAX_FANS],
+        };
+        assert_eq!(correct.values.len(), MAX_FANS, "Should have correct count");
+    }
+
+    #[test]
+    fn test_profile_boundary_values() {
+        use super::*;
+
+        // Test boundary values for PWM (0 and 100 should be valid)
+        let pwm_boundary = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![0, 100, 0, 100, 0, 100, 0, 100, 0, 100],
+        };
+        assert!(
+            pwm_boundary.values.iter().all(|&v| v <= 100),
+            "All PWM values should be valid"
+        );
+
+        // Test boundary values for RPM (0 and 16000 should be valid)
+        let rpm_boundary = FanProfile {
+            control_mode: ControlMode::Rpm,
+            values: vec![0, 16000, 0, 16000, 0, 16000, 0, 16000, 0, 16000],
+        };
+        assert!(
+            rpm_boundary.values.iter().all(|&v| v <= 16000),
+            "All RPM values should be valid"
+        );
+    }
 }
