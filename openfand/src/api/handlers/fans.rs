@@ -59,12 +59,12 @@ pub async fn get_status(
     };
 
     // Get RPM data from hardware
-    let mut commander = fan_controller.lock().await;
-    match commander.get_all_fan_rpm().await {
+    let mut controller = fan_controller.lock().await;
+    match controller.get_all_fan_rpm().await {
         Ok(rpm_map) => {
             // Get cached PWM data
             // Note: Hardware does not support reading PWM values, so we return cached values
-            let pwm_map = commander.get_all_fan_pwm();
+            let pwm_map = controller.get_all_fan_pwm();
             debug!(
                 "Fan status retrieved - RPM: {:?}, PWM: {:?}",
                 rpm_map, pwm_map
@@ -115,8 +115,8 @@ pub async fn set_all_fans(
     };
 
     // Send command to hardware
-    let mut commander = fan_controller.lock().await;
-    match commander.set_all_fan_pwm(pwm_value).await {
+    let mut controller = fan_controller.lock().await;
+    match controller.set_all_fan_pwm(pwm_value).await {
         Ok(response) => {
             debug!("Set all fans response: {}", response);
             api_ok!(())
@@ -178,8 +178,8 @@ pub async fn set_fan_pwm(
     };
 
     // Send command to hardware
-    let mut commander = fan_controller.lock().await;
-    match commander.set_fan_pwm(fan_index, pwm_value).await {
+    let mut controller = fan_controller.lock().await;
+    match controller.set_fan_pwm(fan_index, pwm_value).await {
         Ok(response) => {
             debug!("Set fan {} PWM response: {}", fan_index, response);
             api_ok!(())
@@ -234,8 +234,8 @@ pub async fn get_fan_rpm(
     };
 
     // Get single fan RPM from hardware
-    let mut commander = fan_controller.lock().await;
-    match commander.get_single_fan_rpm(fan_index).await {
+    let mut controller = fan_controller.lock().await;
+    match controller.get_single_fan_rpm(fan_index).await {
         Ok(rpm) => {
             debug!("Fan {} RPM: {}", fan_index, rpm);
             api_ok!(rpm)
@@ -306,8 +306,8 @@ pub async fn set_fan_rpm(
     };
 
     // Send command to hardware
-    let mut commander = fan_controller.lock().await;
-    match commander.set_fan_rpm(fan_index, rpm_value).await {
+    let mut controller = fan_controller.lock().await;
+    match controller.set_fan_rpm(fan_index, rpm_value).await {
         Ok(response) => {
             debug!("Set fan {} RPM response: {}", fan_index, response);
             api_ok!(())

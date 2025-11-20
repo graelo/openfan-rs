@@ -69,9 +69,9 @@ pub async fn get_info(
 
     // Try to get hardware and firmware information if hardware is connected
     let (hardware_info, firmware_info) = if let Some(fan_controller) = &state.fan_controller {
-        let mut commander = fan_controller.lock().await;
+        let mut controller = fan_controller.lock().await;
 
-        let hardware = match commander.get_hw_info().await {
+        let hardware = match controller.get_hw_info().await {
             Ok(hw_info) => {
                 debug!("Retrieved hardware info: {}", hw_info);
                 Some(hw_info)
@@ -82,7 +82,7 @@ pub async fn get_info(
             }
         };
 
-        let firmware = match commander.get_fw_info().await {
+        let firmware = match controller.get_fw_info().await {
             Ok(fw_info) => {
                 debug!("Retrieved firmware info: {}", fw_info);
                 Some(fw_info)

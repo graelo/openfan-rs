@@ -86,10 +86,10 @@ pub mod connection {
     }
 
     /// Test hardware connection by getting firmware info
-    pub async fn test_connection(commander: &mut FanController) -> Result<()> {
+    pub async fn test_connection(controller: &mut FanController) -> Result<()> {
         info!("Testing hardware connection...");
 
-        match commander.get_fw_info().await {
+        match controller.get_fw_info().await {
             Ok(fw_info) => {
                 info!("Hardware test successful. Firmware: {}", fw_info);
                 Ok(())

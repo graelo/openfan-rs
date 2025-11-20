@@ -28,7 +28,7 @@ pub struct AppState {
     pub board_info: Arc<BoardInfo>,
     /// Configuration manager
     pub config: Arc<RwLock<ConfigManager>>,
-    /// Hardware commander
+    /// Hardware controller
     pub fan_controller: Option<Arc<Mutex<FanController>>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,

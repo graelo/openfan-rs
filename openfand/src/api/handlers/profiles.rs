@@ -237,7 +237,7 @@ pub async fn set_profile(
         return api_ok!(());
     };
 
-    let mut commander = fan_controller.lock().await;
+    let mut controller = fan_controller.lock().await;
     let mut results = Vec::new();
 
     // Apply profile values to each fan
@@ -245,7 +245,7 @@ pub async fn set_profile(
         let fan_id = fan_id as u8;
 
         let result = match profile.control_mode {
-            ControlMode::Pwm => match commander.set_fan_pwm(fan_id, value).await {
+            ControlMode::Pwm => match controller.set_fan_pwm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {}% PWM", fan_id, value),
                 Err(e) => {
                     warn!(
@@ -255,7 +255,7 @@ pub async fn set_profile(
                     format!("Fan {} failed: {}", fan_id, e)
                 }
             },
-            ControlMode::Rpm => match commander.set_fan_rpm(fan_id, value).await {
+            ControlMode::Rpm => match controller.set_fan_rpm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {} RPM", fan_id, value),
                 Err(e) => {
                     warn!(
