@@ -32,8 +32,8 @@ pub async fn get_all_aliases(
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
     debug!("Request: GET /api/v0/alias/all/get");
 
-    let config = state.config.read().await;
-    let aliases = config.config().fan_aliases.clone();
+    let alias_data = state.config.aliases().await;
+    let aliases = alias_data.aliases.clone();
 
     let response = AliasResponse { aliases };
 
@@ -66,13 +66,8 @@ pub async fn get_alias(
     // Validate fan ID against board configuration
     state.board_info.validate_fan_id(fan_index)?;
 
-    let config = state.config.read().await;
-    let alias = config
-        .config()
-        .fan_aliases
-        .get(&fan_index)
-        .cloned()
-        .unwrap_or_else(|| format!("Fan #{}", fan_index + 1));
+    let alias_data = state.config.aliases().await;
+    let alias = alias_data.get(fan_index);
 
     let mut aliases = HashMap::new();
     aliases.insert(fan_index, alias.clone());
@@ -137,14 +132,13 @@ pub async fn set_alias(
     }
 
     // Update configuration
-    let mut config = state.config.write().await;
-    config
-        .config_mut()
-        .fan_aliases
-        .insert(fan_index, alias_value.clone());
+    {
+        let mut aliases = state.config.aliases_mut().await;
+        aliases.set(fan_index, alias_value.clone());
+    }
 
     // Save configuration
-    if let Err(e) = config.save().await {
+    if let Err(e) = state.config.save_aliases().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e

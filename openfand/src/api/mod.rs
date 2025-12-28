@@ -4,7 +4,7 @@
 
 pub mod handlers;
 
-use crate::config::ConfigManager;
+use crate::config::RuntimeConfig;
 use crate::hardware::FanController;
 use axum::{
     extract::DefaultBodyLimit,
@@ -16,7 +16,6 @@ use openfan_core::BoardInfo;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
@@ -26,8 +25,8 @@ use tracing::info;
 pub struct AppState {
     /// Runtime board information
     pub board_info: Arc<BoardInfo>,
-    /// Configuration manager
-    pub config: Arc<RwLock<ConfigManager>>,
+    /// Runtime configuration (static config + mutable data)
+    pub config: Arc<RuntimeConfig>,
     /// Hardware controller
     pub fan_controller: Option<Arc<Mutex<FanController>>>,
     /// Server start time for uptime calculation
@@ -38,12 +37,12 @@ impl AppState {
     /// Create new application state
     pub fn new(
         board_info: BoardInfo,
-        config: ConfigManager,
+        config: RuntimeConfig,
         fan_controller: Option<FanController>,
     ) -> Self {
         Self {
             board_info: Arc::new(board_info),
-            config: Arc::new(RwLock::new(config)),
+            config: Arc::new(config),
             fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
             start_time: Instant::now(),
         }

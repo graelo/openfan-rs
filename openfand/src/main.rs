@@ -9,9 +9,9 @@ mod hardware;
 use anyhow::Result;
 use api::AppState;
 use clap::Parser;
-use config::ConfigManager;
+use config::RuntimeConfig;
 use hardware::connection;
-use openfan_core::BoardType;
+use openfan_core::{default_config_path, BoardType};
 use std::path::PathBuf;
 use std::str::FromStr;
 use tokio::signal;
@@ -23,8 +23,8 @@ use tracing::{error, info, warn};
 #[command(version, about = "OpenFAN Controller API Server", long_about = None)]
 struct Args {
     /// Path to configuration file
-    #[arg(short, long, default_value = "config.yaml")]
-    config: PathBuf,
+    #[arg(short, long)]
+    config: Option<PathBuf>,
 
     /// Server bind address
     #[arg(short, long, default_value = "127.0.0.1")]
@@ -55,7 +55,10 @@ async fn main() -> Result<()> {
     init_tracing(args.verbose);
 
     info!("OpenFAN Server starting...");
-    info!("Configuration file: {}", args.config.display());
+
+    // Determine config path
+    let config_path = args.config.unwrap_or_else(default_config_path);
+    info!("Configuration file: {}", config_path.display());
 
     // Step 1: Detect board type (before loading config)
     let board_type = if args.mock {
@@ -88,41 +91,26 @@ async fn main() -> Result<()> {
     );
 
     // Step 2: Load configuration
-    let mut config_manager = ConfigManager::new(&args.config);
-    config_manager.load().await?;
+    let runtime_config = RuntimeConfig::load(&config_path).await?;
     info!("Configuration loaded successfully");
+    info!("  Static config: {}", config_path.display());
+    info!("  Data directory: {}", runtime_config.data_dir().display());
 
     // Step 3: Validate configuration against detected board
-    match config_manager.validate_for_board(&board_info) {
-        Ok(()) => {
-            info!(
-                "Configuration validated successfully for {}",
-                board_info.name
-            );
-        }
-        Err(errors) => {
-            error!("Configuration validation failed!");
-            error!(
-                "Board detected: {} ({} fans)",
-                board_info.name, board_info.fan_count
-            );
-            error!("Configuration file: {}", args.config.display());
-            error!("");
-            for err in &errors {
-                error!("  - {}", err);
-            }
-            error!("");
-            error!("Please update your configuration file to match your board.");
-            error!("You can delete the file to regenerate defaults for your board.");
-            std::process::exit(1);
-        }
+    if let Err(e) = runtime_config.validate_for_board(&board_info).await {
+        error!("Configuration validation failed: {}", e);
+        std::process::exit(1);
     }
+    info!(
+        "Configuration validated successfully for {}",
+        board_info.name
+    );
 
     // Auto-fill missing defaults
-    config_manager.fill_defaults_for_board(&board_info).await?;
+    runtime_config.fill_defaults_for_board(&board_info).await?;
 
     // Get server config
-    let server_config = config_manager.config().server.clone();
+    let server_config = runtime_config.static_config().server.clone();
     let port = args.port.unwrap_or(server_config.port);
     let bind_addr = format!("{}:{}", args.bind, port);
 
@@ -154,7 +142,7 @@ async fn main() -> Result<()> {
     };
 
     // Step 5: Create application state with board info
-    let app_state = AppState::new(board_info, config_manager, fan_controller);
+    let app_state = AppState::new(board_info, runtime_config, fan_controller);
 
     // Set up API router
     let app = api::create_router(app_state);
@@ -164,7 +152,7 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
 
     info!("OpenFAN API Server listening on {}", bind_addr);
-    info!("Phase 3 API layer complete. Server ready!");
+    info!("Server ready!");
 
     // Run server with graceful shutdown
     axum::serve(listener, app)

@@ -67,26 +67,33 @@ impl E2ETestHarness {
 
         println!("Starting server on port {}", self.server_port);
 
-        // Create a temporary config file for testing
-        let config_content = r#"
-server:
-  port: 8080
-  bind: "127.0.0.1"
+        // Create a temporary config file for testing (TOML format)
+        let data_dir = self
+            .temp_dir
+            .as_ref()
+            .join(format!("data_{}", self.server_port));
+        std::fs::create_dir_all(&data_dir)?;
 
-hardware:
-  device_path: "/dev/ttyUSB0"
-  baud_rate: 115200
-  timeout_ms: 2000
+        let config_content = format!(
+            r#"data_dir = "{}"
 
-fans:
-  count: 10
+[server]
+hostname = "127.0.0.1"
+port = {}
+communication_timeout = 1
 
-profiles: {}
-"#;
+[hardware]
+hostname = "127.0.0.1"
+port = 3000
+communication_timeout = 1
+"#,
+            data_dir.display(),
+            self.server_port
+        );
         let config_path = self
             .temp_dir
             .as_ref()
-            .join(format!("test_config_{}.yaml", self.server_port));
+            .join(format!("test_config_{}.toml", self.server_port));
         std::fs::write(&config_path, config_content)?;
 
         // Start the server process in mock mode

@@ -43,8 +43,8 @@ pub async fn list_profiles(
 ) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/list");
 
-    let config = state.config.read().await;
-    let fan_profiles = config.config().fan_profiles.clone();
+    let profiles = state.config.profiles().await;
+    let fan_profiles = profiles.profiles.clone();
 
     let response = ProfileResponse {
         profiles: fan_profiles,
@@ -127,14 +127,13 @@ pub async fn add_profile(
     }
 
     // Add to configuration
-    let mut config = state.config.write().await;
-    config
-        .config_mut()
-        .fan_profiles
-        .insert(profile_name.to_string(), profile);
+    {
+        let mut profiles = state.config.profiles_mut().await;
+        profiles.insert(profile_name.to_string(), profile);
+    }
 
     // Save configuration
-    if let Err(e) = config.save().await {
+    if let Err(e) = state.config.save_profiles().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -168,12 +167,14 @@ pub async fn remove_profile(
     };
 
     // Remove from configuration
-    let mut config = state.config.write().await;
-    let removed = config.config_mut().fan_profiles.remove(&profile_name);
+    let removed = {
+        let mut profiles = state.config.profiles_mut().await;
+        profiles.remove(&profile_name)
+    };
 
     if removed.is_some() {
         // Save configuration
-        if let Err(e) = config.save().await {
+        if let Err(e) = state.config.save_profiles().await {
             return Err(ApiError::internal_error(format!(
                 "Failed to save configuration: {}",
                 e
@@ -219,16 +220,18 @@ pub async fn set_profile(
     };
 
     // Get profile from configuration
-    let config = state.config.read().await;
-    let Some(profile) = config.config().fan_profiles.get(&profile_name) else {
-        return api_fail!(format!(
-            "Profile '{}' does not exist! (Names are case-sensitive!)",
-            profile_name
-        ));
+    let profile = {
+        let profiles = state.config.profiles().await;
+        match profiles.get(&profile_name) {
+            Some(p) => p.clone(),
+            None => {
+                return api_fail!(format!(
+                    "Profile '{}' does not exist! (Names are case-sensitive!)",
+                    profile_name
+                ));
+            }
+        }
     };
-
-    let profile = profile.clone();
-    drop(config); // Release the read lock
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
