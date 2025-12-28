@@ -9,9 +9,9 @@ ARG TARGETPLATFORM
 ARG VERSION=0.1.0
 
 # Install build dependencies
+# Note: libc6-compat removed - not needed for musl builds and causes QEMU issues on ARM64
 RUN apk add --no-cache \
     musl-dev \
-    libc6-compat \
     build-base \
     pkgconfig \
     openssl-dev
@@ -81,18 +81,18 @@ USER openfan
 WORKDIR /var/lib/openfan
 
 # Expose port
-EXPOSE 8080
+EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD /usr/local/bin/openfanctl --server http://localhost:8080 health || exit 1
+    CMD /usr/local/bin/openfanctl --server http://localhost:3000 health || exit 1
 
 # Set environment variables
 ENV RUST_LOG=info
 ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
 
-# Default command
-CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
+# Default command (mock mode with v1 board for testing; override for real hardware)
+CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock", "--board", "v1"]
 
 # Labels
 ARG VERSION
