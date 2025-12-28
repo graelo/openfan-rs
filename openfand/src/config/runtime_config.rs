@@ -4,7 +4,7 @@
 //! thread-safe access and independent save operations.
 
 use openfan_core::{
-    config::{AliasData, ProfileData, StaticConfig},
+    config::{AliasData, ProfileData, StaticConfig, ZoneData},
     BoardInfo, OpenFanError, Result,
 };
 use std::path::Path;
@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 /// Runtime configuration combining static config and mutable data.
 ///
 /// Static config is read once at startup and remains immutable.
-/// Mutable data (aliases, profiles) can be modified via API and saved independently.
+/// Mutable data (aliases, profiles, zones) can be modified via API and saved independently.
 pub struct RuntimeConfig {
     /// Static configuration (immutable after load)
     static_config: StaticConfig,
@@ -25,6 +25,9 @@ pub struct RuntimeConfig {
 
     /// Profile data with independent locking
     profiles: RwLock<ProfileData>,
+
+    /// Zone data with independent locking
+    zones: RwLock<ZoneData>,
 }
 
 impl RuntimeConfig {
@@ -45,17 +48,20 @@ impl RuntimeConfig {
         // Load or create mutable data files
         let aliases = Self::load_aliases(&static_config.data_dir).await?;
         let profiles = Self::load_profiles(&static_config.data_dir).await?;
+        let zones = Self::load_zones(&static_config.data_dir).await?;
 
         info!(
-            "Configuration loaded: {} profiles, {} aliases",
+            "Configuration loaded: {} profiles, {} aliases, {} zones",
             profiles.profiles.len(),
-            aliases.aliases.len()
+            aliases.aliases.len(),
+            zones.zones.len()
         );
 
         Ok(Self {
             static_config,
             aliases: RwLock::new(aliases),
             profiles: RwLock::new(profiles),
+            zones: RwLock::new(zones),
         })
     }
 
@@ -164,6 +170,25 @@ impl RuntimeConfig {
             .map_err(|e| OpenFanError::Config(format!("Failed to parse profiles file: {}", e)))
     }
 
+    /// Load zones from TOML file, creating with defaults if missing.
+    async fn load_zones(data_dir: &Path) -> Result<ZoneData> {
+        let path = data_dir.join("zones.toml");
+
+        if !path.exists() {
+            debug!("Zones file not found. Creating with defaults.");
+            let data = ZoneData::default();
+            Self::write_toml(&path, &data.to_toml().unwrap()).await?;
+            return Ok(data);
+        }
+
+        let content = fs::read_to_string(&path)
+            .await
+            .map_err(|e| OpenFanError::Config(format!("Failed to read zones file: {}", e)))?;
+
+        ZoneData::from_toml(&content)
+            .map_err(|e| OpenFanError::Config(format!("Failed to parse zones file: {}", e)))
+    }
+
     /// Write TOML content atomically (write to temp, then rename).
     async fn write_toml(path: &Path, content: &str) -> Result<()> {
         let temp_path = path.with_extension("toml.tmp");
@@ -252,15 +277,45 @@ impl RuntimeConfig {
     }
 
     // =========================================================================
+    // Zone access and modification
+    // =========================================================================
+
+    /// Get read lock on zone data.
+    pub async fn zones(&self) -> tokio::sync::RwLockReadGuard<'_, ZoneData> {
+        self.zones.read().await
+    }
+
+    /// Get write lock on zone data.
+    pub async fn zones_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, ZoneData> {
+        self.zones.write().await
+    }
+
+    /// Save zone data to disk.
+    pub async fn save_zones(&self) -> Result<()> {
+        let zones = self.zones.read().await;
+        let path = self.static_config.data_dir.join("zones.toml");
+
+        let content = zones
+            .to_toml()
+            .map_err(|e| OpenFanError::Config(format!("Failed to serialize zones: {}", e)))?;
+
+        Self::write_toml(&path, &content).await?;
+
+        debug!("Saved zones to {}", path.display());
+        Ok(())
+    }
+
+    // =========================================================================
     // Board validation
     // =========================================================================
 
     /// Validate configuration against detected board.
     ///
-    /// Checks that profiles and aliases are compatible with the board's fan count.
+    /// Checks that profiles, aliases, and zones are compatible with the board's fan count.
     pub async fn validate_for_board(&self, board: &BoardInfo) -> Result<()> {
         let profiles = self.profiles.read().await;
         let aliases = self.aliases.read().await;
+        let zones = self.zones.read().await;
 
         // Validate profiles
         for (name, profile) in &profiles.profiles {
@@ -291,6 +346,22 @@ impl RuntimeConfig {
                     board.fan_count,
                     board.fan_count - 1
                 )));
+            }
+        }
+
+        // Validate zones
+        for (name, zone) in &zones.zones {
+            for &port_id in &zone.port_ids {
+                if port_id >= board.fan_count as u8 {
+                    return Err(OpenFanError::Config(format!(
+                        "Zone '{}' references port {} but board '{}' only has {} fans (max ID: {})",
+                        name,
+                        port_id,
+                        board.name,
+                        board.fan_count,
+                        board.fan_count - 1
+                    )));
+                }
             }
         }
 
@@ -352,6 +423,7 @@ mod tests {
         assert!(config.data_dir().exists());
         assert!(config.data_dir().join("aliases.toml").exists());
         assert!(config.data_dir().join("profiles.toml").exists());
+        assert!(config.data_dir().join("zones.toml").exists());
 
         // Should have default profiles
         let profiles = config.profiles().await;
@@ -409,5 +481,33 @@ mod tests {
         let profiles = config2.profiles().await;
         assert!(profiles.contains("Custom"));
         assert_eq!(profiles.get("Custom").unwrap().values[0], 42);
+    }
+
+    #[tokio::test]
+    async fn test_runtime_config_zone_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Add a zone
+        {
+            let mut zones = config.zones_mut().await;
+            zones.insert(
+                "intake".to_string(),
+                openfan_core::Zone::with_description("intake", vec![0, 1, 2], "Front intake fans"),
+            );
+        }
+
+        // Save
+        config.save_zones().await.unwrap();
+
+        // Reload and verify
+        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
+        let zones = config2.zones().await;
+        assert!(zones.contains("intake"));
+        let intake = zones.get("intake").unwrap();
+        assert_eq!(intake.port_ids, vec![0, 1, 2]);
+        assert_eq!(intake.description, Some("Front intake fans".to_string()));
     }
 }

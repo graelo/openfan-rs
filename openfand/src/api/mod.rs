@@ -92,6 +92,19 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v0/alias/:id/get", get(handlers::aliases::get_alias))
         .route("/api/v0/alias/:id/set", get(handlers::aliases::set_alias))
+        // Zone endpoints
+        .route("/api/v0/zones/list", get(handlers::zones::list_zones))
+        .route("/api/v0/zones/add", post(handlers::zones::add_zone))
+        .route("/api/v0/zone/:name/get", get(handlers::zones::get_zone))
+        .route(
+            "/api/v0/zone/:name/update",
+            post(handlers::zones::update_zone),
+        )
+        .route(
+            "/api/v0/zone/:name/delete",
+            get(handlers::zones::delete_zone),
+        )
+        .route("/api/v0/zone/:name/apply", get(handlers::zones::apply_zone))
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
         // Root endpoint

@@ -8,6 +8,7 @@
 //! - [`fans`] - Fan status and control (PWM/RPM)
 //! - [`profiles`] - Fan profile management (CRUD operations)
 //! - [`aliases`] - Fan alias management
+//! - [`zones`] - Zone management for grouped fan control
 //!
 //! # API Structure
 //!
@@ -26,6 +27,7 @@ pub mod aliases;
 pub mod fans;
 pub mod info;
 pub mod profiles;
+pub mod zones;
 
 // Re-export handler functions for easier access
 // Re-exports removed - handlers are used directly in routing

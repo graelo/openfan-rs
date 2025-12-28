@@ -125,6 +125,42 @@ pub struct AliasRequest {
     pub alias: String,
 }
 
+/// Zone response containing all zones
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZoneResponse {
+    /// Map of zone name to zone data
+    pub zones: HashMap<String, crate::Zone>,
+}
+
+/// Single zone response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleZoneResponse {
+    /// Zone data
+    pub zone: crate::Zone,
+}
+
+/// Zone addition request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddZoneRequest {
+    /// Zone name
+    pub name: String,
+    /// Port IDs to include in the zone
+    pub port_ids: Vec<u8>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Zone update request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateZoneRequest {
+    /// Port IDs to include in the zone
+    pub port_ids: Vec<u8>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
 /// System information response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfoResponse {

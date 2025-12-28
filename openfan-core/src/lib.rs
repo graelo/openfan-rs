@@ -10,7 +10,9 @@ pub mod hardware;
 pub mod types;
 
 // Re-export commonly used types
-pub use config::{default_config_path, default_data_dir, AliasData, ProfileData, StaticConfig};
+pub use config::{
+    default_config_path, default_data_dir, AliasData, ProfileData, StaticConfig, Zone, ZoneData,
+};
 pub use error::*;
 pub use hardware::*;
 pub use types::*;
