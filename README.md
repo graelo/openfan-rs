@@ -1,95 +1,111 @@
 # OpenFAN Controller
 
-Control your fans via a REST API and CLI. Rust-based, fast, and reliable.
+A Rust-based controller for OpenFAN hardware - manage your fans via REST API or CLI.
 
-## What is this?
+## Overview
 
-OpenFAN connects to your fan controller hardware over serial and lets you manage fans through a simple REST API or command-line tool. Set PWM/RPM values, create profiles, and monitor everything.
+OpenFAN is a fan controller system consisting of:
+- **Hardware**: A microcontroller board that controls PWM fans via USB serial
+- **Server** (`openfand`): REST API daemon that communicates with the hardware
+- **CLI** (`openfanctl`): Command-line tool for managing fans
+
+```
+┌─────────────┐     HTTP      ┌──────────┐    Serial    ┌──────────────┐
+│  openfanctl │ ────────────> │ openfand │ ──────────> │ OpenFAN Board │
+│    (CLI)    │   REST API    │ (Server) │   USB/TTY   │  (Hardware)   │
+└─────────────┘               └──────────┘              └──────────────┘
+```
+
+## Supported Hardware
+
+| Board | Fans | USB VID:PID | Status |
+|-------|------|-------------|--------|
+| OpenFAN v1.0 | 10 | 2E8A:000A | Supported |
+| OpenFAN Mini | 4 | 2E8A:000B | Planned |
+
+The server auto-detects which board is connected via USB. In mock mode, you must specify the board type explicitly.
 
 ## Quick Start
 
-### Installation on Linux
+### Install from Release
 
-**Install on Debian/Ubuntu:**
-
+**Debian/Ubuntu:**
 ```bash
-# Download package
 curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_0.1.0_amd64.deb
-
-# Install
 sudo dpkg -i openfan-controller_0.1.0_amd64.deb
-sudo apt-get install -f  # Fix dependencies if needed
 ```
 
-**Install on other Linux:**
-
+**Other Linux:**
 ```bash
-# Download release
 curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-linux-x86_64.tar.gz
 tar xzf openfan-linux-x86_64.tar.gz
-cd openfan-linux-x86_64
-
-# Install (creates systemd service)
-sudo ./deploy/install.sh
+sudo ./openfan-linux-x86_64/deploy/install.sh
 ```
 
-### Basic Usage
-
-**Start the server:**
+### Build from Source
 
 ```bash
-# With hardware (auto-detects board type)
-sudo systemctl start openfand
+git clone https://github.com/graelo/openfan-rs.git
+cd openfan-rs
+cargo build --release
 
-# Or in mock mode (requires explicit board type)
-openfand --mock --board v1      # Test with OpenFAN v1.0 (10 fans)
-openfand --mock --board mini    # Test with OpenFAN Mini (4 fans)
+# Binaries: target/release/openfand, target/release/openfanctl
 ```
 
-**Use the CLI:**
+### Run the Server
 
 ```bash
-# Check system info
+# With real hardware (auto-detects board)
+openfand
+
+# In mock mode (for testing without hardware)
+openfand --mock --board v1      # Simulate OpenFAN v1.0 (10 fans)
+openfand --mock --board mini    # Simulate OpenFAN Mini (4 fans)
+
+# With custom config
+openfand --config /path/to/config.yaml
+
+# Verbose logging
+openfand --verbose
+```
+
+### Use the CLI
+
+```bash
+# System info (shows board type, fan count)
 openfanctl info
 
-# See all fans
+# Fan status (RPM readings)
 openfanctl status
 
-# Set a fan to 75% PWM
+# Set fan PWM (0-100%)
 openfanctl fan set 0 --pwm 75
 
+# Set fan RPM target
+openfanctl fan set 0 --rpm 1200
+
 # Apply a profile
-openfanctl profile apply "Performance"
+openfanctl profile apply "Quiet"
+
+# JSON output
+openfanctl --format json status
 ```
-
-That's it. 🎉
-
-## CLI Commands
-
-```bash
-openfanctl status                           # Show all fans
-openfanctl fan set <id> --pwm <0-100>      # Set fan PWM %
-openfanctl fan set <id> --rpm <value>      # Set fan RPM
-openfanctl profile list                     # List profiles
-openfanctl profile apply <name>             # Apply profile
-openfanctl alias set <id> <name>            # Name a fan
-```
-
-Use `--format json` for JSON output.
 
 ## Configuration
 
-Edit `/etc/openfan/config.yaml`:
+Config file location: `/etc/openfan/config.yaml` (or specify with `--config`)
 
 ```yaml
 server:
-  port: 8080
+  port: 3000
   bind: "127.0.0.1"
 
 hardware:
-  device_path: "/dev/ttyUSB0"
+  device_path: "/dev/ttyUSB0"    # Auto-detected if not specified
   baud_rate: 115200
 
+# Profiles must match your board's fan count
+# OpenFAN v1.0 = 10 values, OpenFAN Mini = 4 values
 fan_profiles:
   "Quiet":
     type: pwm
@@ -101,94 +117,125 @@ fan_profiles:
 fan_aliases:
   0: "CPU Fan"
   1: "GPU Fan"
+  2: "Case Front"
+```
+
+The server validates your config against the detected board at startup. If your profile has 10 values but you connect an OpenFAN Mini (4 fans), the server will refuse to start with a clear error message.
+
+## CLI Commands
+
+```bash
+openfanctl info                          # Show board and server info
+openfanctl status                        # Show all fans with RPM
+openfanctl fan set <id> --pwm <0-100>   # Set fan PWM percentage
+openfanctl fan set <id> --rpm <value>   # Set fan RPM target
+openfanctl profile list                  # List available profiles
+openfanctl profile apply <name>          # Apply a profile
+openfanctl alias set <id> <name>         # Set fan alias
+openfanctl alias list                    # List all aliases
+openfanctl completion <shell>            # Generate shell completion
+```
+
+Options:
+- `--server <url>` - Server URL (default: http://localhost:3000)
+- `--format <table|json>` - Output format (default: table)
+
+## REST API
+
+The server exposes a REST API on port 3000 (configurable):
+
+```bash
+# System info
+curl http://localhost:3000/api/v0/info
+
+# Fan status
+curl http://localhost:3000/api/v0/fan/status
+
+# Single fan status
+curl http://localhost:3000/api/v0/fan/0/status
+
+# Set fan PWM
+curl -X POST http://localhost:3000/api/v0/fan/0/pwm/75
+
+# Set fan RPM
+curl -X POST http://localhost:3000/api/v0/fan/0/rpm/1200
+
+# List profiles
+curl http://localhost:3000/api/v0/profile/list
+
+# Apply profile
+curl -X POST http://localhost:3000/api/v0/profile/apply/Quiet
+
+# Get/set aliases
+curl http://localhost:3000/api/v0/alias/list
+curl -X POST "http://localhost:3000/api/v0/alias/0/CPU%20Fan"
 ```
 
 ## Docker
 
 ```bash
-# Run with mock hardware (requires board type)
-docker run -p 8080:8080 graelo/openfan:latest openfand --mock --board v1
+# Mock mode (for testing)
+docker run -p 3000:3000 graelo/openfan:latest openfand --mock --board v1
 
-# Run with real hardware (auto-detects board)
-docker run -p 8080:8080 \
+# With real hardware
+docker run -p 3000:3000 \
   --device=/dev/ttyUSB0 \
-  graelo/openfan:latest \
-  openfand --config /etc/openfan/config.yaml
+  -v /etc/openfan:/etc/openfan:ro \
+  graelo/openfan:latest
 ```
 
-## REST API
+## Systemd Service
 
-The server exposes a REST API on port 8080:
+After installation, the service is available:
 
 ```bash
-# Get system info
-curl http://localhost:8080/api/v0/info
+sudo systemctl start openfand
+sudo systemctl enable openfand
+sudo systemctl status openfand
 
-# Get fan status
-curl http://localhost:8080/api/v0/fan/status
-
-# Set fan 0 to 75% PWM
-curl -X POST http://localhost:8080/api/v0/fan/0/pwm/75
-
-# List profiles
-curl http://localhost:8080/api/v0/profile/list
+# View logs
+sudo journalctl -u openfand -f
 ```
-
-See `/api/v0/` for all endpoints.
-
-## Building from Source
-
-```bash
-# Install Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Build
-git clone https://github.com/graelo/openfan-rs.git
-cd openfan-rs
-cargo build --release
-
-# Binaries are in target/release/
-./target/release/openfand --mock --board v1
-./target/release/openfanctl info
-```
-
-## Project Structure
-
-This is a Rust workspace with 4 crates:
-
-- **openfan-core** - Shared types and models
-- **openfan-hardware** - Serial communication and hardware protocol
-- **openfand** - REST API server (binary)
-- **openfanctl** - CLI tool (binary)
 
 ## Troubleshooting
 
-**Server won't start:**
-
-```bash
-# Check logs
-sudo journalctl -u openfand -f
-
-# Test in mock mode (requires board type)
-openfand --mock --board v1
-```
-
 **Permission denied on /dev/ttyUSB0:**
-
 ```bash
-# Add user to dialout group
 sudo usermod -a -G dialout $USER
 # Log out and back in
 ```
 
-**CLI can't connect:**
+**Server won't start:**
+```bash
+# Check logs
+sudo journalctl -u openfand -f
 
+# Test with mock mode
+openfand --mock --board v1 --verbose
+```
+
+**Config/board mismatch error:**
+Your config file has profiles with the wrong number of fan values. Either:
+- Update the profile values to match your board's fan count
+- Delete the config file to regenerate defaults
+
+**CLI can't connect:**
 ```bash
 # Check server is running
-curl http://localhost:8080/api/v0/info
+curl http://localhost:3000/api/v0/info
 
-# Specify server explicitly
-openfanctl --server http://localhost:8080 info
+# Specify server URL explicitly
+openfanctl --server http://localhost:3000 info
+```
+
+## Project Structure
+
+```
+openfan-rs/
+├── openfan-core/      # Shared types, models, error handling
+├── openfan-hardware/  # Serial communication, hardware protocol
+├── openfand/          # REST API server (Axum)
+└── openfanctl/        # CLI client (clap + reqwest)
 ```
 
 ## License
