@@ -5,8 +5,10 @@
 
 pub mod api;
 pub mod error;
+pub mod hardware;
 pub mod types;
 
 // Re-export commonly used types
 pub use error::*;
+pub use hardware::*;
 pub use types::*;

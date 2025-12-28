@@ -12,6 +12,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use openfan_core::BoardInfo;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
@@ -23,9 +24,11 @@ use tracing::info;
 /// Application state shared across all handlers
 #[derive(Clone)]
 pub struct AppState {
+    /// Runtime board information
+    pub board_info: Arc<BoardInfo>,
     /// Configuration manager
     pub config: Arc<RwLock<ConfigManager>>,
-    /// Hardware commander
+    /// Hardware controller
     pub fan_controller: Option<Arc<Mutex<FanController>>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
@@ -33,8 +36,13 @@ pub struct AppState {
 
 impl AppState {
     /// Create new application state
-    pub fn new(config: ConfigManager, fan_controller: Option<FanController>) -> Self {
+    pub fn new(
+        board_info: BoardInfo,
+        config: ConfigManager,
+        fan_controller: Option<FanController>,
+    ) -> Self {
         Self {
+            board_info: Arc::new(board_info),
             config: Arc::new(RwLock::new(config)),
             fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
             start_time: Instant::now(),
@@ -151,9 +159,9 @@ pub mod error {
         fn from(err: openfan_core::OpenFanError) -> Self {
             match err {
                 openfan_core::OpenFanError::InvalidInput(msg) => Self::bad_request(msg),
-                openfan_core::OpenFanError::InvalidFanId(id) => {
-                    Self::bad_request(format!("Invalid fan ID: {} (must be 0-9)", id))
-                }
+                openfan_core::OpenFanError::InvalidFanId { fan_id, max_fans } => Self::bad_request(
+                    format!("Invalid fan ID: {} (must be 0-{})", fan_id, max_fans - 1),
+                ),
                 openfan_core::OpenFanError::ProfileNotFound(name) => {
                     Self::bad_request(format!("Profile not found: {}", name))
                 }

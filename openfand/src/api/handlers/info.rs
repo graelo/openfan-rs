@@ -6,12 +6,22 @@ use crate::api::AppState;
 use axum::{extract::State, Json};
 use openfan_core::api::{ApiResponse, InfoResponse};
 use serde_json::{json, Value};
-use tracing::debug;
+use tracing::{debug, warn};
 
-/// Root endpoint handler
-/// GET /
+/// Handle the root endpoint.
+///
+/// Provide basic service identification and status. Useful for health checks
+/// and verifying the API is accessible.
+///
+/// # Endpoint
+///
+/// `GET /`
+///
+/// # Returns
+///
+/// Return service name, version, and status.
 pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
-    debug!("Root handler");
+    debug!("Request: GET /");
 
     let data = json!({
         "service": "OpenFAN Controller API Server",
@@ -22,8 +32,28 @@ pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
     Ok(Json(ApiResponse::success(data)))
 }
 
-/// System information handler
-/// GET /api/v0/info
+/// Retrieve comprehensive system information.
+///
+/// Provide details about the server software, hardware connection status,
+/// uptime, and hardware/firmware information if available.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/info`
+///
+/// # Returns
+///
+/// - `version` - Server version
+/// - `hardware_connected` - Whether fan controller hardware is connected
+/// - `uptime` - Server uptime in seconds
+/// - `software` - Software version and build information
+/// - `hardware` - Hardware information (if connected, may be None on error)
+/// - `firmware` - Firmware version (if connected, may be None on error)
+///
+/// # Behavior
+///
+/// - If hardware is not connected, hardware and firmware fields are None
+/// - Hardware/firmware queries are logged but failures don't cause errors
 pub async fn get_info(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<InfoResponse>>, ApiError> {
@@ -39,26 +69,26 @@ pub async fn get_info(
 
     // Try to get hardware and firmware information if hardware is connected
     let (hardware_info, firmware_info) = if let Some(fan_controller) = &state.fan_controller {
-        let mut commander = fan_controller.lock().await;
+        let mut controller = fan_controller.lock().await;
 
-        let hardware = match commander.get_hw_info().await {
+        let hardware = match controller.get_hw_info().await {
             Ok(hw_info) => {
                 debug!("Retrieved hardware info: {}", hw_info);
                 Some(hw_info)
             }
             Err(e) => {
-                debug!("Failed to get hardware info: {}", e);
+                warn!("Failed to retrieve hardware info: {}", e);
                 None
             }
         };
 
-        let firmware = match commander.get_fw_info().await {
+        let firmware = match controller.get_fw_info().await {
             Ok(fw_info) => {
                 debug!("Retrieved firmware info: {}", fw_info);
                 Some(fw_info)
             }
             Err(e) => {
-                debug!("Failed to get firmware info: {}", e);
+                warn!("Failed to retrieve firmware info: {}", e);
                 None
             }
         };
@@ -70,6 +100,7 @@ pub async fn get_info(
 
     let info_response = InfoResponse {
         version: "1.0.0".to_string(),
+        board_info: (*state.board_info).clone(),
         hardware_connected,
         uptime,
         software,

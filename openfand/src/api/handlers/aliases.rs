@@ -10,17 +10,23 @@ use axum::{
 use openfan_core::api::{AliasResponse, ApiResponse};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-/// Query parameters for alias operations
+/// Query parameters for alias operations.
 #[derive(Deserialize)]
 pub struct AliasQuery {
-    /// Alias value to set
+    /// Alias value to set (must contain only allowed characters)
     pub value: Option<String>,
 }
 
-/// Get all fan aliases
-/// GET /api/v0/alias/all/get
+/// Retrieve all configured fan aliases.
+///
+/// Return a map of fan IDs to their human-readable alias names.
+/// Fans without configured aliases will not appear in the response.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/alias/all/get`
 pub async fn get_all_aliases(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
@@ -35,8 +41,17 @@ pub async fn get_all_aliases(
     api_ok!(response)
 }
 
-/// Get alias for a specific fan
-/// GET /api/v0/alias/:id/get
+/// Retrieve the alias for a specific fan.
+///
+/// If no alias is configured, return the default alias "Fan #N" where N is fan_id + 1.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/alias/:id/get`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
 pub async fn get_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
@@ -48,9 +63,8 @@ pub async fn get_alias(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index > 9 {
-        return api_fail!(format!("Invalid fan index (0<={fan_index}<=9)"));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let config = state.config.read().await;
     let alias = config
@@ -69,8 +83,33 @@ pub async fn get_alias(
     api_ok!(response)
 }
 
-/// Set alias for a specific fan
-/// GET /api/v0/alias/:id/set?value=CPU Fan
+/// Set a human-readable alias for a specific fan.
+///
+/// The alias is validated and saved to the configuration file.
+///
+/// # Validation
+///
+/// Aliases must contain only:
+/// - Alphanumeric characters (A-Z, a-z, 0-9)
+/// - Hyphens (-)
+/// - Underscores (_)
+/// - Hash symbols (#)
+/// - Periods (.)
+/// - Spaces
+///
+/// Empty aliases are not allowed.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/alias/:id/set?value=CPU Fan`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
+///
+/// # Query Parameters
+///
+/// - `value` - Alias to set (must match allowed character set)
 pub async fn set_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
@@ -83,9 +122,8 @@ pub async fn set_alias(
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
-    if fan_index > 9 {
-        return api_fail!(format!("Invalid fan index (0<={fan_index}<=9)"));
-    }
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
 
     let Some(alias_value) = params.value else {
         return api_fail!("Fan alias cannot be none!");
@@ -107,7 +145,6 @@ pub async fn set_alias(
 
     // Save configuration
     if let Err(e) = config.save().await {
-        warn!("Failed to save configuration: {}", e);
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -118,9 +155,17 @@ pub async fn set_alias(
     api_ok!(())
 }
 
-/// Validate alias string format
+/// Validate alias string format.
 ///
-/// Allows: A-Z, a-z, 0-9, -, _, #, and space characters
+/// # Allowed Characters
+///
+/// - Alphanumeric: A-Z, a-z, 0-9
+/// - Special characters: `-`, `_`, `#`, `.`, ` ` (space)
+///
+/// # Returns
+///
+/// - `true` if the alias is non-empty and contains only allowed characters
+/// - `false` if the alias is empty or contains disallowed characters
 fn is_valid_alias(alias: &str) -> bool {
     if alias.is_empty() {
         return false;
@@ -134,6 +179,7 @@ fn is_valid_alias(alias: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openfan_core::{BoardConfig, DefaultBoard};
 
     #[test]
     fn test_fan_id_validation() {
@@ -163,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_default_alias_format() {
-        for i in 0..10u8 {
+        for i in 0..DefaultBoard::FAN_COUNT as u8 {
             let default_alias = format!("Fan #{}", i + 1);
             assert!(is_valid_alias(&default_alias));
             assert!(default_alias.starts_with("Fan #"));

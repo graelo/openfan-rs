@@ -30,8 +30,8 @@ pub enum OpenFanError {
     AliasNotFound(u8),
 
     /// Fan ID out of range
-    #[error("Fan ID out of range: {0} (must be 0-9)")]
-    InvalidFanId(u8),
+    #[error("Fan ID out of range: {fan_id} (must be 0-{max})", max = max_fans - 1)]
+    InvalidFanId { fan_id: u8, max_fans: usize },
 
     /// Parsing errors
     #[error("Parse error: {0}")]

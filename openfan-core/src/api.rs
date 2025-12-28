@@ -33,6 +33,8 @@ impl<T> ApiResponse<T> {
 pub struct InfoResponse {
     /// Server version
     pub version: String,
+    /// Detected board information
+    pub board_info: crate::BoardInfo,
     /// Whether hardware is connected
     pub hardware_connected: bool,
     /// Server uptime in seconds
@@ -296,8 +298,10 @@ mod tests {
 
     #[test]
     fn test_info_response() {
+        let board_info = crate::BoardType::OpenFanV1.to_board_info();
         let response = InfoResponse {
             version: "1.0.0".to_string(),
+            board_info,
             hardware_connected: true,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0".to_string(),

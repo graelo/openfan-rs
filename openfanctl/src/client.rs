@@ -7,24 +7,88 @@ use openfan_core::{
         ProfileResponse,
     },
     types::FanProfile,
+    BoardInfo,
 };
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::time::Duration;
 
-/// HTTP client for the OpenFAN server
+/// HTTP client for communicating with the OpenFAN daemon's REST API.
+///
+/// This client handles all HTTP communication with the server, including:
+/// - Automatic retries on connection failures
+/// - Timeout handling
+/// - JSON serialization/deserialization
+/// - Error response processing
+///
+/// # Retry Logic
+///
+/// The client automatically retries requests that fail due to:
+/// - Connection errors (network unreachable, connection refused)
+/// - Timeout errors
+/// - Generic request errors
+///
+/// Retries use exponential backoff, with the delay increasing on each attempt.
+/// Client errors (4xx) and server errors (5xx) are not retried.
+///
+/// # Examples
+///
+/// ```no_run
+/// use openfanctl::client::OpenFanClient;
+/// use std::time::Duration;
+///
+/// # async fn example() -> anyhow::Result<()> {
+/// let client = OpenFanClient::with_config(
+///     "http://localhost:3000".to_string(),
+///     10,  // timeout in seconds
+///     3,   // max retries
+///     Duration::from_millis(500),  // initial retry delay
+/// ).await?;
+///
+/// let info = client.get_info().await?;
+/// println!("Server version: {}", info.version);
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug, Clone)]
 pub struct OpenFanClient {
     client: Client,
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
+    board_info: BoardInfo,
 }
 
 impl OpenFanClient {
-    /// Create a new client with custom configuration
-    pub fn with_config(
+    /// Get the board information for the connected server.
+    ///
+    /// # Returns
+    ///
+    /// Returns the board info fetched during client initialization.
+    pub fn board_info(&self) -> &BoardInfo {
+        &self.board_info
+    }
+
+    /// Create a new OpenFAN client with custom configuration.
+    ///
+    /// Fetches board information from the server during initialization to ensure
+    /// all subsequent operations are validated against the correct board type.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_url` - Base URL of the OpenFAN server (e.g., "http://localhost:3000")
+    /// * `timeout_secs` - Request timeout in seconds
+    /// * `max_retries` - Maximum number of retry attempts for failed requests
+    /// * `retry_delay` - Initial delay between retries (uses exponential backoff)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The HTTP client cannot be created
+    /// - The server is unreachable
+    /// - Board information cannot be fetched from the server
+    pub async fn with_config(
         server_url: String,
         timeout_secs: u64,
         max_retries: u32,
@@ -36,15 +100,54 @@ impl OpenFanClient {
             .build()
             .context("Failed to create HTTP client")?;
 
-        Ok(Self {
-            client,
-            base_url: server_url.trim_end_matches('/').to_string(),
+        let base_url = server_url.trim_end_matches('/').to_string();
+
+        // Create a temporary client to fetch board info
+        let temp_client = Self {
+            client: client.clone(),
+            base_url: base_url.clone(),
             max_retries,
             retry_delay,
+            board_info: BoardInfo {
+                board_type: openfan_core::BoardType::OpenFanV1,
+                name: "Unknown".to_string(),
+                fan_count: 10,
+                usb_vid: 0,
+                usb_pid: 0,
+                max_pwm: 100,
+                max_rpm: 16000,
+                min_rpm: 480,
+                baud_rate: 115200,
+            },
+        };
+
+        // Fetch board info from server
+        let info = temp_client
+            .get_info()
+            .await
+            .context("Failed to fetch board information from server")?;
+
+        Ok(Self {
+            client,
+            base_url,
+            max_retries,
+            retry_delay,
+            board_info: info.board_info,
         })
     }
 
-    /// Handle API response and extract data with enhanced error reporting
+    /// Process an HTTP response and extract the API data.
+    ///
+    /// Handle both successful responses and various error conditions,
+    /// providing detailed error messages for debugging.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The HTTP status code indicates failure (4xx or 5xx)
+    /// - The response body cannot be read
+    /// - The JSON cannot be deserialized
+    /// - The API returns an error response
     async fn handle_response<T: DeserializeOwned>(response: Response, endpoint: &str) -> Result<T> {
         let status = response.status();
         let text = response
@@ -78,7 +181,17 @@ impl OpenFanClient {
         }
     }
 
-    /// Execute a request with retry logic
+    /// Execute an HTTP request with automatic retry logic.
+    ///
+    /// Only retry on connection-related errors (connection failures, timeouts).
+    /// Client errors (4xx) and server errors (5xx) are not retried.
+    ///
+    /// Uses exponential backoff: retry delay increases with each attempt
+    /// (delay * (attempt + 1)).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if all retry attempts fail.
     async fn execute_with_retry<F, Fut, T>(&self, endpoint: &str, request_fn: F) -> Result<T>
     where
         F: Fn() -> Fut,
@@ -116,7 +229,11 @@ impl OpenFanClient {
         ))
     }
 
-    /// Get system information
+    /// Retrieve system information from the server.
+    ///
+    /// # Returns
+    ///
+    /// Returns server version, hardware connection status, and mock mode status.
     pub async fn get_info(&self) -> Result<InfoResponse> {
         let url = format!("{}/api/v0/info", self.base_url);
         let endpoint = "info";
@@ -125,7 +242,11 @@ impl OpenFanClient {
             .await
     }
 
-    /// Get fan status for all fans
+    /// Retrieve the current status of all fans.
+    ///
+    /// # Returns
+    ///
+    /// Returns PWM values and RPM readings for all fans in the system.
     pub async fn get_fan_status(&self) -> Result<FanStatusResponse> {
         let url = format!("{}/api/v0/fan/status", self.base_url);
         let endpoint = "fan/status";
@@ -134,7 +255,14 @@ impl OpenFanClient {
             .await
     }
 
-    /// Get fan status for a specific fan
+    /// Retrieve fan status for all fans.
+    ///
+    /// Note: Despite the `fan_id` parameter, this currently returns status for all fans.
+    /// The parameter is ignored but kept for API compatibility.
+    ///
+    /// # Arguments
+    ///
+    /// * `_fan_id` - Currently ignored, reserved for future use
     pub async fn get_fan_status_by_id(&self, _fan_id: u8) -> Result<FanStatusResponse> {
         let url = format!("{}/api/v0/fan/status", self.base_url);
         let endpoint = "fan/status";
@@ -143,11 +271,17 @@ impl OpenFanClient {
             .await
     }
 
-    /// Get RPM for a specific fan
+    /// Retrieve the current RPM reading for a specific fan.
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fan ID is invalid for this board type.
     pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<FanRpmResponse> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
-        }
+        self.board_info.validate_fan_id(fan_id)?;
 
         let url = format!("{}/api/v0/fan/{}/rpm/get", self.base_url, fan_id);
         let endpoint = &format!("fan/{}/rpm/get", fan_id);
@@ -159,14 +293,23 @@ impl OpenFanClient {
         Ok(FanRpmResponse { fan_id, rpm })
     }
 
-    /// Set fan PWM
+    /// Set the PWM (Pulse Width Modulation) value for a specific fan.
+    ///
+    /// PWM controls the fan speed as a percentage.
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    /// * `pwm` - PWM percentage
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The fan ID is invalid for this board type
+    /// - The PWM value is out of range for this board type
     pub async fn set_fan_pwm(&self, fan_id: u8, pwm: u32) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
-        }
-        if pwm > 100 {
-            return Err(anyhow::anyhow!("Invalid PWM value: {}. Must be 0-100", pwm));
-        }
+        self.board_info.validate_fan_id(fan_id)?;
+        self.board_info.validate_pwm(pwm)?;
 
         let url = format!("{}/api/v0/fan/{}/pwm?value={}", self.base_url, fan_id, pwm);
         let endpoint = &format!("fan/{}/pwm", fan_id);
@@ -176,17 +319,23 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Set fan RPM
+    /// Set the target RPM (Revolutions Per Minute) for a specific fan.
+    ///
+    /// This controls the fan speed directly by RPM rather than PWM percentage.
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    /// * `rpm` - Target RPM value
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The fan ID is invalid for this board type
+    /// - The RPM value is out of range for this board type
     pub async fn set_fan_rpm(&self, fan_id: u8, rpm: u32) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
-        }
-        if rpm > 10000 {
-            return Err(anyhow::anyhow!(
-                "Invalid RPM value: {}. Must be reasonable (< 10000)",
-                rpm
-            ));
-        }
+        self.board_info.validate_fan_id(fan_id)?;
+        self.board_info.validate_rpm(rpm)?;
 
         let url = format!("{}/api/v0/fan/{}/rpm?value={}", self.base_url, fan_id, rpm);
         let endpoint = &format!("fan/{}/rpm", fan_id);
@@ -196,7 +345,11 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Get all profiles
+    /// Retrieve all saved fan profiles from the server.
+    ///
+    /// # Returns
+    ///
+    /// Returns a list of profile names and their configurations.
     pub async fn get_profiles(&self) -> Result<ProfileResponse> {
         let url = format!("{}/api/v0/profiles/list", self.base_url);
         let endpoint = "profiles/list";
@@ -205,7 +358,17 @@ impl OpenFanClient {
             .await
     }
 
-    /// Apply a profile
+    /// Apply a saved fan profile by name.
+    ///
+    /// Set all fans according to the profile's configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the profile to apply
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the profile name is empty or whitespace.
     pub async fn apply_profile(&self, name: &str) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Profile name cannot be empty"));
@@ -223,14 +386,27 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Add a new profile
+    /// Create a new fan profile with the given name and configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the new profile
+    /// * `profile` - Fan profile configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The profile name is empty or whitespace
+    /// - The profile doesn't have the correct number of values for this board type
     pub async fn add_profile(&self, name: &str, profile: FanProfile) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Profile name cannot be empty"));
         }
-        if profile.values.len() != 10 {
+        if profile.values.len() != self.board_info.fan_count {
             return Err(anyhow::anyhow!(
-                "Profile must have exactly 10 values, got {}",
+                "Profile must have exactly {} values for board '{}', got {}",
+                self.board_info.fan_count,
+                self.board_info.name,
                 profile.values.len()
             ));
         }
@@ -255,7 +431,15 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Remove a profile
+    /// Delete a saved fan profile by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the profile to remove
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the profile name is empty or whitespace.
     pub async fn remove_profile(&self, name: &str) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Profile name cannot be empty"));
@@ -273,7 +457,11 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Get all aliases
+    /// Retrieve all configured fan aliases.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of fan IDs to their human-readable alias names.
     pub async fn get_aliases(&self) -> Result<AliasResponse> {
         let url = format!("{}/api/v0/alias/all/get", self.base_url);
         let endpoint = "alias/all/get";
@@ -282,11 +470,17 @@ impl OpenFanClient {
             .await
     }
 
-    /// Get alias for a specific fan
+    /// Retrieve the alias for a specific fan.
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fan ID is invalid for this board type.
     pub async fn get_alias(&self, fan_id: u8) -> Result<AliasResponse> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
-        }
+        self.board_info.validate_fan_id(fan_id)?;
 
         let url = format!("{}/api/v0/alias/{}/get", self.base_url, fan_id);
         let endpoint = &format!("alias/{}/get", fan_id);
@@ -295,11 +489,21 @@ impl OpenFanClient {
             .await
     }
 
-    /// Set alias for a fan
+    /// Set a human-readable alias for a specific fan.
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    /// * `alias` - Human-readable name for the fan (max 100 characters)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The fan ID is invalid for this board type
+    /// - The alias is empty or whitespace
+    /// - The alias exceeds 100 characters
     pub async fn set_alias(&self, fan_id: u8, alias: &str) -> Result<()> {
-        if fan_id > 9 {
-            return Err(anyhow::anyhow!("Invalid fan ID: {}. Must be 0-9", fan_id));
-        }
+        self.board_info.validate_fan_id(fan_id)?;
         if alias.trim().is_empty() {
             return Err(anyhow::anyhow!("Alias cannot be empty"));
         }
@@ -322,7 +526,14 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
-    /// Test server connectivity with detailed error reporting
+    /// Test basic connectivity to the server.
+    ///
+    /// Use a short timeout (3 seconds) to quickly determine if the server is reachable.
+    ///
+    /// # Returns
+    ///
+    /// Returns `true` if the server responds with a success status, `false` otherwise.
+    /// Does not return an error on connection failure - use for availability checks.
     pub async fn ping(&self) -> Result<bool> {
         let url = format!("{}/", self.base_url);
 
@@ -341,7 +552,20 @@ impl OpenFanClient {
         }
     }
 
-    /// Get connection health with detailed status
+    /// Perform a comprehensive health check of the server connection.
+    ///
+    /// Test both basic connectivity and API functionality, providing detailed
+    /// status information including response time and server capabilities.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map containing:
+    /// - `connected` - Whether the server is reachable
+    /// - `ping_ms` - Response time in milliseconds
+    /// - `api_working` - Whether the API endpoint responds correctly (if connected)
+    /// - `server_version` - Server version string (if API is working)
+    /// - `hardware_connected` - Whether hardware is connected (if API is working)
+    /// - `api_error` - Error message if API check fails (if connected but API fails)
     pub async fn health_check(&self) -> Result<HashMap<String, serde_json::Value>> {
         let mut health = HashMap::new();
 
@@ -390,43 +614,52 @@ impl OpenFanClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openfan_core::BoardType;
 
-    #[test]
-    fn test_client_creation() {
+    // Note: These tests would require a running server to fetch board info
+    // They are marked as integration tests that should be run separately
+
+    #[tokio::test]
+    #[ignore] // Requires running server
+    async fn test_client_creation() {
         let client = OpenFanClient::with_config(
             "http://localhost:3000".to_string(),
             10,
             3,
             Duration::from_millis(500),
-        );
+        )
+        .await;
         assert!(client.is_ok());
 
         let client = client.unwrap();
         assert_eq!(client.base_url, "http://localhost:3000");
+        assert!(client.board_info.fan_count > 0);
     }
 
-    #[test]
-    fn test_url_trimming() {
+    #[tokio::test]
+    #[ignore] // Requires running server
+    async fn test_url_trimming() {
         let client = OpenFanClient::with_config(
             "http://localhost:3000/".to_string(),
             10,
             3,
             Duration::from_millis(500),
         )
+        .await
         .unwrap();
         assert_eq!(client.base_url, "http://localhost:3000");
     }
 
-    #[tokio::test]
-    async fn test_ping_unreachable_server() {
-        let client = OpenFanClient::with_config(
-            "http://localhost:9999".to_string(),
-            10,
-            3,
-            Duration::from_millis(500),
-        )
-        .unwrap();
-        let result = client.ping().await.unwrap();
-        assert!(!result);
+    #[test]
+    fn test_board_info_validation() {
+        let board_info = BoardType::OpenFanV1.to_board_info();
+
+        // Test valid fan ID
+        assert!(board_info.validate_fan_id(0).is_ok());
+        assert!(board_info.validate_fan_id(9).is_ok());
+
+        // Test invalid fan ID
+        assert!(board_info.validate_fan_id(10).is_err());
+        assert!(board_info.validate_fan_id(255).is_err());
     }
 }

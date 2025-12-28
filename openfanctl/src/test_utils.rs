@@ -14,6 +14,7 @@ use openfan_core::api::{
     AliasResponse, ApiResponse, FanStatusResponse, InfoResponse, ProfileResponse,
 };
 use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::{BoardConfig, DefaultBoard};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -43,9 +44,9 @@ impl Default for MockServerState {
         let mut aliases = HashMap::new();
 
         // Initialize with default values
-        for i in 0..10 {
-            rpms.insert(i.to_string(), 1200 + i as u32 * 100);
-            pwms.insert(i.to_string(), 50 + i as u32 * 5);
+        for i in 0..DefaultBoard::FAN_COUNT as u32 {
+            rpms.insert(i.to_string(), 1200 + i * 100);
+            pwms.insert(i.to_string(), 50 + i * 5);
             aliases.insert(i.to_string(), format!("Fan #{}", i + 1));
         }
 
@@ -53,26 +54,28 @@ impl Default for MockServerState {
             "50% PWM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![50; 10],
+                values: vec![50; DefaultBoard::FAN_COUNT],
             },
         );
         profiles.insert(
             "100% PWM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![100; 10],
+                values: vec![100; DefaultBoard::FAN_COUNT],
             },
         );
         profiles.insert(
             "1000 RPM".to_string(),
             FanProfile {
                 control_mode: ControlMode::Rpm,
-                values: vec![1000; 10],
+                values: vec![1000; DefaultBoard::FAN_COUNT],
             },
         );
 
+        let board_info = openfan_core::BoardType::OpenFanV1.to_board_info();
         let info = InfoResponse {
             version: "1.0.0-test".to_string(),
+            board_info,
             hardware_connected: true,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0-test\r\nBuild: test".to_string(),

@@ -72,7 +72,17 @@ pub fn format_fan_status(status: &FanStatusResponse, format: &OutputFormat) -> R
             }
 
             let mut rows = Vec::new();
-            for fan_id in 0..10 {
+            // Collect all fan IDs from both rpms and pwms maps
+            let mut fan_ids: Vec<u8> = status
+                .rpms
+                .keys()
+                .chain(status.pwms.keys())
+                .copied()
+                .collect();
+            fan_ids.sort_unstable();
+            fan_ids.dedup();
+
+            for fan_id in fan_ids {
                 let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
                 let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
 
@@ -146,7 +156,11 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
             }
 
             let mut rows = Vec::new();
-            for fan_id in 0..10 {
+            // Get all fan IDs from the aliases map and sort them
+            let mut fan_ids: Vec<&u8> = aliases.aliases.keys().collect();
+            fan_ids.sort_unstable();
+
+            for &&fan_id in &fan_ids {
                 let alias = aliases
                     .aliases
                     .get(&fan_id)
@@ -173,7 +187,10 @@ pub fn format_success(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openfan_core::types::{ControlMode, FanProfile};
+    use openfan_core::{
+        types::{ControlMode, FanProfile},
+        BoardConfig, DefaultBoard,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -185,8 +202,10 @@ mod tests {
 
     #[test]
     fn test_format_info_json() {
+        let board_info = openfan_core::BoardType::OpenFanV1.to_board_info();
         let info = InfoResponse {
             version: "1.0.0".to_string(),
+            board_info,
             hardware_connected: true,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0".to_string(),
@@ -226,7 +245,7 @@ mod tests {
             "Test Profile".to_string(),
             FanProfile {
                 control_mode: ControlMode::Pwm,
-                values: vec![50; 10],
+                values: vec![50; DefaultBoard::FAN_COUNT],
             },
         );
 

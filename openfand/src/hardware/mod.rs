@@ -4,27 +4,28 @@
 //! consumers of `openfand` can access the hardware APIs without
 //! depending on the internal module layout.
 
-pub use openfan_hardware::FanController;
-pub use openfan_hardware::{find_fan_controller, SerialDriver};
+pub use openfan_hardware::{
+    detect_board_from_usb, find_fan_controller, FanController, SerialDriver,
+};
 
 /// Hardware initialization and connection utilities
 pub mod connection {
     use super::*;
-    use openfan_core::{OpenFanError, Result};
+    use openfan_core::{DefaultBoard, OpenFanError, Result};
     use std::env;
     use tracing::{debug, info, warn};
 
     /// Initialize hardware connection with automatic device detection
     ///
     /// Tries multiple methods to find and connect to the fan controller:
-    /// 1. Search by VID/PID (0x2E8A:0x000A)
+    /// 1. Search by board VID/PID (auto-detected)
     /// 2. Use OPENFAN_COMPORT environment variable
     /// 3. Try common device paths
     pub async fn auto_connect(timeout_ms: u64, debug_uart: bool) -> Result<FanController> {
         info!("Initializing hardware connection...");
 
         // Method 1: Auto-detect by VID/PID
-        match find_fan_controller() {
+        match find_fan_controller::<DefaultBoard>() {
             Ok(port_path) => {
                 info!("Found fan controller at: {}", port_path);
                 match SerialDriver::new(&port_path, timeout_ms, debug_uart) {
@@ -74,8 +75,8 @@ pub mod connection {
                     info!("Successfully connected to {}", path);
                     return Ok(FanController::new(driver));
                 }
-                Err(_) => {
-                    // Expected to fail for most paths
+                Err(e) => {
+                    debug!("Failed to connect to {}: {}", path, e);
                     continue;
                 }
             }
@@ -85,10 +86,10 @@ pub mod connection {
     }
 
     /// Test hardware connection by getting firmware info
-    pub async fn test_connection(commander: &mut FanController) -> Result<()> {
+    pub async fn test_connection(controller: &mut FanController) -> Result<()> {
         info!("Testing hardware connection...");
 
-        match commander.get_fw_info().await {
+        match controller.get_fw_info().await {
             Ok(fw_info) => {
                 info!("Hardware test successful. Firmware: {}", fw_info);
                 Ok(())

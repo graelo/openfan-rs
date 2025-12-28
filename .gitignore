@@ -3,3 +3,6 @@ target/
 
 AGENTS.md
 memory-bank/
+.claude/
+.opencode/
+.mcp.json

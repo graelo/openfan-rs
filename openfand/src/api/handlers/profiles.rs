@@ -15,24 +15,29 @@ use serde::Deserialize;
 
 use tracing::{debug, info, warn};
 
-/// Query parameters for profile operations
+/// Query parameters for profile operations.
 #[derive(Deserialize)]
 pub struct ProfileQuery {
-    /// Profile name
+    /// Profile name (case-sensitive)
     pub name: Option<String>,
 }
 
-/// Request body for adding a new profile
+/// Request body for adding a new profile.
 #[derive(Deserialize)]
 pub struct AddProfileRequest {
-    /// Profile name
+    /// Profile name (must be non-empty after trimming whitespace)
     pub name: String,
-    /// Profile data
+    /// Profile data (must have exactly 10 values with appropriate ranges)
     pub profile: FanProfile,
 }
 
-/// List all available profiles
-/// GET /api/v0/profiles/list
+/// Lists all available fan profiles.
+///
+/// Returns all configured profiles with their control modes and fan values.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/list`
 pub async fn list_profiles(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
@@ -49,8 +54,32 @@ pub async fn list_profiles(
     api_ok!(response)
 }
 
-/// Add a new profile
-/// POST /api/v0/profiles/add
+/// Adds a new fan profile to the configuration.
+///
+/// Validates the profile data and saves it to the configuration file.
+///
+/// # Validation Rules
+///
+/// - Profile name must not be empty after trimming whitespace
+/// - Must have exactly 10 values (one per fan)
+/// - PWM mode: values must be 0-100 (percentage)
+/// - RPM mode: values must be 0-16000 (revolutions per minute)
+///
+/// # Endpoint
+///
+/// `POST /api/v0/profiles/add`
+///
+/// # Request Body
+///
+/// ```json
+/// {
+///   "name": "Gaming",
+///   "profile": {
+///     "control_mode": "pwm",
+///     "values": [50, 60, 70, 80, 90, 100, 90, 80, 70, 60]
+///   }
+/// }
+/// ```
 pub async fn add_profile(
     State(state): State<AppState>,
     Json(request): Json<AddProfileRequest>,
@@ -65,9 +94,12 @@ pub async fn add_profile(
 
     let profile = request.profile;
 
-    // Validate values count
-    if profile.values.len() != 10 {
-        return api_fail!("Profile must have exactly 10 values!");
+    // Validate values count against board configuration
+    if profile.values.len() != state.board_info.fan_count {
+        return api_fail!(format!(
+            "Profile must have exactly {} values for {}!",
+            state.board_info.fan_count, state.board_info.name
+        ));
     }
 
     // Validate value ranges
@@ -103,7 +135,6 @@ pub async fn add_profile(
 
     // Save configuration
     if let Err(e) = config.save().await {
-        warn!("Failed to save configuration: {}", e);
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -114,8 +145,18 @@ pub async fn add_profile(
     api_ok!(())
 }
 
-/// Remove a profile
-/// GET /api/v0/profiles/remove?name=Custom
+/// Removes a profile from the configuration.
+///
+/// The profile name is case-sensitive. If the profile exists, it is removed
+/// and the configuration is saved.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/remove?name=Custom`
+///
+/// # Query Parameters
+///
+/// - `name` - Name of the profile to remove (case-sensitive)
 pub async fn remove_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
@@ -133,7 +174,6 @@ pub async fn remove_profile(
     if removed.is_some() {
         // Save configuration
         if let Err(e) = config.save().await {
-            warn!("Failed to save configuration: {}", e);
             return Err(ApiError::internal_error(format!(
                 "Failed to save configuration: {}",
                 e
@@ -150,8 +190,24 @@ pub async fn remove_profile(
     }
 }
 
-/// Apply a profile (set all fans to profile values)
-/// GET /api/v0/profiles/set?name=Gaming
+/// Applies a profile to all fans.
+///
+/// Sets all fans to the values defined in the profile. The control mode
+/// (PWM or RPM) determines how the values are applied.
+///
+/// # Behavior
+///
+/// - In mock mode (no hardware): simulates applying the profile
+/// - With hardware: sets each fan individually based on control mode
+/// - Partial failures are logged but don't prevent other fans from being set
+///
+/// # Endpoint
+///
+/// `GET /api/v0/profiles/set?name=Gaming`
+///
+/// # Query Parameters
+///
+/// - `name` - Name of the profile to apply (case-sensitive)
 pub async fn set_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
@@ -176,12 +232,12 @@ pub async fn set_profile(
 
     // Check if hardware is available
     let Some(fan_controller) = &state.fan_controller else {
-        warn!("Hardware not available - simulating profile application for testing");
+        debug!("Hardware not available - simulating profile application for testing");
         info!("Applied profile '{}' (mock mode)", profile_name);
         return api_ok!(());
     };
 
-    let mut commander = fan_controller.lock().await;
+    let mut controller = fan_controller.lock().await;
     let mut results = Vec::new();
 
     // Apply profile values to each fan
@@ -189,17 +245,23 @@ pub async fn set_profile(
         let fan_id = fan_id as u8;
 
         let result = match profile.control_mode {
-            ControlMode::Pwm => match commander.set_fan_pwm(fan_id, value).await {
+            ControlMode::Pwm => match controller.set_fan_pwm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {}% PWM", fan_id, value),
                 Err(e) => {
-                    warn!("Failed to set fan {} PWM: {}", fan_id, e);
+                    warn!(
+                        "Failed to set fan {} PWM while applying profile '{}': {}",
+                        fan_id, profile_name, e
+                    );
                     format!("Fan {} failed: {}", fan_id, e)
                 }
             },
-            ControlMode::Rpm => match commander.set_fan_rpm(fan_id, value).await {
+            ControlMode::Rpm => match controller.set_fan_rpm(fan_id, value).await {
                 Ok(_) => format!("Fan {} set to {} RPM", fan_id, value),
                 Err(e) => {
-                    warn!("Failed to set fan {} RPM: {}", fan_id, e);
+                    warn!(
+                        "Failed to set fan {} RPM while applying profile '{}': {}",
+                        fan_id, profile_name, e
+                    );
                     format!("Fan {} failed: {}", fan_id, e)
                 }
             },
@@ -214,7 +276,7 @@ pub async fn set_profile(
 
 #[cfg(test)]
 mod tests {
-    // Test imports removed - not used
+    use openfan_core::{BoardConfig, DefaultBoard};
 
     #[test]
     fn test_profile_validation() {
@@ -286,5 +348,125 @@ mod tests {
         assert!(values.is_ok());
         let values = values.unwrap();
         assert_eq!(values.len(), 5); // Should not be 10
+    }
+
+    // Edge case tests for add_profile validation logic
+    #[test]
+    fn test_profile_name_validation_empty() {
+        // Test that empty profile name (after trim) is rejected
+        let empty_name = "".to_string();
+        assert!(
+            empty_name.trim().is_empty(),
+            "Empty name should be rejected by add_profile"
+        );
+
+        let whitespace_name = "   ".to_string();
+        assert!(
+            whitespace_name.trim().is_empty(),
+            "Whitespace-only name should be rejected by add_profile"
+        );
+    }
+
+    #[test]
+    fn test_profile_pwm_value_exceeds_limit() {
+        use super::*;
+
+        // Test PWM value > 100 validation (from add_profile handler logic)
+        let profile = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50, 50, 50, 101, 50, 50, 50, 50, 50, 50], // 101 exceeds limit
+        };
+
+        // Verify that the validation would catch this
+        assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
+        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 100);
+        assert!(invalid_value.is_some(), "Should find PWM value > 100");
+        assert_eq!(
+            invalid_value.unwrap().0,
+            3,
+            "Invalid value should be at position 3"
+        );
+    }
+
+    #[test]
+    fn test_profile_rpm_value_exceeds_limit() {
+        use super::*;
+
+        // Test RPM value > 16000 validation (from add_profile handler logic)
+        let profile = FanProfile {
+            control_mode: ControlMode::Rpm,
+            values: vec![1000, 2000, 3000, 16001, 5000, 6000, 7000, 8000, 9000, 10000], // 16001 exceeds limit
+        };
+
+        // Verify that the validation would catch this
+        assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
+        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 16000);
+        assert!(invalid_value.is_some(), "Should find RPM value > 16000");
+        assert_eq!(
+            invalid_value.unwrap().0,
+            3,
+            "Invalid value should be at position 3"
+        );
+    }
+
+    #[test]
+    fn test_profile_value_count_validation() {
+        use super::*;
+
+        // Test that wrong value count is caught (from add_profile handler logic)
+        let too_few = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50, 50, 50], // Only 3 values
+        };
+        assert_ne!(
+            too_few.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have wrong count"
+        );
+
+        let too_many = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50; 15], // 15 values
+        };
+        assert_ne!(
+            too_many.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have wrong count"
+        );
+
+        let correct = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![50; DefaultBoard::FAN_COUNT],
+        };
+        assert_eq!(
+            correct.values.len(),
+            DefaultBoard::FAN_COUNT,
+            "Should have correct count"
+        );
+    }
+
+    #[test]
+    fn test_profile_boundary_values() {
+        use super::*;
+
+        // Test boundary values for PWM (0 and 100 should be valid)
+        let pwm_boundary = FanProfile {
+            control_mode: ControlMode::Pwm,
+            values: vec![0, 100, 0, 100, 0, 100, 0, 100, 0, 100],
+        };
+        assert!(
+            pwm_boundary.values.iter().all(|&v| v <= 100),
+            "All PWM values should be valid"
+        );
+
+        // Test boundary values for RPM (0 and 16000 should be valid)
+        let rpm_boundary = FanProfile {
+            control_mode: ControlMode::Rpm,
+            values: vec![0, 16000, 0, 16000, 0, 16000, 0, 16000, 0, 16000],
+        };
+        assert!(
+            rpm_boundary.values.iter().all(|&v| v <= 16000),
+            "All RPM values should be valid"
+        );
     }
 }

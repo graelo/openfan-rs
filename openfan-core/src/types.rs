@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Maximum number of fans supported
-pub const MAX_FANS: usize = 10;
+// Import MAX_FANS from hardware abstraction layer
+use crate::hardware::MAX_FANS;
 
 /// Fan control mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_fan_profile_validation() {
-        let profile = FanProfile::new(ControlMode::Pwm, vec![50; 10]);
+        let profile = FanProfile::new(ControlMode::Pwm, vec![50; MAX_FANS]);
         assert!(profile.validate().is_ok());
 
         let invalid_profile = FanProfile::new(ControlMode::Pwm, vec![50; 5]);
@@ -311,7 +311,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.fan_profiles.len(), 3);
-        assert_eq!(config.fan_aliases.len(), 10);
+        assert_eq!(config.fan_aliases.len(), MAX_FANS);
         assert_eq!(config.server.port, 3000);
     }
 
@@ -333,5 +333,200 @@ mod tests {
 
         let json = serde_json::to_string(&ControlMode::Rpm).unwrap();
         assert_eq!(json, r#""rpm""#);
+    }
+
+    // Edge case tests for FanProfile validation
+    #[test]
+    fn test_fan_profile_empty_values() {
+        let profile = FanProfile::new(ControlMode::Pwm, vec![]);
+        assert!(
+            profile.validate().is_err(),
+            "Profile with empty values should fail validation"
+        );
+    }
+
+    #[test]
+    fn test_fan_profile_too_many_values() {
+        let profile = FanProfile::new(ControlMode::Pwm, vec![50; MAX_FANS + 5]);
+        assert!(
+            profile.validate().is_err(),
+            "Profile with too many values should fail validation"
+        );
+    }
+
+    #[test]
+    fn test_fan_profile_one_less_value() {
+        let profile = FanProfile::new(ControlMode::Pwm, vec![50; MAX_FANS - 1]);
+        assert!(
+            profile.validate().is_err(),
+            "Profile with one less value should fail validation"
+        );
+    }
+
+    // Edge case tests for alias deserialization
+    #[test]
+    fn test_alias_deserialization_overflow_u8() {
+        let yaml = r#"
+fan_aliases:
+  256: "Fan 256"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(
+            result.is_err(),
+            "Alias with fan_id > 255 should fail deserialization"
+        );
+    }
+
+    #[test]
+    fn test_alias_deserialization_negative() {
+        let yaml = r#"
+fan_aliases:
+  "-1": "Fan -1"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(
+            result.is_err(),
+            "Alias with negative fan_id should fail deserialization"
+        );
+    }
+
+    #[test]
+    fn test_alias_deserialization_non_numeric_string() {
+        let yaml = r#"
+fan_aliases:
+  "abc": "Invalid Fan"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(
+            result.is_err(),
+            "Alias with non-numeric string key should fail deserialization"
+        );
+    }
+
+    #[test]
+    fn test_alias_deserialization_float_string() {
+        let yaml = r#"
+fan_aliases:
+  "12.5": "Float Fan"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(
+            result.is_err(),
+            "Alias with float string key should fail deserialization"
+        );
+    }
+
+    #[test]
+    fn test_alias_deserialization_valid_string_key() {
+        let yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases:
+  "5": "Fan Five"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.fan_aliases.get(&5), Some(&"Fan Five".to_string()));
+    }
+
+    #[test]
+    fn test_alias_deserialization_mixed_keys() {
+        let yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases:
+  0: "Fan Zero"
+  "1": "Fan One"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.fan_aliases.get(&0), Some(&"Fan Zero".to_string()));
+        assert_eq!(config.fan_aliases.get(&1), Some(&"Fan One".to_string()));
+    }
+
+    // Edge case tests for Config deserialization
+    #[test]
+    fn test_config_missing_fan_profiles() {
+        let yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_aliases:
+  0: "Fan #1"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(
+            result.is_err(),
+            "Config missing fan_profiles field should fail"
+        );
+    }
+
+    #[test]
+    fn test_config_missing_server_section() {
+        let yaml = r#"
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases:
+  0: "Fan #1"
+"#;
+        let result: Result<Config, _> = serde_yaml::from_str(yaml);
+        assert!(result.is_err(), "Config missing server section should fail");
+    }
+
+    #[test]
+    fn test_config_empty_fan_profiles() {
+        let yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases:
+  0: "Fan #1"
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.fan_profiles.len(), 0);
+    }
+
+    #[test]
+    fn test_config_empty_fan_aliases() {
+        let yaml = r#"
+server:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+hardware:
+  hostname: localhost
+  port: 3000
+  communication_timeout: 1
+fan_profiles: {}
+fan_aliases: {}
+"#;
+        let config: Config = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(config.fan_aliases.len(), 0);
     }
 }

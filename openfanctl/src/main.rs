@@ -213,33 +213,49 @@ enum ConfigCommands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Load and merge configuration
-    let config = if cli.no_config {
-        CliConfig::default()
-    } else {
-        match CliConfig::load() {
-            Ok(mut config) => {
-                // Apply environment variable overrides
-                config.apply_env_overrides();
-                config
+    // Build configuration using priority chain: defaults → file → env → CLI args
+    let mut builder = CliConfig::builder();
+
+    // Load config file (unless --no-config is specified)
+    builder = builder.with_config_file(!cli.no_config)?;
+
+    // Apply environment variable overrides
+    builder = builder.with_env_overrides();
+
+    // Apply CLI argument overrides (highest priority)
+    if let Some(ref server) = cli.server {
+        builder = builder.with_server_url(server)?;
+    }
+    if let Some(ref format) = cli.format {
+        let format_str = match format {
+            OutputFormat::Table => "table",
+            OutputFormat::Json => "json",
+        };
+        builder = builder.with_output_format(format_str)?;
+    }
+    if let Some(verbose) = cli.verbose {
+        builder = builder.with_verbose(verbose);
+    }
+
+    // Build final configuration with validation
+    let config = match builder.build() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Configuration error: {}", e);
+            if cli.verbose.unwrap_or(false) {
+                eprintln!("Error details: {:?}", e);
             }
-            Err(e) => {
-                if cli.verbose.unwrap_or(false) {
-                    eprintln!("Warning: Failed to load config file: {}", e);
-                    eprintln!("Using default configuration.");
-                }
-                CliConfig::default()
-            }
+            std::process::exit(1);
         }
     };
 
-    // Determine final settings (CLI args override config file)
-    let server_url = cli.server.unwrap_or_else(|| config.server_url.clone());
-    let output_format = cli.format.unwrap_or(match config.output_format.as_str() {
+    // Determine final settings from validated config
+    let server_url = &config.server_url;
+    let output_format = match config.output_format.as_str() {
         "json" => OutputFormat::Json,
         _ => OutputFormat::Table,
-    });
-    let verbose = cli.verbose.unwrap_or(config.verbose);
+    };
+    let verbose = config.verbose;
 
     // Initialize logging if verbose
     if verbose {
@@ -249,42 +265,35 @@ async fn main() -> Result<()> {
     }
 
     // Create HTTP client with config-based timeout
-    let client = OpenFanClient::with_config(
+    // This fetches board info from the server during initialization
+    if verbose {
+        eprintln!("Connecting to server and fetching board info...");
+    }
+
+    let client = match OpenFanClient::with_config(
         server_url.clone(),
         config.timeout,
         3,                                     // max_retries
         std::time::Duration::from_millis(500), // retry_delay
-    )?;
-
-    // Test connectivity with enhanced error reporting
-    if verbose {
-        eprintln!("Testing server connectivity...");
-    }
-
-    if !client.ping().await? {
-        eprintln!("Error: Cannot connect to OpenFAN server at {}", server_url);
-        eprintln!("Make sure the server is running and accessible.");
-
-        if verbose {
-            eprintln!("Attempting detailed health check...");
-            match client.health_check().await {
-                Ok(health) => {
-                    eprintln!(
-                        "Health check results: {}",
-                        serde_json::to_string_pretty(&health)?
-                    );
-                }
-                Err(e) => {
-                    eprintln!("Health check failed: {}", e);
-                }
-            }
+    )
+    .await
+    {
+        Ok(client) => client,
+        Err(e) => {
+            eprintln!("Error: Cannot connect to OpenFAN server at {}", server_url);
+            eprintln!("Make sure the server is running and accessible.");
+            eprintln!("Connection error: {}", e);
+            std::process::exit(1);
         }
-
-        std::process::exit(1);
-    }
+    };
 
     if verbose {
         eprintln!("Successfully connected to server");
+        eprintln!(
+            "Board: {} ({} fans)",
+            client.board_info().name,
+            client.board_info().fan_count
+        );
     }
 
     // Execute commands with proper error handling
@@ -360,15 +369,9 @@ async fn handle_fan_command(
 ) -> Result<()> {
     match command {
         FanCommands::Set { fan_id, pwm, rpm } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
-            }
-
+            // Validation is now handled by client methods using board info
             match (pwm, rpm) {
                 (Some(pwm), None) => {
-                    if pwm > 100 {
-                        return Err(anyhow::anyhow!("PWM must be between 0 and 100"));
-                    }
                     client.set_fan_pwm(fan_id, pwm).await?;
                     println!(
                         "{}",
@@ -388,10 +391,7 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Rpm { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
-            }
-
+            // Validation is handled by client method
             let rpm_response = client.get_fan_rpm(fan_id).await?;
 
             match format {
@@ -404,10 +404,7 @@ async fn handle_fan_command(
             }
         }
         FanCommands::Pwm { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
-            }
-
+            // Validation is handled by client method
             let status = client.get_fan_status_by_id(fan_id).await?;
             let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
 
@@ -458,11 +455,7 @@ async fn handle_profile_command(
                 values.split(',').map(|s| s.trim().parse::<u32>()).collect();
 
             let values_vec = values_vec?;
-            if values_vec.len() != 10 {
-                return Err(anyhow::anyhow!(
-                    "Must provide exactly 10 comma-separated values"
-                ));
-            }
+            // Validation of value count is handled by client method using board info
 
             let control_mode = match mode {
                 ProfileMode::Pwm => ControlMode::Pwm,
@@ -507,10 +500,7 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Get { fan_id } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
-            }
-
+            // Validation is handled by client method
             let alias_response = client.get_alias(fan_id).await?;
             let default_alias = format!("Fan #{}", fan_id);
             let alias = alias_response
@@ -532,10 +522,7 @@ async fn handle_alias_command(
             }
         }
         AliasCommands::Set { fan_id, name } => {
-            if fan_id > 9 {
-                return Err(anyhow::anyhow!("Fan ID must be between 0 and 9"));
-            }
-
+            // Validation is handled by client method
             client.set_alias(fan_id, &name).await?;
             println!(
                 "{}",
