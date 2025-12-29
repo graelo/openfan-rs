@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::hardware::MAX_FANS;
+use crate::board::MAX_FANS;
 
 /// Fan alias data stored in aliases.toml
 ///

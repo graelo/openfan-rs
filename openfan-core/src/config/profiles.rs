@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::hardware::MAX_FANS;
+use crate::board::MAX_FANS;
 use crate::types::{ControlMode, FanProfile};
 
 /// Fan profile data stored in profiles.toml

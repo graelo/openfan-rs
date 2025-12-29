@@ -4,16 +4,16 @@
 //! This crate is used by both the server and CLI components.
 
 pub mod api;
+pub mod board;
 pub mod config;
 pub mod error;
-pub mod hardware;
 pub mod types;
 
 // Re-export commonly used types
+pub use board::*;
 pub use config::{
     default_config_path, default_data_dir, parse_points, AliasData, CurvePoint, ProfileData,
     StaticConfig, ThermalCurve, ThermalCurveData, Zone, ZoneData,
 };
 pub use error::*;
-pub use hardware::*;
 pub use types::*;

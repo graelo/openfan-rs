@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// Import MAX_FANS from hardware abstraction layer
-use crate::hardware::MAX_FANS;
+// Import MAX_FANS from board definitions
+use crate::board::MAX_FANS;
 
 /// Fan control mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -529,7 +529,7 @@ mod tests {
                 "Custom".to_string(),
                 openfan_core::FanProfile::new(
                     openfan_core::ControlMode::Pwm,
-                    vec![42; openfan_core::hardware::MAX_FANS],
+                    vec![42; openfan_core::board::MAX_FANS],
                 ),
             );
         }
