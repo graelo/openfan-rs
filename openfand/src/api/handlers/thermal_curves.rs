@@ -19,7 +19,7 @@ use tracing::{debug, info};
 
 /// Query parameters for interpolation operation.
 #[derive(Deserialize)]
-pub struct InterpolateQuery {
+pub(crate) struct InterpolateQuery {
     /// Temperature in Celsius
     pub temp: f32,
 }
@@ -79,7 +79,7 @@ fn validate_points(points: &[CurvePoint]) -> Result<(), String> {
 /// # Endpoint
 ///
 /// `GET /api/v0/curves/list`
-pub async fn list_curves(
+pub(crate) async fn list_curves(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<ThermalCurveResponse>>, ApiError> {
     debug!("Request: GET /api/v0/curves/list");
@@ -98,7 +98,7 @@ pub async fn list_curves(
 /// # Endpoint
 ///
 /// `GET /api/v0/curve/:name/get`
-pub async fn get_curve(
+pub(crate) async fn get_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<ApiResponse<SingleCurveResponse>>, ApiError> {
@@ -146,7 +146,7 @@ pub async fn get_curve(
 ///   "description": "Custom thermal curve"
 /// }
 /// ```
-pub async fn add_curve(
+pub(crate) async fn add_curve(
     State(state): State<AppState>,
     Json(request): Json<AddCurveRequest>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -214,7 +214,7 @@ pub async fn add_curve(
 ///   "description": "Updated description"
 /// }
 /// ```
-pub async fn update_curve(
+pub(crate) async fn update_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Json(request): Json<UpdateCurveRequest>,
@@ -271,7 +271,7 @@ pub async fn update_curve(
 /// # Endpoint
 ///
 /// `DELETE /api/v0/curve/:name`
-pub async fn delete_curve(
+pub(crate) async fn delete_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -306,7 +306,7 @@ pub async fn delete_curve(
 /// # Endpoint
 ///
 /// `GET /api/v0/curve/:name/interpolate?temp=X`
-pub async fn interpolate_curve(
+pub(crate) async fn interpolate_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(params): Query<InterpolateQuery>,

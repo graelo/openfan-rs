@@ -15,4 +15,4 @@
 
 mod runtime_config;
 
-pub use runtime_config::RuntimeConfig;
+pub(crate) use runtime_config::RuntimeConfig;

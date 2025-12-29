@@ -16,7 +16,7 @@ use tracing::{debug, info, warn};
 
 /// Query parameters for zone apply operation.
 #[derive(Deserialize)]
-pub struct ApplyZoneQuery {
+pub(crate) struct ApplyZoneQuery {
     /// Control mode: "pwm" or "rpm"
     pub mode: String,
     /// Control value (0-100 for PWM, 0-16000 for RPM)
@@ -38,7 +38,7 @@ fn is_valid_zone_name(name: &str) -> bool {
 /// # Endpoint
 ///
 /// `GET /api/v0/zones/list`
-pub async fn list_zones(
+pub(crate) async fn list_zones(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<ZoneResponse>>, ApiError> {
     debug!("Request: GET /api/v0/zones/list");
@@ -57,7 +57,7 @@ pub async fn list_zones(
 /// # Endpoint
 ///
 /// `GET /api/v0/zone/:name/get`
-pub async fn get_zone(
+pub(crate) async fn get_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<ApiResponse<SingleZoneResponse>>, ApiError> {
@@ -100,7 +100,7 @@ pub async fn get_zone(
 ///   "description": "Front intake fans"
 /// }
 /// ```
-pub async fn add_zone(
+pub(crate) async fn add_zone(
     State(state): State<AppState>,
     Json(request): Json<AddZoneRequest>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -190,7 +190,7 @@ pub async fn add_zone(
 ///   "description": "Updated description"
 /// }
 /// ```
-pub async fn update_zone(
+pub(crate) async fn update_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Json(request): Json<UpdateZoneRequest>,
@@ -263,7 +263,7 @@ pub async fn update_zone(
 /// # Endpoint
 ///
 /// `GET /api/v0/zone/:name/delete`
-pub async fn delete_zone(
+pub(crate) async fn delete_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -304,7 +304,7 @@ pub async fn delete_zone(
 ///
 /// - `mode` - Control mode: "pwm" or "rpm"
 /// - `value` - Control value (0-100 for PWM, 0-16000 for RPM)
-pub async fn apply_zone(
+pub(crate) async fn apply_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(params): Query<ApplyZoneQuery>,

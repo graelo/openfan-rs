@@ -15,7 +15,7 @@ use tracing::debug;
 
 /// Query parameters for fan control endpoints.
 #[derive(Deserialize)]
-pub struct FanControlQuery {
+pub(crate) struct FanControlQuery {
     /// Value to set - PWM percentage (0-100) or RPM (0-16000)
     pub value: Option<f64>,
 }
@@ -36,7 +36,7 @@ pub struct FanControlQuery {
 /// # Endpoint
 ///
 /// `GET /api/v0/fan/status`
-pub async fn get_status(
+pub(crate) async fn get_status(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<FanStatusResponse>>, ApiError> {
     debug!("Request: GET /api/v0/fan/status");
@@ -93,7 +93,7 @@ pub async fn get_status(
 /// # Query Parameters
 ///
 /// - `value` - PWM percentage (0-100, automatically clamped)
-pub async fn set_all_fans(
+pub(crate) async fn set_all_fans(
     State(state): State<AppState>,
     Query(params): Query<FanControlQuery>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -144,7 +144,7 @@ pub async fn set_all_fans(
 /// # Query Parameters
 ///
 /// - `value` - PWM percentage (0-100, automatically clamped)
-pub async fn set_fan_pwm(
+pub(crate) async fn set_fan_pwm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<FanControlQuery>,
@@ -209,7 +209,7 @@ pub async fn set_fan_pwm(
 /// # Path Parameters
 ///
 /// - `id` - Fan identifier (0-9)
-pub async fn get_fan_rpm(
+pub(crate) async fn get_fan_rpm(
     Path(fan_id): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<u32>>, ApiError> {
@@ -266,7 +266,7 @@ pub async fn get_fan_rpm(
 /// # Query Parameters
 ///
 /// - `value` - Target RPM (0-16000, with automatic clamping)
-pub async fn set_fan_rpm(
+pub(crate) async fn set_fan_rpm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<FanControlQuery>,

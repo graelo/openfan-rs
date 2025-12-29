@@ -20,7 +20,7 @@ use tracing::{debug, warn};
 /// # Returns
 ///
 /// Return service name, version, and status.
-pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
+pub(crate) async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
     debug!("Request: GET /");
 
     let data = json!({
@@ -54,7 +54,7 @@ pub async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
 ///
 /// - If hardware is not connected, hardware and firmware fields are None
 /// - Hardware/firmware queries are logged but failures don't cause errors
-pub async fn get_info(
+pub(crate) async fn get_info(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<InfoResponse>>, ApiError> {
     debug!("Request: GET /api/v0/info");

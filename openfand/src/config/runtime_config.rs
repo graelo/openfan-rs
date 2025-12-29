@@ -16,7 +16,7 @@ use tracing::{debug, info, warn};
 ///
 /// Static config is read once at startup and remains immutable.
 /// Mutable data (aliases, profiles, zones, thermal curves) can be modified via API and saved independently.
-pub struct RuntimeConfig {
+pub(crate) struct RuntimeConfig {
     /// Static configuration (immutable after load)
     static_config: StaticConfig,
 

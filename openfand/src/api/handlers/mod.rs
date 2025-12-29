@@ -24,12 +24,12 @@
 //! When hardware is not available (`state.fan_controller` is `None`),
 //! handlers return simulated data for testing and development purposes.
 
-pub mod aliases;
-pub mod fans;
-pub mod info;
-pub mod profiles;
-pub mod thermal_curves;
-pub mod zones;
+pub(crate) mod aliases;
+pub(crate) mod fans;
+pub(crate) mod info;
+pub(crate) mod profiles;
+pub(crate) mod thermal_curves;
+pub(crate) mod zones;
 
 // Re-export handler functions for easier access
 // Re-exports removed - handlers are used directly in routing

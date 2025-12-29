@@ -14,7 +14,7 @@ use tracing::{debug, info};
 
 /// Query parameters for alias operations.
 #[derive(Deserialize)]
-pub struct AliasQuery {
+pub(crate) struct AliasQuery {
     /// Alias value to set (must contain only allowed characters)
     pub value: Option<String>,
 }
@@ -27,7 +27,7 @@ pub struct AliasQuery {
 /// # Endpoint
 ///
 /// `GET /api/v0/alias/all/get`
-pub async fn get_all_aliases(
+pub(crate) async fn get_all_aliases(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
     debug!("Request: GET /api/v0/alias/all/get");
@@ -52,7 +52,7 @@ pub async fn get_all_aliases(
 /// # Path Parameters
 ///
 /// - `id` - Fan identifier (0-9)
-pub async fn get_alias(
+pub(crate) async fn get_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
@@ -105,7 +105,7 @@ pub async fn get_alias(
 /// # Query Parameters
 ///
 /// - `value` - Alias to set (must match allowed character set)
-pub async fn set_alias(
+pub(crate) async fn set_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<AliasQuery>,
@@ -160,7 +160,7 @@ pub async fn set_alias(
 /// # Path Parameters
 ///
 /// - `id` - Fan identifier (0-9)
-pub async fn delete_alias(
+pub(crate) async fn delete_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {

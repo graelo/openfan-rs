@@ -17,14 +17,14 @@ use tracing::{debug, info, warn};
 
 /// Query parameters for profile operations.
 #[derive(Deserialize)]
-pub struct ProfileQuery {
+pub(crate) struct ProfileQuery {
     /// Profile name (case-sensitive)
     pub name: Option<String>,
 }
 
 /// Request body for adding a new profile.
 #[derive(Deserialize)]
-pub struct AddProfileRequest {
+pub(crate) struct AddProfileRequest {
     /// Profile name (must be non-empty after trimming whitespace)
     pub name: String,
     /// Profile data (must have exactly 10 values with appropriate ranges)
@@ -38,7 +38,7 @@ pub struct AddProfileRequest {
 /// # Endpoint
 ///
 /// `GET /api/v0/profiles/list`
-pub async fn list_profiles(
+pub(crate) async fn list_profiles(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/list");
@@ -80,7 +80,7 @@ pub async fn list_profiles(
 ///   }
 /// }
 /// ```
-pub async fn add_profile(
+pub(crate) async fn add_profile(
     State(state): State<AppState>,
     Json(request): Json<AddProfileRequest>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -156,7 +156,7 @@ pub async fn add_profile(
 /// # Query Parameters
 ///
 /// - `name` - Name of the profile to remove (case-sensitive)
-pub async fn remove_profile(
+pub(crate) async fn remove_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {
@@ -209,7 +209,7 @@ pub async fn remove_profile(
 /// # Query Parameters
 ///
 /// - `name` - Name of the profile to apply (case-sensitive)
-pub async fn set_profile(
+pub(crate) async fn set_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
 ) -> Result<Json<ApiResponse<()>>, ApiError> {

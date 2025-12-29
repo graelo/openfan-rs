@@ -2,7 +2,7 @@
 //!
 //! Contains the REST API implementation with Axum router and handlers.
 
-pub mod handlers;
+pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
 use crate::hardware::FanController;
@@ -22,7 +22,7 @@ use tracing::info;
 
 /// Application state shared across all handlers
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     /// Runtime board information
     pub board_info: Arc<BoardInfo>,
     /// Runtime configuration (static config + mutable data)
@@ -50,7 +50,7 @@ impl AppState {
 }
 
 /// Create the main API router with all endpoints
-pub fn create_router(state: AppState) -> Router {
+pub(crate) fn create_router(state: AppState) -> Router {
     info!("Setting up API router...");
 
     let cors = CorsLayer::new()
@@ -143,7 +143,7 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 /// Error handling utilities
-pub mod error {
+pub(crate) mod error {
     use axum::{
         http::StatusCode,
         response::{IntoResponse, Response},
