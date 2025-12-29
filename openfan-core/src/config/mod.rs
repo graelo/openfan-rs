@@ -24,6 +24,6 @@ mod zones;
 pub use aliases::AliasData;
 pub use paths::{default_config_path, default_data_dir};
 pub use profiles::ProfileData;
-pub use static_config::StaticConfig;
+pub use static_config::{HardwareConfig, ServerConfig, StaticConfig};
 pub use thermal_curves::{parse_points, CurvePoint, ThermalCurve, ThermalCurveData};
 pub use zones::{Zone, ZoneData};

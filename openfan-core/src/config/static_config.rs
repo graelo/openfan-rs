@@ -6,7 +6,48 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use super::paths::default_data_dir;
-use crate::types::{HardwareConfig, ServerConfig};
+
+/// Server configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// Server hostname
+    pub hostname: String,
+    /// Server port
+    pub port: u16,
+    /// Communication timeout in seconds
+    pub communication_timeout: u64,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            hostname: "localhost".to_string(),
+            port: 3000,
+            communication_timeout: 1,
+        }
+    }
+}
+
+/// Hardware configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HardwareConfig {
+    /// Hardware hostname (for network-based hardware)
+    pub hostname: String,
+    /// Hardware port
+    pub port: u16,
+    /// Communication timeout in seconds
+    pub communication_timeout: u64,
+}
+
+impl Default for HardwareConfig {
+    fn default() -> Self {
+        Self {
+            hostname: "localhost".to_string(),
+            port: 3000,
+            communication_timeout: 1,
+        }
+    }
+}
 
 /// Static configuration for the OpenFAN daemon.
 ///
