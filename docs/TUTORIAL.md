@@ -176,6 +176,9 @@ openfanctl alias get 0
 # Set alias
 openfanctl alias set 0 "CPU Intake"
 openfanctl alias set 1 "GPU Exhaust"
+
+# Delete alias (reverts to default "Fan #N")
+openfanctl alias delete 0
 ```
 
 Aliases support alphanumeric characters, hyphens, underscores, dots, and spaces.
@@ -237,6 +240,7 @@ The server exposes a REST API on port 3000 (default).
 | `/api/v0/profiles/add` | POST | Add profile |
 | `/api/v0/alias/all/get` | GET | Get all aliases |
 | `/api/v0/alias/:id/set?value=X` | GET | Set alias |
+| `/api/v0/alias/:id` | DELETE | Delete alias (revert to default) |
 | `/api/v0/zones/list` | GET | List zones |
 | `/api/v0/zones/add` | POST | Add zone |
 | `/api/v0/zone/:name/apply?mode=pwm&value=N` | GET | Apply to zone |

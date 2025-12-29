@@ -226,6 +226,13 @@ pub async fn handle_alias(
                 format_success(&format!("Set alias for fan {} to: {}", fan_id, name))
             );
         }
+        AliasCommands::Delete { fan_id } => {
+            client.delete_alias(fan_id).await?;
+            println!(
+                "{}",
+                format_success(&format!("Deleted alias for fan {} (reverted to default)", fan_id))
+            );
+        }
     }
 
     Ok(())

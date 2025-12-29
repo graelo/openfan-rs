@@ -432,6 +432,24 @@ async fn test_e2e_alias_operations() -> Result<()> {
         list_output2
     );
 
+    // Test deleting an alias
+    let delete_output = harness
+        .run_cli_success(&["alias", "delete", "0"])
+        .await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("reverted"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify alias is reverted to default
+    let get_after_delete = harness.run_cli_success(&["alias", "get", "0"]).await?;
+    assert!(
+        get_after_delete.contains("Fan #1") || !get_after_delete.contains("CPU_Fan"),
+        "Should show default alias after delete: {}",
+        get_after_delete
+    );
+
     harness.stop_server().await?;
     Ok(())
 }

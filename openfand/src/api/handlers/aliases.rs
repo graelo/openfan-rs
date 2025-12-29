@@ -149,6 +149,49 @@ pub async fn set_alias(
     api_ok!(())
 }
 
+/// Delete the alias for a specific fan (reverts to default).
+///
+/// After deletion, the fan will display its default alias "Fan #N".
+///
+/// # Endpoint
+///
+/// `DELETE /api/v0/alias/:id`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
+pub async fn delete_alias(
+    State(state): State<AppState>,
+    Path(fan_id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    debug!("Request: GET /api/v0/alias/{}/delete", fan_id);
+
+    // Parse and validate fan ID
+    let fan_index = fan_id
+        .parse::<u8>()
+        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
+
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
+
+    // Remove alias from configuration
+    {
+        let mut aliases = state.config.aliases_mut().await;
+        aliases.remove(fan_index);
+    }
+
+    // Save configuration
+    if let Err(e) = state.config.save_aliases().await {
+        return Err(ApiError::internal_error(format!(
+            "Failed to save configuration: {}",
+            e
+        )));
+    }
+
+    info!("Deleted alias for fan {}", fan_index);
+    api_ok!(())
+}
+
 /// Validate alias string format.
 ///
 /// # Allowed Characters

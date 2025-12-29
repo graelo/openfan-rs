@@ -92,6 +92,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v0/alias/:id/get", get(handlers::aliases::get_alias))
         .route("/api/v0/alias/:id/set", get(handlers::aliases::set_alias))
+        .route(
+            "/api/v0/alias/:id",
+            axum::routing::delete(handlers::aliases::delete_alias),
+        )
         // Zone endpoints
         .route("/api/v0/zones/list", get(handlers::zones::list_zones))
         .route("/api/v0/zones/add", post(handlers::zones::add_zone))

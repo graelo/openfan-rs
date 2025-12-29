@@ -182,6 +182,12 @@ pub enum AliasCommands {
         /// Alias name
         name: String,
     },
+
+    /// Delete alias for a fan (reverts to default)
+    Delete {
+        /// Fan ID (0-9)
+        fan_id: u8,
+    },
 }
 
 #[derive(Subcommand, Debug)]

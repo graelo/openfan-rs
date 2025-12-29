@@ -526,6 +526,28 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
+    /// Delete the alias for a specific fan (reverts to default).
+    ///
+    /// After deletion, the fan will display its default alias "Fan #N".
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fan ID is invalid for this board type.
+    pub async fn delete_alias(&self, fan_id: u8) -> Result<()> {
+        self.board_info.validate_fan_id(fan_id)?;
+
+        let url = format!("{}/api/v0/alias/{}", self.base_url, fan_id);
+        let endpoint = &format!("alias/{}", fan_id);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
     // =========================================================================
     // Zone operations
     // =========================================================================

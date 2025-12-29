@@ -54,6 +54,13 @@ impl AliasData {
         self.aliases.insert(fan_id, alias);
     }
 
+    /// Remove alias for a fan ID (reverts to default).
+    ///
+    /// Returns `true` if an alias was removed, `false` if none existed.
+    pub fn remove(&mut self, fan_id: u8) -> bool {
+        self.aliases.remove(&fan_id).is_some()
+    }
+
     /// Parse AliasData from TOML string.
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
         toml::from_str(content)
@@ -153,5 +160,35 @@ mod tests {
         for (id, alias) in &original.aliases {
             assert_eq!(restored.aliases.get(id), Some(alias));
         }
+    }
+
+    #[test]
+    fn test_alias_remove() {
+        let mut data = AliasData::empty();
+        data.set(0, "CPU Intake".to_string());
+        data.set(1, "GPU Exhaust".to_string());
+
+        // Verify aliases are set
+        assert_eq!(data.aliases.get(&0), Some(&"CPU Intake".to_string()));
+        assert_eq!(data.aliases.get(&1), Some(&"GPU Exhaust".to_string()));
+
+        // Remove alias for fan 0
+        let removed = data.remove(0);
+        assert!(removed, "remove() should return true when alias existed");
+
+        // Verify alias is removed (get() returns default)
+        assert_eq!(data.aliases.get(&0), None);
+        assert_eq!(data.get(0), "Fan #1"); // Default
+
+        // Fan 1 should still have its alias
+        assert_eq!(data.aliases.get(&1), Some(&"GPU Exhaust".to_string()));
+
+        // Removing non-existent alias returns false
+        let removed_again = data.remove(0);
+        assert!(!removed_again, "remove() should return false when alias didn't exist");
+
+        // Removing never-set alias returns false
+        let removed_never_set = data.remove(5);
+        assert!(!removed_never_set, "remove() should return false for never-set alias");
     }
 }
