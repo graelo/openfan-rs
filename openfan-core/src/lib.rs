@@ -11,7 +11,8 @@ pub mod types;
 
 // Re-export commonly used types
 pub use config::{
-    default_config_path, default_data_dir, AliasData, ProfileData, StaticConfig, Zone, ZoneData,
+    default_config_path, default_data_dir, parse_points, AliasData, CurvePoint, ProfileData,
+    StaticConfig, ThermalCurve, ThermalCurveData, Zone, ZoneData,
 };
 pub use error::*;
 pub use hardware::*;

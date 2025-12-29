@@ -698,3 +698,147 @@ async fn test_e2e_profile_with_different_modes() -> Result<()> {
     harness.stop_server().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn test_e2e_thermal_curve_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing curves (should have defaults: Balanced, Silent, Aggressive)
+    let list_output = harness.run_cli_success(&["curve", "list"]).await?;
+    println!("Initial curves: {}", list_output);
+    assert!(
+        list_output.contains("Balanced") || list_output.contains("Silent"),
+        "Should contain default curves: {}",
+        list_output
+    );
+
+    // Test getting a specific curve
+    let get_output = harness.run_cli_success(&["curve", "get", "Balanced"]).await?;
+    assert!(
+        get_output.contains("Balanced") && get_output.contains("Points"),
+        "Should show curve details: {}",
+        get_output
+    );
+
+    // Test adding a new curve
+    let _add_output = harness
+        .run_cli_success(&[
+            "curve",
+            "add",
+            "TestCurve",
+            "--points",
+            "30:20,50:50,70:80,85:100",
+            "--description",
+            "Test curve for E2E",
+        ])
+        .await?;
+
+    // Test listing curves again (should show our new curve)
+    let list_output2 = harness.run_cli_success(&["curve", "list"]).await?;
+    assert!(
+        list_output2.contains("TestCurve"),
+        "Should contain the added curve: {}",
+        list_output2
+    );
+
+    // Test interpolating with the curve
+    let interp_output = harness
+        .run_cli_success(&["curve", "interpolate", "TestCurve", "--temp", "40.0"])
+        .await?;
+    assert!(
+        interp_output.contains("40") && interp_output.contains("PWM"),
+        "Should show interpolation result: {}",
+        interp_output
+    );
+
+    // Test JSON output for interpolation
+    let interp_json = harness
+        .run_cli_success(&["--format", "json", "curve", "interpolate", "TestCurve", "--temp", "60.0"])
+        .await?;
+    let interp_value: Value = serde_json::from_str(&interp_json)?;
+    assert!(
+        interp_value.get("temperature").is_some() && interp_value.get("pwm").is_some(),
+        "JSON should contain temperature and pwm: {}",
+        interp_json
+    );
+
+    // Test updating the curve
+    let _update_output = harness
+        .run_cli_success(&[
+            "curve",
+            "update",
+            "TestCurve",
+            "--points",
+            "25:15,45:45,65:75,80:100",
+        ])
+        .await?;
+
+    // Test getting the updated curve
+    let get_updated = harness.run_cli_success(&["curve", "get", "TestCurve"]).await?;
+    assert!(
+        get_updated.contains("25") || get_updated.contains("15"),
+        "Should show updated curve points: {}",
+        get_updated
+    );
+
+    // Test deleting the curve
+    let delete_output = harness
+        .run_cli_success(&["curve", "delete", "TestCurve"])
+        .await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("TestCurve"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify curve is deleted
+    let list_output3 = harness.run_cli_success(&["curve", "list"]).await?;
+    assert!(
+        !list_output3.contains("TestCurve"),
+        "Curve should be removed: {}",
+        list_output3
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_thermal_curve_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent curve
+    let error_output = harness
+        .run_cli_expect_failure(&["curve", "get", "NonExistentCurve"])
+        .await?;
+    assert!(
+        error_output.contains("not exist") || error_output.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output
+    );
+
+    // Test deleting non-existent curve
+    let error_output2 = harness
+        .run_cli_expect_failure(&["curve", "delete", "NonExistentCurve"])
+        .await?;
+    assert!(
+        error_output2.contains("not exist") || error_output2.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output2
+    );
+
+    // Test interpolating on non-existent curve
+    let error_output3 = harness
+        .run_cli_expect_failure(&["curve", "interpolate", "NonExistentCurve", "--temp", "50.0"])
+        .await?;
+    assert!(
+        error_output3.contains("not exist") || error_output3.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output3
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}

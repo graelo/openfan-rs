@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::parse_points;
 
 use crate::client::OpenFanClient;
 use crate::config::CliConfig;
@@ -333,6 +334,114 @@ pub async fn handle_zone(
                 }
                 _ => {
                     return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle curve commands
+pub async fn handle_curve(
+    client: &OpenFanClient,
+    command: CurveCommands,
+    format: &OutputFormat,
+) -> Result<()> {
+    match command {
+        CurveCommands::List => {
+            let curves = client.get_curves().await?;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&curves)?);
+                }
+                OutputFormat::Table => {
+                    if curves.curves.is_empty() {
+                        println!("No thermal curves configured.");
+                    } else {
+                        println!(
+                            "{:<20} {:<40} Description",
+                            "Name", "Points"
+                        );
+                        println!("{}", "-".repeat(80));
+                        for (name, curve) in &curves.curves {
+                            let points_str = curve
+                                .points
+                                .iter()
+                                .map(|p| format!("{}:{}", p.temp_c, p.pwm))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            let desc = curve.description.as_deref().unwrap_or("-");
+                            println!("{:<20} {:<40} {}", name, points_str, desc);
+                        }
+                    }
+                }
+            }
+        }
+        CurveCommands::Get { name } => {
+            let response = client.get_curve(&name).await?;
+            let curve = &response.curve;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&response)?);
+                }
+                OutputFormat::Table => {
+                    let points_str = curve
+                        .points
+                        .iter()
+                        .map(|p| format!("{}°C:{}%", p.temp_c, p.pwm))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    println!("Curve: {}", curve.name);
+                    println!("Points: {}", points_str);
+                    if let Some(desc) = &curve.description {
+                        println!("Description: {}", desc);
+                    }
+                }
+            }
+        }
+        CurveCommands::Add {
+            name,
+            points,
+            description,
+        } => {
+            let curve_points = parse_points(&points)
+                .map_err(|e| anyhow::anyhow!("Invalid points format: {}", e))?;
+
+            client.add_curve(&name, curve_points, description).await?;
+            println!("{}", format_success(&format!("Added curve: {}", name)));
+        }
+        CurveCommands::Update {
+            name,
+            points,
+            description,
+        } => {
+            let curve_points = parse_points(&points)
+                .map_err(|e| anyhow::anyhow!("Invalid points format: {}", e))?;
+
+            client
+                .update_curve(&name, curve_points, description)
+                .await?;
+            println!("{}", format_success(&format!("Updated curve: {}", name)));
+        }
+        CurveCommands::Delete { name } => {
+            client.delete_curve(&name).await?;
+            println!("{}", format_success(&format!("Deleted curve: {}", name)));
+        }
+        CurveCommands::Interpolate { name, temp } => {
+            let response = client.interpolate_curve(&name, temp).await?;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&response)?);
+                }
+                OutputFormat::Table => {
+                    println!(
+                        "Curve '{}' at {}°C = {}% PWM",
+                        name, response.temperature, response.pwm
+                    );
                 }
             }
         }

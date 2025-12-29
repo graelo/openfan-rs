@@ -9,6 +9,7 @@
 //! - [`profiles`] - Fan profile management (CRUD operations)
 //! - [`aliases`] - Fan alias management
 //! - [`zones`] - Zone management for grouped fan control
+//! - [`thermal_curves`] - Thermal curve management for temperature-based PWM control
 //!
 //! # API Structure
 //!
@@ -27,6 +28,7 @@ pub mod aliases;
 pub mod fans;
 pub mod info;
 pub mod profiles;
+pub mod thermal_curves;
 pub mod zones;
 
 // Re-export handler functions for easier access

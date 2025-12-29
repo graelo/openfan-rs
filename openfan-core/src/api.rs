@@ -161,6 +161,51 @@ pub struct UpdateZoneRequest {
     pub description: Option<String>,
 }
 
+/// Thermal curve response containing all curves
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThermalCurveResponse {
+    /// Map of curve name to curve data
+    pub curves: std::collections::HashMap<String, crate::ThermalCurve>,
+}
+
+/// Single thermal curve response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleCurveResponse {
+    /// Curve data
+    pub curve: crate::ThermalCurve,
+}
+
+/// Thermal curve addition request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddCurveRequest {
+    /// Curve name
+    pub name: String,
+    /// Curve points
+    pub points: Vec<crate::CurvePoint>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Thermal curve update request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCurveRequest {
+    /// Curve points
+    pub points: Vec<crate::CurvePoint>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Interpolation response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterpolateResponse {
+    /// Temperature that was queried
+    pub temperature: f32,
+    /// Interpolated PWM value
+    pub pwm: u8,
+}
+
 /// System information response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfoResponse {

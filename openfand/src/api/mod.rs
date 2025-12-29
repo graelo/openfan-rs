@@ -109,6 +109,31 @@ pub fn create_router(state: AppState) -> Router {
             get(handlers::zones::delete_zone),
         )
         .route("/api/v0/zone/:name/apply", get(handlers::zones::apply_zone))
+        // Thermal curve endpoints
+        .route(
+            "/api/v0/curves/list",
+            get(handlers::thermal_curves::list_curves),
+        )
+        .route(
+            "/api/v0/curves/add",
+            post(handlers::thermal_curves::add_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/get",
+            get(handlers::thermal_curves::get_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/update",
+            post(handlers::thermal_curves::update_curve),
+        )
+        .route(
+            "/api/v0/curve/:name",
+            axum::routing::delete(handlers::thermal_curves::delete_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/interpolate",
+            get(handlers::thermal_curves::interpolate_curve),
+        )
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
         // Root endpoint

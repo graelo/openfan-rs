@@ -4,7 +4,7 @@
 //! thread-safe access and independent save operations.
 
 use openfan_core::{
-    config::{AliasData, ProfileData, StaticConfig, ZoneData},
+    config::{AliasData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
     BoardInfo, OpenFanError, Result,
 };
 use std::path::Path;
@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 /// Runtime configuration combining static config and mutable data.
 ///
 /// Static config is read once at startup and remains immutable.
-/// Mutable data (aliases, profiles, zones) can be modified via API and saved independently.
+/// Mutable data (aliases, profiles, zones, thermal curves) can be modified via API and saved independently.
 pub struct RuntimeConfig {
     /// Static configuration (immutable after load)
     static_config: StaticConfig,
@@ -28,6 +28,9 @@ pub struct RuntimeConfig {
 
     /// Zone data with independent locking
     zones: RwLock<ZoneData>,
+
+    /// Thermal curve data with independent locking
+    thermal_curves: RwLock<ThermalCurveData>,
 }
 
 impl RuntimeConfig {
@@ -49,12 +52,14 @@ impl RuntimeConfig {
         let aliases = Self::load_aliases(&static_config.data_dir).await?;
         let profiles = Self::load_profiles(&static_config.data_dir).await?;
         let zones = Self::load_zones(&static_config.data_dir).await?;
+        let thermal_curves = Self::load_thermal_curves(&static_config.data_dir).await?;
 
         info!(
-            "Configuration loaded: {} profiles, {} aliases, {} zones",
+            "Configuration loaded: {} profiles, {} aliases, {} zones, {} thermal curves",
             profiles.profiles.len(),
             aliases.aliases.len(),
-            zones.zones.len()
+            zones.zones.len(),
+            thermal_curves.curves.len()
         );
 
         Ok(Self {
@@ -62,6 +67,7 @@ impl RuntimeConfig {
             aliases: RwLock::new(aliases),
             profiles: RwLock::new(profiles),
             zones: RwLock::new(zones),
+            thermal_curves: RwLock::new(thermal_curves),
         })
     }
 
@@ -189,6 +195,25 @@ impl RuntimeConfig {
             .map_err(|e| OpenFanError::Config(format!("Failed to parse zones file: {}", e)))
     }
 
+    /// Load thermal curves from TOML file, creating with defaults if missing.
+    async fn load_thermal_curves(data_dir: &Path) -> Result<ThermalCurveData> {
+        let path = data_dir.join("thermal_curves.toml");
+
+        if !path.exists() {
+            debug!("Thermal curves file not found. Creating with defaults.");
+            let data = ThermalCurveData::with_defaults();
+            Self::write_toml(&path, &data.to_toml().unwrap()).await?;
+            return Ok(data);
+        }
+
+        let content = fs::read_to_string(&path)
+            .await
+            .map_err(|e| OpenFanError::Config(format!("Failed to read thermal curves file: {}", e)))?;
+
+        ThermalCurveData::from_toml(&content)
+            .map_err(|e| OpenFanError::Config(format!("Failed to parse thermal curves file: {}", e)))
+    }
+
     /// Write TOML content atomically (write to temp, then rename).
     async fn write_toml(path: &Path, content: &str) -> Result<()> {
         let temp_path = path.with_extension("toml.tmp");
@@ -302,6 +327,35 @@ impl RuntimeConfig {
         Self::write_toml(&path, &content).await?;
 
         debug!("Saved zones to {}", path.display());
+        Ok(())
+    }
+
+    // =========================================================================
+    // Thermal curve access and modification
+    // =========================================================================
+
+    /// Get read lock on thermal curve data.
+    pub async fn thermal_curves(&self) -> tokio::sync::RwLockReadGuard<'_, ThermalCurveData> {
+        self.thermal_curves.read().await
+    }
+
+    /// Get write lock on thermal curve data.
+    pub async fn thermal_curves_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, ThermalCurveData> {
+        self.thermal_curves.write().await
+    }
+
+    /// Save thermal curve data to disk.
+    pub async fn save_thermal_curves(&self) -> Result<()> {
+        let curves = self.thermal_curves.read().await;
+        let path = self.static_config.data_dir.join("thermal_curves.toml");
+
+        let content = curves
+            .to_toml()
+            .map_err(|e| OpenFanError::Config(format!("Failed to serialize thermal curves: {}", e)))?;
+
+        Self::write_toml(&path, &content).await?;
+
+        debug!("Saved thermal curves to {}", path.display());
         Ok(())
     }
 
@@ -424,12 +478,19 @@ mod tests {
         assert!(config.data_dir().join("aliases.toml").exists());
         assert!(config.data_dir().join("profiles.toml").exists());
         assert!(config.data_dir().join("zones.toml").exists());
+        assert!(config.data_dir().join("thermal_curves.toml").exists());
 
         // Should have default profiles
         let profiles = config.profiles().await;
         assert!(profiles.contains("50% PWM"));
         assert!(profiles.contains("100% PWM"));
         assert!(profiles.contains("1000 RPM"));
+
+        // Should have default thermal curves
+        let curves = config.thermal_curves().await;
+        assert!(curves.contains("Balanced"));
+        assert!(curves.contains("Silent"));
+        assert!(curves.contains("Aggressive"));
     }
 
     #[tokio::test]
@@ -509,5 +570,53 @@ mod tests {
         let intake = zones.get("intake").unwrap();
         assert_eq!(intake.port_ids, vec![0, 1, 2]);
         assert_eq!(intake.description, Some("Front intake fans".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_runtime_config_thermal_curve_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Should have default curves
+        {
+            let curves = config.thermal_curves().await;
+            assert!(curves.contains("Balanced"));
+            assert!(curves.contains("Silent"));
+            assert!(curves.contains("Aggressive"));
+        }
+
+        // Add a custom curve
+        {
+            let mut curves = config.thermal_curves_mut().await;
+            curves.insert(
+                "Custom".to_string(),
+                openfan_core::ThermalCurve::with_description(
+                    "Custom",
+                    vec![
+                        openfan_core::CurvePoint::new(25.0, 20),
+                        openfan_core::CurvePoint::new(60.0, 60),
+                        openfan_core::CurvePoint::new(80.0, 100),
+                    ],
+                    "Custom test curve",
+                ),
+            );
+        }
+
+        // Save
+        config.save_thermal_curves().await.unwrap();
+
+        // Reload and verify
+        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
+        let curves = config2.thermal_curves().await;
+        assert!(curves.contains("Custom"));
+        let custom = curves.get("Custom").unwrap();
+        assert_eq!(custom.points.len(), 3);
+        assert_eq!(custom.description, Some("Custom test curve".to_string()));
+
+        // Test interpolation
+        assert_eq!(custom.interpolate(25.0), 20);
+        assert_eq!(custom.interpolate(80.0), 100);
     }
 }

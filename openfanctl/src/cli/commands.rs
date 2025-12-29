@@ -89,6 +89,12 @@ pub enum Commands {
         command: ZoneCommands,
     },
 
+    /// Thermal curve management commands
+    Curve {
+        #[command(subcommand)]
+        command: CurveCommands,
+    },
+
     /// Generate shell completion scripts
     Completion {
         /// Shell to generate completion for
@@ -265,4 +271,60 @@ pub enum ConfigCommands {
 
     /// Reset configuration to defaults
     Reset,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CurveCommands {
+    /// List all thermal curves
+    List,
+
+    /// Get thermal curve details
+    Get {
+        /// Curve name
+        name: String,
+    },
+
+    /// Add a new thermal curve
+    Add {
+        /// Curve name
+        name: String,
+
+        /// Curve points as "temp:pwm,temp:pwm,..." (e.g., "30:25,50:50,70:80,85:100")
+        #[arg(short, long)]
+        points: String,
+
+        /// Optional description
+        #[arg(short, long)]
+        description: Option<String>,
+    },
+
+    /// Update an existing thermal curve
+    Update {
+        /// Curve name
+        name: String,
+
+        /// Curve points as "temp:pwm,temp:pwm,..." (e.g., "30:25,50:50,70:80,85:100")
+        #[arg(short, long)]
+        points: String,
+
+        /// Optional description
+        #[arg(short, long)]
+        description: Option<String>,
+    },
+
+    /// Delete a thermal curve
+    Delete {
+        /// Curve name
+        name: String,
+    },
+
+    /// Interpolate PWM value for a given temperature
+    Interpolate {
+        /// Curve name
+        name: String,
+
+        /// Temperature in Celsius
+        #[arg(short, long)]
+        temp: f32,
+    },
 }

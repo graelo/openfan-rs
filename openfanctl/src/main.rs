@@ -18,7 +18,7 @@ use config::CliConfig;
 use cli::{
     Cli, Commands, OutputFormat,
     handle_info, handle_status, handle_health, handle_fan, handle_profile,
-    handle_alias, handle_zone, handle_config, generate_completion,
+    handle_alias, handle_zone, handle_curve, handle_config, generate_completion,
 };
 
 #[tokio::main]
@@ -117,6 +117,7 @@ async fn main() -> Result<()> {
         Commands::Profile { command } => handle_profile(&client, command, &output_format).await,
         Commands::Alias { command } => handle_alias(&client, command, &output_format).await,
         Commands::Zone { command } => handle_zone(&client, command, &output_format).await,
+        Commands::Curve { command } => handle_curve(&client, command, &output_format).await,
         Commands::Completion { shell } => {
             generate_completion(shell);
             Ok(())

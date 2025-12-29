@@ -48,6 +48,7 @@ OpenFAN uses XDG-compliant paths by default:
 | Aliases | `~/.local/share/openfan/aliases.toml` | Fan names |
 | Profiles | `~/.local/share/openfan/profiles.toml` | Saved profiles |
 | Zones | `~/.local/share/openfan/zones.toml` | Fan groups |
+| Thermal curves | `~/.local/share/openfan/thermal_curves.toml` | Temperature-PWM curves |
 
 For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 
@@ -223,6 +224,85 @@ openfanctl zone apply intake --pwm 75
 openfanctl zone apply exhaust --rpm 1500
 ```
 
+## Thermal Curves
+
+Thermal curves define temperature-to-PWM mappings for automatic fan speed control based on temperature readings. Each curve consists of points that map temperatures to PWM values, with linear interpolation between points.
+
+### Default Curves
+
+The server creates these default thermal curves:
+
+| Name | Description | Points |
+|------|-------------|--------|
+| Balanced | Standard curve for balanced performance | 30°C→25%, 50°C→50%, 70°C→80%, 85°C→100% |
+| Silent | Low noise curve for quiet operation | 40°C→20%, 60°C→40%, 80°C→70%, 90°C→100% |
+| Aggressive | High cooling for maximum performance | 30°C→40%, 50°C→70%, 65°C→90%, 75°C→100% |
+
+### Managing Thermal Curves
+
+```bash
+# List all curves
+openfanctl curve list
+
+# Get details for a specific curve
+openfanctl curve get Balanced
+
+# Add a new curve (format: "temp:pwm,temp:pwm,...")
+openfanctl curve add Custom --points "25:20,45:40,65:70,80:100" --description "Custom curve"
+
+# Update an existing curve
+openfanctl curve update Custom --points "30:25,50:50,70:80,90:100"
+
+# Delete a curve
+openfanctl curve delete Custom
+```
+
+### Interpolating Values
+
+You can query what PWM value a curve would produce for any temperature:
+
+```bash
+# Get PWM for 55°C using the Balanced curve
+openfanctl curve interpolate Balanced --temp 55.0
+# Output: Curve 'Balanced' at 55°C = 62% PWM
+
+# JSON output
+openfanctl curve interpolate Balanced --temp 55.0 --format json
+# Output: {"temperature":55.0,"pwm":62}
+```
+
+### How Interpolation Works
+
+The curve uses linear interpolation between defined points:
+
+- **Below minimum**: Returns the lowest point's PWM value
+- **Above maximum**: Returns the highest point's PWM value
+- **Between points**: Linearly interpolates based on position
+
+For example, with points `30:25` and `50:50`:
+- At 30°C → 25% PWM
+- At 40°C → 37% PWM (midpoint)
+- At 50°C → 50% PWM
+
+### Points Format
+
+CLI uses colon-separated pairs: `"temp:pwm,temp:pwm,..."`
+
+Requirements:
+- At least 2 points required
+- Points are automatically sorted by temperature
+- PWM values must be 0-100
+- Temperature range: -50°C to 150°C
+
+Examples:
+```bash
+# Simple 2-point curve
+--points "30:30,80:100"
+
+# Detailed 5-point curve
+--points "25:20,40:35,55:50,70:75,85:100"
+```
+
 ## REST API
 
 The server exposes a REST API on port 3000 (default).
@@ -244,6 +324,12 @@ The server exposes a REST API on port 3000 (default).
 | `/api/v0/zones/list` | GET | List zones |
 | `/api/v0/zones/add` | POST | Add zone |
 | `/api/v0/zone/:name/apply?mode=pwm&value=N` | GET | Apply to zone |
+| `/api/v0/curves/list` | GET | List thermal curves |
+| `/api/v0/curves/add` | POST | Add thermal curve |
+| `/api/v0/curve/:name/get` | GET | Get curve details |
+| `/api/v0/curve/:name/update` | POST | Update curve |
+| `/api/v0/curve/:name` | DELETE | Delete curve |
+| `/api/v0/curve/:name/interpolate?temp=N` | GET | Interpolate PWM for temperature |
 
 ### Example API Calls
 
@@ -264,6 +350,17 @@ curl -X POST http://localhost:3000/api/v0/zones/add \
 
 # Apply PWM to zone
 curl http://localhost:3000/api/v0/zone/intake/apply?mode=pwm&value=75
+
+# List thermal curves
+curl http://localhost:3000/api/v0/curves/list
+
+# Add a thermal curve (POST with JSON body)
+curl -X POST http://localhost:3000/api/v0/curves/add \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Custom","points":[{"temp_c":30,"pwm":25},{"temp_c":70,"pwm":100}]}'
+
+# Interpolate temperature
+curl http://localhost:3000/api/v0/curve/Balanced/interpolate?temp=55
 ```
 
 ## Shell Completion

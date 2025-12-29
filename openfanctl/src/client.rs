@@ -4,10 +4,11 @@ use anyhow::{Context, Result};
 use openfan_core::{
     api::{
         AliasResponse, ApiResponse, FanRpmResponse, FanStatusResponse, InfoResponse,
-        ProfileResponse, SingleZoneResponse, ZoneResponse,
+        InterpolateResponse, ProfileResponse, SingleCurveResponse, SingleZoneResponse,
+        ThermalCurveResponse, ZoneResponse,
     },
     types::FanProfile,
-    BoardInfo,
+    BoardInfo, CurvePoint,
 };
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
@@ -767,6 +768,194 @@ impl OpenFanClient {
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
             .map(|_: ()| ())
+    }
+
+    // =========================================================================
+    // Thermal curve operations
+    // =========================================================================
+
+    /// Retrieve all configured thermal curves.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of curve names to their configurations.
+    pub async fn get_curves(&self) -> Result<ThermalCurveResponse> {
+        let url = format!("{}/api/v0/curves/list", self.base_url);
+        let endpoint = "curves/list";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Retrieve a specific thermal curve by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the curve name is empty or whitespace.
+    pub async fn get_curve(&self, name: &str) -> Result<SingleCurveResponse> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}/get", self.base_url, encoded_name);
+        let endpoint = &format!("curve/{}/get", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Create a new thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the new curve
+    /// * `points` - Temperature-to-PWM curve points
+    /// * `description` - Optional description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve already exists
+    /// - The points are invalid
+    pub async fn add_curve(
+        &self,
+        name: &str,
+        points: Vec<CurvePoint>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let url = format!("{}/api/v0/curves/add", self.base_url);
+        let mut request_body = HashMap::new();
+        request_body.insert("name", serde_json::Value::String(name.to_string()));
+        request_body.insert("points", serde_json::to_value(&points)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = "curves/add";
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send add curve request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Update an existing thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve to update
+    /// * `points` - New temperature-to-PWM curve points
+    /// * `description` - Optional new description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve doesn't exist
+    /// - The points are invalid
+    pub async fn update_curve(
+        &self,
+        name: &str,
+        points: Vec<CurvePoint>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}/update", self.base_url, encoded_name);
+        let mut request_body = HashMap::new();
+        request_body.insert("points", serde_json::to_value(&points)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = &format!("curve/{}/update", name);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update curve request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Delete a thermal curve by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the curve name is empty or whitespace.
+    pub async fn delete_curve(&self, name: &str) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}", self.base_url, encoded_name);
+        let endpoint = &format!("curve/{}", name);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Interpolate PWM value for a given temperature using a thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the thermal curve
+    /// * `temp` - Temperature in Celsius
+    ///
+    /// # Returns
+    ///
+    /// Returns the interpolated PWM value (0-100) for the given temperature.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve doesn't exist
+    pub async fn interpolate_curve(&self, name: &str, temp: f32) -> Result<InterpolateResponse> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!(
+            "{}/api/v0/curve/{}/interpolate?temp={}",
+            self.base_url, encoded_name, temp
+        );
+        let endpoint = &format!("curve/{}/interpolate", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
     }
 
     /// Test basic connectivity to the server.
