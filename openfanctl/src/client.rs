@@ -15,6 +15,11 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::time::Duration;
 
+/// Normalize a server URL by removing trailing slashes.
+fn normalize_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
+}
+
 /// HTTP client for communicating with the OpenFAN daemon's REST API.
 ///
 /// This client handles all HTTP communication with the server, including:
@@ -101,7 +106,7 @@ impl OpenFanClient {
             .build()
             .context("Failed to create HTTP client")?;
 
-        let base_url = server_url.trim_end_matches('/').to_string();
+        let base_url = normalize_url(&server_url);
 
         // Create a temporary client to fetch board info
         let temp_client = Self {
@@ -1048,38 +1053,12 @@ mod tests {
     use super::*;
     use openfan_core::BoardType;
 
-    // Note: These tests would require a running server to fetch board info
-    // They are marked as integration tests that should be run separately
-
-    #[tokio::test]
-    #[ignore] // Requires running server
-    async fn test_client_creation() {
-        let client = OpenFanClient::with_config(
-            "http://localhost:3000".to_string(),
-            10,
-            3,
-            Duration::from_millis(500),
-        )
-        .await;
-        assert!(client.is_ok());
-
-        let client = client.unwrap();
-        assert_eq!(client.base_url, "http://localhost:3000");
-        assert!(client.board_info.fan_count > 0);
-    }
-
-    #[tokio::test]
-    #[ignore] // Requires running server
-    async fn test_url_trimming() {
-        let client = OpenFanClient::with_config(
-            "http://localhost:3000/".to_string(),
-            10,
-            3,
-            Duration::from_millis(500),
-        )
-        .await
-        .unwrap();
-        assert_eq!(client.base_url, "http://localhost:3000");
+    #[test]
+    fn test_normalize_url() {
+        assert_eq!(normalize_url("http://localhost:3000"), "http://localhost:3000");
+        assert_eq!(normalize_url("http://localhost:3000/"), "http://localhost:3000");
+        assert_eq!(normalize_url("http://localhost:3000///"), "http://localhost:3000");
+        assert_eq!(normalize_url("http://example.com/api/"), "http://example.com/api");
     }
 
     #[test]
