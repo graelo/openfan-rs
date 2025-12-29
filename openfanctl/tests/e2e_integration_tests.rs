@@ -842,3 +842,202 @@ async fn test_e2e_thermal_curve_errors() -> Result<()> {
     harness.stop_server().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn test_e2e_zone_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing zones (should be empty initially)
+    let list_output = harness.run_cli_success(&["zone", "list"]).await?;
+    println!("Initial zones: {}", list_output);
+    assert!(
+        list_output.contains("No zones") || !list_output.contains("intake"),
+        "Should have no zones initially: {}",
+        list_output
+    );
+
+    // Test adding a zone
+    let add_output = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "intake",
+            "--ports",
+            "0,1,2",
+            "--description",
+            "Front intake fans",
+        ])
+        .await?;
+    assert!(
+        add_output.contains("Added") || add_output.contains("intake"),
+        "Should confirm zone creation: {}",
+        add_output
+    );
+
+    // Test listing zones again (should show our new zone)
+    let list_output2 = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        list_output2.contains("intake"),
+        "Should contain the added zone: {}",
+        list_output2
+    );
+
+    // Test getting a specific zone
+    let get_output = harness.run_cli_success(&["zone", "get", "intake"]).await?;
+    assert!(
+        get_output.contains("intake") && (get_output.contains("0") || get_output.contains("Ports")),
+        "Should show zone details: {}",
+        get_output
+    );
+
+    // Test JSON output for zone get
+    let get_json = harness
+        .run_cli_success(&["--format", "json", "zone", "get", "intake"])
+        .await?;
+    let zone_value: Value = serde_json::from_str(&get_json)?;
+    assert!(
+        zone_value.get("zone").is_some(),
+        "JSON should contain zone: {}",
+        get_json
+    );
+
+    // Test adding another zone
+    let _add_output2 = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "exhaust",
+            "--ports",
+            "3,4",
+            "--description",
+            "Rear exhaust fans",
+        ])
+        .await?;
+
+    // Test updating a zone
+    let update_output = harness
+        .run_cli_success(&[
+            "zone",
+            "update",
+            "intake",
+            "--ports",
+            "0,1,2,5",
+            "--description",
+            "Updated intake zone",
+        ])
+        .await?;
+    assert!(
+        update_output.contains("Updated") || update_output.contains("intake"),
+        "Should confirm zone update: {}",
+        update_output
+    );
+
+    // Test getting the updated zone
+    let get_updated = harness.run_cli_success(&["zone", "get", "intake"]).await?;
+    assert!(
+        get_updated.contains("5") || get_updated.contains("Updated"),
+        "Should show updated zone: {}",
+        get_updated
+    );
+
+    // Test applying PWM to a zone
+    let apply_pwm_output = harness
+        .run_cli_success(&["zone", "apply", "intake", "--pwm", "75"])
+        .await?;
+    assert!(
+        apply_pwm_output.contains("Applied") || apply_pwm_output.contains("75"),
+        "Should confirm PWM applied: {}",
+        apply_pwm_output
+    );
+
+    // Test applying RPM to a zone
+    let apply_rpm_output = harness
+        .run_cli_success(&["zone", "apply", "exhaust", "--rpm", "1500"])
+        .await?;
+    assert!(
+        apply_rpm_output.contains("Applied") || apply_rpm_output.contains("1500"),
+        "Should confirm RPM applied: {}",
+        apply_rpm_output
+    );
+
+    // Test deleting a zone
+    let delete_output = harness
+        .run_cli_success(&["zone", "delete", "exhaust"])
+        .await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("exhaust"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify zone is deleted
+    let list_output3 = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        !list_output3.contains("exhaust"),
+        "Zone should be removed: {}",
+        list_output3
+    );
+    assert!(
+        list_output3.contains("intake"),
+        "Other zone should still exist: {}",
+        list_output3
+    );
+
+    // Clean up remaining zone
+    let _cleanup = harness
+        .run_cli_success(&["zone", "delete", "intake"])
+        .await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_zone_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent zone
+    let error_output = harness
+        .run_cli_expect_failure(&["zone", "get", "NonExistentZone"])
+        .await?;
+    assert!(
+        error_output.contains("not exist") || error_output.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output
+    );
+
+    // Test deleting non-existent zone
+    let error_output2 = harness
+        .run_cli_expect_failure(&["zone", "delete", "NonExistentZone"])
+        .await?;
+    assert!(
+        error_output2.contains("not exist") || error_output2.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output2
+    );
+
+    // Test applying to non-existent zone
+    let error_output3 = harness
+        .run_cli_expect_failure(&["zone", "apply", "NonExistentZone", "--pwm", "50"])
+        .await?;
+    assert!(
+        error_output3.contains("not exist") || error_output3.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output3
+    );
+
+    // Test updating non-existent zone
+    let error_output4 = harness
+        .run_cli_expect_failure(&["zone", "update", "NonExistentZone", "--ports", "0,1"])
+        .await?;
+    assert!(
+        error_output4.contains("not exist") || error_output4.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output4
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}

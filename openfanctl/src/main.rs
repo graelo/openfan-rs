@@ -2,24 +2,14 @@
 //!
 //! Command-line interface for controlling the OpenFAN server.
 
-mod cli;
-mod client;
-mod config;
-mod format;
-
-#[cfg(test)]
-mod test_utils;
-
 use anyhow::Result;
 use clap::Parser;
-use client::OpenFanClient;
-use config::CliConfig;
-
-use cli::{
-    Cli, Commands, OutputFormat,
-    handle_info, handle_status, handle_health, handle_fan, handle_profile,
-    handle_alias, handle_zone, handle_curve, handle_config, generate_completion,
+use openfanctl::cli::{
+    generate_completion, handle_alias, handle_config, handle_curve, handle_fan, handle_health,
+    handle_info, handle_profile, handle_status, handle_zone, Cli, Commands, OutputFormat,
 };
+use openfanctl::client::OpenFanClient;
+use openfanctl::config::CliConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {

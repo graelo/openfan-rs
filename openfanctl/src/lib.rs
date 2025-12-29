@@ -2,6 +2,7 @@
 //!
 //! This library provides the core functionality for the OpenFAN CLI tool.
 
+pub mod cli;
 pub mod client;
 pub mod config;
 pub mod format;

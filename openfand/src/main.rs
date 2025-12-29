@@ -110,7 +110,7 @@ async fn main() -> Result<()> {
     runtime_config.fill_defaults_for_board(&board_info).await?;
 
     // Get server config
-    let server_config = runtime_config.static_config().server.clone();
+    let server_config = &runtime_config.static_config().server;
     let port = args.port.unwrap_or(server_config.port);
     let bind_addr = format!("{}:{}", args.bind, port);
 
