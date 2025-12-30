@@ -175,9 +175,7 @@ pub(crate) async fn add_curve(
         }
 
         let curve = match &request.description {
-            Some(desc) => {
-                ThermalCurve::with_description(curve_name, request.points.clone(), desc)
-            }
+            Some(desc) => ThermalCurve::with_description(curve_name, request.points.clone(), desc),
             None => ThermalCurve::new(curve_name, request.points.clone()),
         };
 
@@ -242,9 +240,7 @@ pub(crate) async fn update_curve(
             Some(desc) => ThermalCurve::with_description(&name, request.points.clone(), desc),
             None => {
                 // Preserve existing description if not provided
-                let existing_desc = curves
-                    .get(&name)
-                    .and_then(|c| c.description.clone());
+                let existing_desc = curves.get(&name).and_then(|c| c.description.clone());
                 let mut curve = ThermalCurve::new(&name, request.points.clone());
                 curve.description = existing_desc;
                 curve
@@ -376,10 +372,7 @@ mod tests {
 
     #[test]
     fn test_validate_points_wrong_order() {
-        let points = vec![
-            CurvePoint::new(80.0, 100),
-            CurvePoint::new(30.0, 25),
-        ];
+        let points = vec![CurvePoint::new(80.0, 100), CurvePoint::new(30.0, 25)];
         let result = validate_points(&points);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("ascending"));
@@ -387,10 +380,7 @@ mod tests {
 
     #[test]
     fn test_validate_points_pwm_out_of_range() {
-        let points = vec![
-            CurvePoint::new(30.0, 25),
-            CurvePoint::new(80.0, 150),
-        ];
+        let points = vec![CurvePoint::new(30.0, 25), CurvePoint::new(80.0, 150)];
         let result = validate_points(&points);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("exceeds maximum"));
@@ -398,10 +388,7 @@ mod tests {
 
     #[test]
     fn test_validate_points_temp_out_of_range() {
-        let points = vec![
-            CurvePoint::new(-100.0, 25),
-            CurvePoint::new(80.0, 100),
-        ];
+        let points = vec![CurvePoint::new(-100.0, 25), CurvePoint::new(80.0, 100)];
         let result = validate_points(&points);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("outside valid range"));

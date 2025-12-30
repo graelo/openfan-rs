@@ -185,10 +185,16 @@ mod tests {
 
         // Removing non-existent alias returns false
         let removed_again = data.remove(0);
-        assert!(!removed_again, "remove() should return false when alias didn't exist");
+        assert!(
+            !removed_again,
+            "remove() should return false when alias didn't exist"
+        );
 
         // Removing never-set alias returns false
         let removed_never_set = data.remove(5);
-        assert!(!removed_never_set, "remove() should return false for never-set alias");
+        assert!(
+            !removed_never_set,
+            "remove() should return false for never-set alias"
+        );
     }
 }

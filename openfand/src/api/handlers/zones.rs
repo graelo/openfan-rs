@@ -67,9 +67,7 @@ pub(crate) async fn get_zone(
 
     match zones.get(&name) {
         Some(zone) => {
-            let response = SingleZoneResponse {
-                zone: zone.clone(),
-            };
+            let response = SingleZoneResponse { zone: zone.clone() };
             api_ok!(response)
         }
         None => api_fail!(format!(
@@ -387,10 +385,7 @@ pub(crate) async fn apply_zone(
         };
 
         if let Err(e) = result {
-            warn!(
-                "Failed to set fan {} in zone '{}': {}",
-                fan_id, name, e
-            );
+            warn!("Failed to set fan {} in zone '{}': {}", fan_id, name, e);
         }
     }
 

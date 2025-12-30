@@ -1,8 +1,8 @@
 //! Command execution handlers
 
 use anyhow::Result;
-use openfan_core::types::{ControlMode, FanProfile};
 use openfan_core::parse_points;
+use openfan_core::types::{ControlMode, FanProfile};
 
 use crate::client::OpenFanClient;
 use crate::config::CliConfig;
@@ -36,13 +36,19 @@ pub async fn handle_status(client: &OpenFanClient, format: &OutputFormat) -> Res
 
     match format {
         OutputFormat::Json => {
-            let formatted =
-                crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
+            let formatted = crate::format::format_fan_status_with_cfm(
+                &status,
+                cfm_mappings.as_ref(),
+                &format.into(),
+            )?;
             println!("{}", formatted);
         }
         OutputFormat::Table => {
-            let formatted =
-                crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
+            let formatted = crate::format::format_fan_status_with_cfm(
+                &status,
+                cfm_mappings.as_ref(),
+                &format.into(),
+            )?;
             println!("{}", formatted);
         }
     }
@@ -66,7 +72,11 @@ pub async fn handle_health(client: &OpenFanClient, format: &OutputFormat) -> Res
             for (key, value) in &health {
                 let value_str = match value {
                     serde_json::Value::Bool(b) => {
-                        if *b { "✓".to_string() } else { "✗".to_string() }
+                        if *b {
+                            "✓".to_string()
+                        } else {
+                            "✗".to_string()
+                        }
                     }
                     serde_json::Value::String(s) => s.clone(),
                     serde_json::Value::Number(n) => n.to_string(),
@@ -87,21 +97,25 @@ pub async fn handle_fan(
     format: &OutputFormat,
 ) -> Result<()> {
     match command {
-        FanCommands::Set { fan_id, pwm, rpm } => {
-            match (pwm, rpm) {
-                (Some(pwm), None) => {
-                    client.set_fan_pwm(fan_id, pwm).await?;
-                    println!("{}", format_success(&format!("Set fan {} to {}% PWM", fan_id, pwm)));
-                }
-                (None, Some(rpm)) => {
-                    client.set_fan_rpm(fan_id, rpm).await?;
-                    println!("{}", format_success(&format!("Set fan {} to {} RPM", fan_id, rpm)));
-                }
-                _ => {
-                    return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
-                }
+        FanCommands::Set { fan_id, pwm, rpm } => match (pwm, rpm) {
+            (Some(pwm), None) => {
+                client.set_fan_pwm(fan_id, pwm).await?;
+                println!(
+                    "{}",
+                    format_success(&format!("Set fan {} to {}% PWM", fan_id, pwm))
+                );
             }
-        }
+            (None, Some(rpm)) => {
+                client.set_fan_rpm(fan_id, rpm).await?;
+                println!(
+                    "{}",
+                    format_success(&format!("Set fan {} to {} RPM", fan_id, rpm))
+                );
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
+            }
+        },
         FanCommands::Rpm { fan_id } => {
             let rpm_response = client.get_fan_rpm(fan_id).await?;
 
@@ -211,7 +225,10 @@ pub async fn handle_alias(
         AliasCommands::Get { fan_id } => {
             let alias_response = client.get_alias(fan_id).await?;
             let default_alias = format!("Fan #{}", fan_id);
-            let alias = alias_response.aliases.get(&fan_id).unwrap_or(&default_alias);
+            let alias = alias_response
+                .aliases
+                .get(&fan_id)
+                .unwrap_or(&default_alias);
 
             match format {
                 OutputFormat::Json => {
@@ -237,7 +254,10 @@ pub async fn handle_alias(
             client.delete_alias(fan_id).await?;
             println!(
                 "{}",
-                format_success(&format!("Deleted alias for fan {} (reverted to default)", fan_id))
+                format_success(&format!(
+                    "Deleted alias for fan {} (reverted to default)",
+                    fan_id
+                ))
             );
         }
     }
@@ -302,7 +322,11 @@ pub async fn handle_zone(
                 }
             }
         }
-        ZoneCommands::Add { name, ports, description } => {
+        ZoneCommands::Add {
+            name,
+            ports,
+            description,
+        } => {
             let port_ids: Result<Vec<u8>, _> =
                 ports.split(',').map(|s| s.trim().parse::<u8>()).collect();
             let port_ids = port_ids?;
@@ -310,7 +334,11 @@ pub async fn handle_zone(
             client.add_zone(&name, port_ids, description).await?;
             println!("{}", format_success(&format!("Added zone: {}", name)));
         }
-        ZoneCommands::Update { name, ports, description } => {
+        ZoneCommands::Update {
+            name,
+            ports,
+            description,
+        } => {
             let port_ids: Result<Vec<u8>, _> =
                 ports.split(',').map(|s| s.trim().parse::<u8>()).collect();
             let port_ids = port_ids?;
@@ -322,27 +350,25 @@ pub async fn handle_zone(
             client.delete_zone(&name).await?;
             println!("{}", format_success(&format!("Deleted zone: {}", name)));
         }
-        ZoneCommands::Apply { name, pwm, rpm } => {
-            match (pwm, rpm) {
-                (Some(pwm), None) => {
-                    client.apply_zone(&name, "pwm", pwm).await?;
-                    println!(
-                        "{}",
-                        format_success(&format!("Applied {}% PWM to zone '{}'", pwm, name))
-                    );
-                }
-                (None, Some(rpm)) => {
-                    client.apply_zone(&name, "rpm", rpm).await?;
-                    println!(
-                        "{}",
-                        format_success(&format!("Applied {} RPM to zone '{}'", rpm, name))
-                    );
-                }
-                _ => {
-                    return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
-                }
+        ZoneCommands::Apply { name, pwm, rpm } => match (pwm, rpm) {
+            (Some(pwm), None) => {
+                client.apply_zone(&name, "pwm", pwm).await?;
+                println!(
+                    "{}",
+                    format_success(&format!("Applied {}% PWM to zone '{}'", pwm, name))
+                );
             }
-        }
+            (None, Some(rpm)) => {
+                client.apply_zone(&name, "rpm", rpm).await?;
+                println!(
+                    "{}",
+                    format_success(&format!("Applied {} RPM to zone '{}'", rpm, name))
+                );
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
+            }
+        },
     }
 
     Ok(())
@@ -366,10 +392,7 @@ pub async fn handle_curve(
                     if curves.curves.is_empty() {
                         println!("No thermal curves configured.");
                     } else {
-                        println!(
-                            "{:<20} {:<40} Description",
-                            "Name", "Points"
-                        );
+                        println!("{:<20} {:<40} Description", "Name", "Points");
                         println!("{}", "-".repeat(80));
                         for (name, curve) in &curves.curves {
                             let points_str = curve
@@ -503,7 +526,10 @@ pub async fn handle_config(
             }
 
             config.save()?;
-            println!("{}", format_success(&format!("Set {} = {}", key, value_clone)));
+            println!(
+                "{}",
+                format_success(&format!("Set {} = {}", key, value_clone))
+            );
         }
         ConfigCommands::Reset => {
             let default_config = CliConfig::default();

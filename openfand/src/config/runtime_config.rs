@@ -212,12 +212,13 @@ impl RuntimeConfig {
             return Ok(data);
         }
 
-        let content = fs::read_to_string(&path)
-            .await
-            .map_err(|e| OpenFanError::Config(format!("Failed to read thermal curves file: {}", e)))?;
+        let content = fs::read_to_string(&path).await.map_err(|e| {
+            OpenFanError::Config(format!("Failed to read thermal curves file: {}", e))
+        })?;
 
-        ThermalCurveData::from_toml(&content)
-            .map_err(|e| OpenFanError::Config(format!("Failed to parse thermal curves file: {}", e)))
+        ThermalCurveData::from_toml(&content).map_err(|e| {
+            OpenFanError::Config(format!("Failed to parse thermal curves file: {}", e))
+        })
     }
 
     /// Load CFM mappings from TOML file, creating empty if missing.
@@ -231,9 +232,9 @@ impl RuntimeConfig {
             return Ok(data);
         }
 
-        let content = fs::read_to_string(&path)
-            .await
-            .map_err(|e| OpenFanError::Config(format!("Failed to read CFM mappings file: {}", e)))?;
+        let content = fs::read_to_string(&path).await.map_err(|e| {
+            OpenFanError::Config(format!("Failed to read CFM mappings file: {}", e))
+        })?;
 
         CfmMappingData::from_toml(&content)
             .map_err(|e| OpenFanError::Config(format!("Failed to parse CFM mappings file: {}", e)))
@@ -374,9 +375,9 @@ impl RuntimeConfig {
         let curves = self.thermal_curves.read().await;
         let path = self.static_config.data_dir.join("thermal_curves.toml");
 
-        let content = curves
-            .to_toml()
-            .map_err(|e| OpenFanError::Config(format!("Failed to serialize thermal curves: {}", e)))?;
+        let content = curves.to_toml().map_err(|e| {
+            OpenFanError::Config(format!("Failed to serialize thermal curves: {}", e))
+        })?;
 
         Self::write_toml(&path, &content).await?;
 
@@ -403,9 +404,9 @@ impl RuntimeConfig {
         let mappings = self.cfm_mappings.read().await;
         let path = self.static_config.data_dir.join("cfm_mappings.toml");
 
-        let content = mappings
-            .to_toml()
-            .map_err(|e| OpenFanError::Config(format!("Failed to serialize CFM mappings: {}", e)))?;
+        let content = mappings.to_toml().map_err(|e| {
+            OpenFanError::Config(format!("Failed to serialize CFM mappings: {}", e))
+        })?;
 
         Self::write_toml(&path, &content).await?;
 

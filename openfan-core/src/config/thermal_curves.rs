@@ -324,7 +324,10 @@ mod tests {
             vec![CurvePoint::new(30.0, 25), CurvePoint::new(80.0, 100)],
             "A test curve",
         );
-        assert_eq!(curve_with_desc.description, Some("A test curve".to_string()));
+        assert_eq!(
+            curve_with_desc.description,
+            Some("A test curve".to_string())
+        );
     }
 
     #[test]

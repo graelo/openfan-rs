@@ -433,9 +433,7 @@ async fn test_e2e_alias_operations() -> Result<()> {
     );
 
     // Test deleting an alias
-    let delete_output = harness
-        .run_cli_success(&["alias", "delete", "0"])
-        .await?;
+    let delete_output = harness.run_cli_success(&["alias", "delete", "0"]).await?;
     assert!(
         delete_output.contains("Deleted") || delete_output.contains("reverted"),
         "Should confirm deletion: {}",
@@ -714,7 +712,9 @@ async fn test_e2e_thermal_curve_operations() -> Result<()> {
     );
 
     // Test getting a specific curve
-    let get_output = harness.run_cli_success(&["curve", "get", "Balanced"]).await?;
+    let get_output = harness
+        .run_cli_success(&["curve", "get", "Balanced"])
+        .await?;
     assert!(
         get_output.contains("Balanced") && get_output.contains("Points"),
         "Should show curve details: {}",
@@ -754,7 +754,15 @@ async fn test_e2e_thermal_curve_operations() -> Result<()> {
 
     // Test JSON output for interpolation
     let interp_json = harness
-        .run_cli_success(&["--format", "json", "curve", "interpolate", "TestCurve", "--temp", "60.0"])
+        .run_cli_success(&[
+            "--format",
+            "json",
+            "curve",
+            "interpolate",
+            "TestCurve",
+            "--temp",
+            "60.0",
+        ])
         .await?;
     let interp_value: Value = serde_json::from_str(&interp_json)?;
     assert!(
@@ -775,7 +783,9 @@ async fn test_e2e_thermal_curve_operations() -> Result<()> {
         .await?;
 
     // Test getting the updated curve
-    let get_updated = harness.run_cli_success(&["curve", "get", "TestCurve"]).await?;
+    let get_updated = harness
+        .run_cli_success(&["curve", "get", "TestCurve"])
+        .await?;
     assert!(
         get_updated.contains("25") || get_updated.contains("15"),
         "Should show updated curve points: {}",
@@ -1051,7 +1061,9 @@ async fn test_e2e_cfm_operations() -> Result<()> {
     let list_output = harness.run_cli_success(&["cfm", "list"]).await?;
     println!("Initial CFM mappings: {}", list_output);
     assert!(
-        list_output.contains("No CFM") || list_output.contains("mappings") || list_output.contains("{}"),
+        list_output.contains("No CFM")
+            || list_output.contains("mappings")
+            || list_output.contains("{}"),
         "Should show empty or no mappings: {}",
         list_output
     );
@@ -1125,7 +1137,9 @@ async fn test_e2e_cfm_operations() -> Result<()> {
     // Test deleting a CFM mapping
     let delete_output = harness.run_cli_success(&["cfm", "delete", "1"]).await?;
     assert!(
-        delete_output.contains("Deleted") || delete_output.contains("Removed") || delete_output.contains("✓"),
+        delete_output.contains("Deleted")
+            || delete_output.contains("Removed")
+            || delete_output.contains("✓"),
         "Should confirm deletion: {}",
         delete_output
     );
@@ -1151,11 +1165,11 @@ async fn test_e2e_cfm_errors() -> Result<()> {
     harness.start_server().await?;
 
     // Test getting non-existent CFM mapping
-    let error_output = harness
-        .run_cli_expect_failure(&["cfm", "get", "5"])
-        .await?;
+    let error_output = harness.run_cli_expect_failure(&["cfm", "get", "5"]).await?;
     assert!(
-        error_output.contains("not") || error_output.contains("No") || error_output.contains("mapping"),
+        error_output.contains("not")
+            || error_output.contains("No")
+            || error_output.contains("mapping"),
         "Should show no mapping error: {}",
         error_output
     );
@@ -1213,7 +1227,9 @@ async fn test_e2e_cfm_errors() -> Result<()> {
         .run_cli_expect_failure(&["cfm", "delete", "7"])
         .await?;
     assert!(
-        error_output6.contains("not") || error_output6.contains("No") || error_output6.contains("mapping"),
+        error_output6.contains("not")
+            || error_output6.contains("No")
+            || error_output6.contains("mapping"),
         "Should show no mapping to delete error: {}",
         error_output6
     );

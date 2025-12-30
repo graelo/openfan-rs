@@ -125,10 +125,12 @@ mod tests {
         assert_eq!(zone.port_ids, vec![0, 1, 2]);
         assert!(zone.description.is_none());
 
-        let zone_with_desc =
-            Zone::with_description("exhaust", vec![3, 4], "Rear exhaust fans");
+        let zone_with_desc = Zone::with_description("exhaust", vec![3, 4], "Rear exhaust fans");
         assert_eq!(zone_with_desc.name, "exhaust");
-        assert_eq!(zone_with_desc.description, Some("Rear exhaust fans".to_string()));
+        assert_eq!(
+            zone_with_desc.description,
+            Some("Rear exhaust fans".to_string())
+        );
     }
 
     #[test]

@@ -4,9 +4,8 @@ use anyhow::{Context, Result};
 use openfan_core::{
     api::{
         AliasResponse, ApiResponse, CfmGetResponse, CfmListResponse, FanRpmResponse,
-        FanStatusResponse, InfoResponse, InterpolateResponse, ProfileResponse,
-        SetCfmRequest, SingleCurveResponse, SingleZoneResponse, ThermalCurveResponse,
-        ZoneResponse,
+        FanStatusResponse, InfoResponse, InterpolateResponse, ProfileResponse, SetCfmRequest,
+        SingleCurveResponse, SingleZoneResponse, ThermalCurveResponse, ZoneResponse,
     },
     types::FanProfile,
     BoardInfo, CurvePoint,
@@ -1152,10 +1151,22 @@ mod tests {
 
     #[test]
     fn test_normalize_url() {
-        assert_eq!(normalize_url("http://localhost:3000"), "http://localhost:3000");
-        assert_eq!(normalize_url("http://localhost:3000/"), "http://localhost:3000");
-        assert_eq!(normalize_url("http://localhost:3000///"), "http://localhost:3000");
-        assert_eq!(normalize_url("http://example.com/api/"), "http://example.com/api");
+        assert_eq!(
+            normalize_url("http://localhost:3000"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://localhost:3000/"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://localhost:3000///"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://example.com/api/"),
+            "http://example.com/api"
+        );
     }
 
     #[test]
