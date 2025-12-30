@@ -49,6 +49,7 @@ OpenFAN uses XDG-compliant paths by default:
 | Profiles | `~/.local/share/openfan/profiles.toml` | Saved profiles |
 | Zones | `~/.local/share/openfan/zones.toml` | Fan groups |
 | Thermal curves | `~/.local/share/openfan/thermal_curves.toml` | Temperature-PWM curves |
+| CFM mappings | `~/.local/share/openfan/cfm_mappings.toml` | Airflow display values |
 
 For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 
@@ -303,6 +304,78 @@ Examples:
 --points "25:20,40:35,55:50,70:75,85:100"
 ```
 
+## CFM Mappings
+
+CFM (Cubic Feet per Minute) mappings allow you to display estimated airflow values in the status output. This is a display-only feature - it doesn't affect fan control.
+
+Each mapping stores the CFM value at 100% PWM for a specific fan port. The actual CFM is calculated using linear interpolation: `cfm = (pwm / 100) * cfm_at_100`.
+
+### Managing CFM Mappings
+
+```bash
+# List all CFM mappings
+openfanctl cfm list
+
+# Get CFM mapping for port 0
+openfanctl cfm get 0
+
+# Set CFM@100% for port 0 (e.g., a fan rated at 45 CFM)
+openfanctl cfm set 0 --cfm-at-100 45.0
+
+# Set CFM for multiple ports
+openfanctl cfm set 1 --cfm-at-100 45.0
+openfanctl cfm set 2 --cfm-at-100 60.0
+
+# Delete a CFM mapping
+openfanctl cfm delete 0
+```
+
+### Status Output with CFM
+
+When CFM mappings are configured, the status command shows an additional CFM column:
+
+```bash
+$ openfanctl status
+Fan Status:
+╭────────┬──────┬───────┬───────╮
+│ Fan ID │ RPM  │ PWM % │ CFM   │
+├────────┼──────┼───────┼───────┤
+│ 0      │ 1200 │ 75%   │ 33.8  │
+│ 1      │ 800  │ 50%   │ 22.5  │
+│ 2      │ 950  │ 60%   │ -     │
+╰────────┴──────┴───────┴───────╯
+```
+
+- CFM values are shown with 1 decimal place
+- Ports without mappings show `-`
+- The CFM column only appears when at least one mapping exists
+
+### JSON Output
+
+```bash
+$ openfanctl status --format json
+{
+  "rpms": {"0": 1200, "1": 800, "2": 950},
+  "pwms": {"0": 75, "1": 50, "2": 60},
+  "cfm": {"0": 33.75, "1": 22.5}
+}
+```
+
+### Finding Your Fan's CFM Rating
+
+Most fans list their CFM rating in the specifications. Common values:
+- 120mm case fans: 30-70 CFM
+- 140mm case fans: 50-100 CFM
+- 80mm fans: 15-35 CFM
+
+Use the CFM@100% value from your fan's specifications.
+
+### Validation
+
+- CFM values must be positive (> 0)
+- Maximum allowed value is 500 CFM
+- Port IDs must be valid for your board (0-9 for OpenFAN v1.0, 0-3 for Mini)
+
 ## REST API
 
 The server exposes a REST API on port 3000 (default).
@@ -330,6 +403,10 @@ The server exposes a REST API on port 3000 (default).
 | `/api/v0/curve/:name/update` | POST | Update curve |
 | `/api/v0/curve/:name` | DELETE | Delete curve |
 | `/api/v0/curve/:name/interpolate?temp=N` | GET | Interpolate PWM for temperature |
+| `/api/v0/cfm/list` | GET | List CFM mappings |
+| `/api/v0/cfm/:port` | GET | Get CFM mapping for port |
+| `/api/v0/cfm/:port` | POST | Set CFM mapping `{"cfm_at_100": 45.0}` |
+| `/api/v0/cfm/:port` | DELETE | Delete CFM mapping |
 
 ### Example API Calls
 
@@ -361,6 +438,20 @@ curl -X POST http://localhost:3000/api/v0/curves/add \
 
 # Interpolate temperature
 curl http://localhost:3000/api/v0/curve/Balanced/interpolate?temp=55
+
+# List CFM mappings
+curl http://localhost:3000/api/v0/cfm/list
+
+# Get CFM mapping for port 0
+curl http://localhost:3000/api/v0/cfm/0
+
+# Set CFM mapping (POST with JSON body)
+curl -X POST http://localhost:3000/api/v0/cfm/0 \
+  -H "Content-Type: application/json" \
+  -d '{"cfm_at_100": 45.0}'
+
+# Delete CFM mapping
+curl -X DELETE http://localhost:3000/api/v0/cfm/0
 ```
 
 ## Shell Completion
@@ -497,6 +588,18 @@ openfanctl alias set 6 "Case Front 2"
 openfanctl alias set 7 "Case Top 1"
 openfanctl alias set 8 "Case Top 2"
 openfanctl alias set 9 "Case Rear"
+
+# Set CFM ratings for airflow monitoring (from fan specs)
+openfanctl cfm set 0 --cfm-at-100 52.0   # Noctua NF-A12x25
+openfanctl cfm set 1 --cfm-at-100 52.0
+openfanctl cfm set 2 --cfm-at-100 63.0   # Arctic P12
+openfanctl cfm set 3 --cfm-at-100 63.0
+openfanctl cfm set 4 --cfm-at-100 63.0
+openfanctl cfm set 5 --cfm-at-100 56.0   # Be Quiet Silent Wings 3
+openfanctl cfm set 6 --cfm-at-100 56.0
+openfanctl cfm set 7 --cfm-at-100 56.0
+openfanctl cfm set 8 --cfm-at-100 56.0
+openfanctl cfm set 9 --cfm-at-100 56.0
 
 # Create zones
 openfanctl zone add cpu --ports 0,1 --description "CPU cooling"
