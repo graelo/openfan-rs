@@ -16,7 +16,7 @@ OpenFAN consists of two components:
 openfand
 
 # Or in mock mode for testing
-openfand --mock openfan-v1
+openfand --mock --board v1
 
 # Check status
 openfanctl status
@@ -34,8 +34,8 @@ openfand
 openfand --config /etc/openfan/config.toml
 
 # Mock mode (no hardware required)
-openfand --mock openfan-v1
-openfand --mock openfan-mini
+openfand --mock --board v1
+openfand --mock --board mini
 ```
 
 ### Configuration Files
@@ -131,6 +131,7 @@ openfanctl fan pwm 0
 ### Fan IDs
 
 Fan IDs are 0-indexed:
+
 - OpenFAN v1.0: fans 0-9 (10 fans)
 - OpenFAN Mini: fans 0-3 (4 fans)
 
@@ -160,6 +161,7 @@ openfanctl profile remove "Silent"
 ### Default Profiles
 
 The server creates these default profiles:
+
 - `50% PWM` - All fans at 50%
 - `100% PWM` - All fans at 100%
 - `1000 RPM` - All fans at 1000 RPM
@@ -187,7 +189,8 @@ Aliases support alphanumeric characters, hyphens, underscores, dots, and spaces.
 
 ## Zones
 
-Zones group multiple fans for coordinated control. Each fan port can belong to at most one zone.
+Zones group multiple fans for coordinated control. Each fan port can belong to
+at most one zone.
 
 ### Creating Zones
 
@@ -227,7 +230,9 @@ openfanctl zone apply exhaust --rpm 1500
 
 ## Thermal Curves
 
-Thermal curves define temperature-to-PWM mappings for automatic fan speed control based on temperature readings. Each curve consists of points that map temperatures to PWM values, with linear interpolation between points.
+Thermal curves define temperature-to-PWM mappings for automatic fan speed
+control based on temperature readings. Each curve consists of points that map
+temperatures to PWM values, with linear interpolation between points.
 
 ### Default Curves
 
@@ -281,6 +286,7 @@ The curve uses linear interpolation between defined points:
 - **Between points**: Linearly interpolates based on position
 
 For example, with points `30:25` and `50:50`:
+
 - At 30°C → 25% PWM
 - At 40°C → 37% PWM (midpoint)
 - At 50°C → 50% PWM
@@ -290,12 +296,14 @@ For example, with points `30:25` and `50:50`:
 CLI uses colon-separated pairs: `"temp:pwm,temp:pwm,..."`
 
 Requirements:
+
 - At least 2 points required
 - Points are automatically sorted by temperature
 - PWM values must be 0-100
 - Temperature range: -50°C to 150°C
 
 Examples:
+
 ```bash
 # Simple 2-point curve
 --points "30:30,80:100"
@@ -306,9 +314,13 @@ Examples:
 
 ## CFM Mappings
 
-CFM (Cubic Feet per Minute) mappings allow you to display estimated airflow values in the status output. This is a display-only feature - it doesn't affect fan control.
+CFM (Cubic Feet per Minute) mappings allow you to display estimated airflow
+values in the status output. This is a display-only feature - it doesn't affect
+fan control.
 
-Each mapping stores the CFM value at 100% PWM for a specific fan port. The actual CFM is calculated using linear interpolation: `cfm = (pwm / 100) * cfm_at_100`.
+Each mapping stores the CFM value at 100% PWM for a specific fan port. The
+actual CFM is calculated using linear interpolation:
+`cfm = (pwm / 100) * cfm_at_100`.
 
 ### Managing CFM Mappings
 
@@ -332,7 +344,8 @@ openfanctl cfm delete 0
 
 ### Status Output with CFM
 
-When CFM mappings are configured, the status command shows an additional CFM column:
+When CFM mappings are configured, the status command shows an additional CFM
+column:
 
 ```bash
 $ openfanctl status
@@ -364,6 +377,7 @@ $ openfanctl status --format json
 ### Finding Your Fan's CFM Rating
 
 Most fans list their CFM rating in the specifications. Common values:
+
 - 120mm case fans: 30-70 CFM
 - 140mm case fans: 50-100 CFM
 - 80mm fans: 15-35 CFM
@@ -545,7 +559,7 @@ RUST_LOG=debug openfand
 lsusb | grep -i fan
 
 # Try mock mode to verify software
-openfand --mock openfan-v1
+openfand --mock --board v1
 ```
 
 ### CLI can't connect
@@ -564,6 +578,7 @@ openfanctl --verbose status
 ### Profile has wrong number of values
 
 Profiles must have exactly as many values as the board has fans:
+
 - OpenFAN v1.0: 10 values
 - OpenFAN Mini: 4 values
 
