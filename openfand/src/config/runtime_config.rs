@@ -721,4 +721,187 @@ mod tests {
         assert_eq!(cfm.get(1), Some(60.0));
         assert_eq!(cfm.calculate_cfm(0, 50), Some(22.5));
     }
+
+    #[tokio::test]
+    async fn test_validate_for_board_valid_config() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Standard board has 10 fans
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Add valid config items (all within 10-fan limit)
+        {
+            let mut aliases = config.aliases_mut().await;
+            aliases.set(0, "Fan 1".to_string());
+            aliases.set(9, "Fan 10".to_string());
+        }
+        {
+            let mut zones = config.zones_mut().await;
+            zones.insert(
+                "intake".to_string(),
+                openfan_core::Zone::new("intake", vec![0, 1, 2]),
+            );
+        }
+        {
+            let mut cfm = config.cfm_mappings_mut().await;
+            cfm.set(0, 45.0);
+            cfm.set(9, 60.0);
+        }
+
+        // Validation should pass
+        assert!(config.validate_for_board(&board).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_validate_for_board_invalid_alias() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Standard board has 10 fans (IDs 0-9)
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Add alias for fan 10 (invalid - max is 9)
+        {
+            let mut aliases = config.aliases_mut().await;
+            aliases.set(10, "Invalid Fan".to_string());
+        }
+
+        // Validation should fail
+        let result = config.validate_for_board(&board).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Alias exists for fan 10"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_for_board_invalid_zone() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Standard board has 10 fans (IDs 0-9)
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Add zone referencing port 15 (invalid)
+        {
+            let mut zones = config.zones_mut().await;
+            zones.insert(
+                "invalid".to_string(),
+                openfan_core::Zone::new("invalid", vec![0, 15]),
+            );
+        }
+
+        // Validation should fail
+        let result = config.validate_for_board(&board).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Zone 'invalid' references port 15"));
+    }
+
+    #[tokio::test]
+    async fn test_validate_for_board_invalid_cfm() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Standard board has 10 fans (IDs 0-9)
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Add CFM mapping for port 20 (invalid)
+        {
+            let mut cfm = config.cfm_mappings_mut().await;
+            cfm.set(20, 45.0);
+        }
+
+        // Validation should fail
+        let result = config.validate_for_board(&board).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("CFM mapping exists for port 20"));
+    }
+
+    #[tokio::test]
+    async fn test_fill_defaults_for_board() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Standard board has 10 fans
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Clear any existing aliases first
+        {
+            let mut aliases = config.aliases_mut().await;
+            aliases.aliases.clear();
+        }
+        config.save_aliases().await.unwrap();
+
+        // Now aliases should be empty
+        {
+            let aliases = config.aliases().await;
+            assert!(aliases.aliases.is_empty());
+        }
+
+        // Fill defaults
+        config.fill_defaults_for_board(&board).await.unwrap();
+
+        // Should now have aliases for all 10 fans
+        {
+            let aliases = config.aliases().await;
+            assert_eq!(aliases.aliases.len(), 10);
+            assert_eq!(aliases.get(0), "Fan #1");
+            assert_eq!(aliases.get(9), "Fan #10");
+        }
+
+        // Reload and verify persistence
+        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
+        let aliases = config2.aliases().await;
+        assert_eq!(aliases.aliases.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_fill_defaults_preserves_existing() {
+        use openfan_core::board::BoardType;
+
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        let board = BoardType::OpenFanStandard.to_board_info();
+
+        // Set a custom alias for fan 0
+        {
+            let mut aliases = config.aliases_mut().await;
+            aliases.set(0, "CPU Fan".to_string());
+        }
+        config.save_aliases().await.unwrap();
+
+        // Fill defaults
+        config.fill_defaults_for_board(&board).await.unwrap();
+
+        // Fan 0 should keep custom name, others get defaults
+        let aliases = config.aliases().await;
+        assert_eq!(aliases.get(0), "CPU Fan");
+        assert_eq!(aliases.get(1), "Fan #2");
+        assert_eq!(aliases.get(9), "Fan #10");
+    }
 }

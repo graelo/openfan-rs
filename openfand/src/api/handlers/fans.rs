@@ -449,3 +449,279 @@ mod tests {
         // Note: For PWM, this is clamped to 100; for RPM, this fails validation
     }
 }
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    /// Create a test app with mock mode (no hardware)
+    async fn create_test_app() -> Router {
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+        let temp_dir = tempfile::tempdir().unwrap();
+        // RuntimeConfig::load expects a path to a TOML config file
+        let config_path = temp_dir.path().join("config.toml");
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+        let state = AppState::new(board_info, config, None);
+        create_router(state)
+    }
+
+    /// Helper to extract response body as string
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_fan_status_mock_mode() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // Verify it's a success response with mock data
+        assert!(json.get("data").is_some());
+        let data = json.get("data").unwrap();
+        assert!(data.get("rpms").is_some());
+        assert!(data.get("pwms").is_some());
+
+        // Mock mode returns 10 fans for Standard board
+        let rpms = data.get("rpms").unwrap().as_object().unwrap();
+        assert_eq!(rpms.len(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fans_missing_value() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/all/set")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = body_string(response.into_body()).await;
+        assert!(body.contains("Missing"));
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fans_valid_value() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/all/set?value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_valid() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/pwm?value=75")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_invalid_fan_id() {
+        let app = create_test_app().await;
+
+        // Fan ID 10 is out of range for Standard board (0-9)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/10/pwm?value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_missing_value() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/pwm")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_fan_rpm_mock_mode() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/5/rpm/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // Mock RPM for fan 5 should be 1500 + (5 * 100) = 2000
+        let data = json.get("data").unwrap();
+        assert_eq!(data.as_u64().unwrap(), 2000);
+    }
+
+    #[tokio::test]
+    async fn test_get_fan_rpm_invalid_fan_id() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/99/rpm/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_valid() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/rpm?value=1500")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_below_minimum() {
+        let app = create_test_app().await;
+
+        // RPM below 500 should fail validation
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/rpm?value=400")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_above_maximum() {
+        let app = create_test_app().await;
+
+        // RPM above 9000 should fail validation
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/rpm?value=10000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_boundary_values() {
+        let app = create_test_app().await;
+
+        // Minimum valid RPM (500)
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/rpm?value=500")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Maximum valid RPM (9000)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/fan/0/rpm?value=9000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}

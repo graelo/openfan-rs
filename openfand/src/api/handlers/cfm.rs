@@ -328,3 +328,255 @@ mod tests {
         assert_eq!(list_response.mappings.get(&5), Some(&45.0));
     }
 }
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    /// Test harness that keeps the config directory alive for the duration of the test.
+    /// The TempDir must outlive the router since CFM handlers persist config to disk.
+    struct TestApp {
+        router: Router,
+        _config_dir: TempDir,
+    }
+
+    impl TestApp {
+        async fn new() -> Self {
+            let board_info = BoardType::OpenFanStandard.to_board_info();
+            let config_dir = tempfile::tempdir().unwrap();
+
+            // Create data directory inside temp dir
+            let data_dir = config_dir.path().join("data");
+            std::fs::create_dir_all(&data_dir).unwrap();
+
+            // Note: data_dir MUST be at top level in TOML, before any [section]
+            let data_dir_str = data_dir.to_string_lossy().replace('\\', "\\\\");
+            let config_content = format!(
+                r#"data_dir = "{}"
+
+[server]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+
+[hardware]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+"#,
+                data_dir_str
+            );
+
+            let config_path = config_dir.path().join("config.toml");
+            std::fs::write(&config_path, config_content).unwrap();
+
+            let config = RuntimeConfig::load(&config_path).await.unwrap();
+            let state = AppState::new(board_info, config, None);
+
+            TestApp {
+                router: create_router(state),
+                _config_dir: config_dir,
+            }
+        }
+
+        fn router(&self) -> Router {
+            self.router.clone()
+        }
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_cfm() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/cfm/list")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // Should have valid mappings structure
+        let data = json.get("data").unwrap();
+        assert!(data.get("mappings").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_cfm_valid_port() {
+        let app = TestApp::new().await;
+
+        // First set a CFM value
+        let _ = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/cfm/0")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"cfm_at_100": 45.0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Then get it
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/cfm/0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert_eq!(data.get("port").unwrap().as_u64().unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_cfm_invalid_port() {
+        let app = TestApp::new().await;
+
+        // Port 99 is out of range
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/cfm/99")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_cfm_valid() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/cfm/0")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"cfm_at_100": 45.0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_cfm_zero_invalid() {
+        let app = TestApp::new().await;
+
+        // Zero CFM should be rejected
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/cfm/0")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"cfm_at_100": 0.0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_cfm_negative_invalid() {
+        let app = TestApp::new().await;
+
+        // Negative CFM should be rejected
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/cfm/0")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"cfm_at_100": -10.0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_delete_cfm_after_set() {
+        let app = TestApp::new().await;
+
+        // First set a CFM value
+        let set_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/cfm/5")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"cfm_at_100": 30.0}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(set_response.status(), StatusCode::OK);
+
+        // Then delete it
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/api/v0/cfm/5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+}

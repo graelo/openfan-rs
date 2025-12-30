@@ -223,3 +223,126 @@ mod tests {
         assert!(uptime_ms >= 10);
     }
 }
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    async fn create_test_app() -> Router {
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+        let temp_dir = tempfile::tempdir().unwrap();
+        let config_path = temp_dir.path().join("config.toml");
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+        let state = AppState::new(board_info, config, None);
+        create_router(state)
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_root_endpoint() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        // Verify basic service info
+        let data = json.get("data").unwrap();
+        assert!(data.get("service").is_some());
+        assert!(data.get("status").is_some());
+        assert_eq!(data.get("status").unwrap().as_str().unwrap(), "ok");
+    }
+
+    #[tokio::test]
+    async fn test_get_info_without_hardware() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        let data = json.get("data").unwrap();
+
+        // Verify structure
+        assert!(data.get("version").is_some());
+        assert!(data.get("hardware_connected").is_some());
+        assert!(data.get("uptime").is_some());
+        assert!(data.get("board_info").is_some());
+
+        // Without hardware, hardware_connected should be false
+        assert!(!data.get("hardware_connected").unwrap().as_bool().unwrap());
+
+        // Hardware and firmware should be null or absent without hardware
+        let hardware = data.get("hardware");
+        assert!(hardware.is_none() || hardware.unwrap().is_null());
+        let firmware = data.get("firmware");
+        assert!(firmware.is_none() || firmware.unwrap().is_null());
+
+        // Uptime should be present and valid (u64 is inherently non-negative)
+        assert!(data.get("uptime").unwrap().as_u64().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_info_board_info_structure() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/info")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+
+        let data = json.get("data").unwrap();
+        let board_info = data.get("board_info").unwrap();
+
+        // Verify Standard board info
+        assert_eq!(
+            board_info.get("name").unwrap().as_str().unwrap(),
+            "OpenFAN Standard"
+        );
+        assert_eq!(board_info.get("fan_count").unwrap().as_u64().unwrap(), 10);
+        assert_eq!(board_info.get("usb_vid").unwrap().as_u64().unwrap(), 0x2E8A);
+        assert_eq!(board_info.get("usb_pid").unwrap().as_u64().unwrap(), 0x000A);
+    }
+}
