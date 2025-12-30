@@ -1,5 +1,10 @@
 # OpenFAN Controller
 
+[![release](https://img.shields.io/github/v/release/graelo/openfan-rs)](https://github.com/graelo/openfan-rs/releases/latest)
+[![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml)
+[![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
+[![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
+
 A Rust-based controller for OpenFAN hardware - manage your fans via REST API or
 CLI.
 
@@ -35,8 +40,8 @@ must specify the board type explicitly.
 **Debian/Ubuntu:**
 
 ```bash
-curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_0.1.0_amd64.deb
-sudo dpkg -i openfan-controller_0.1.0_amd64.deb
+curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_<VERSION>_amd64.deb
+sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
 **Other Linux:**
@@ -241,7 +246,3 @@ openfan-rs/
 ## License
 
 MIT
-
-## Version
-
-0.1.0
