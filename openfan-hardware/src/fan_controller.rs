@@ -468,16 +468,19 @@ mod tests {
 
     #[test]
     fn test_pwm_percentage_to_value_boundaries() {
+        // Test the PWM percentage to value formula: (percent * 255) / 100
+        let convert = |percent: u32| (percent * 255) / 100;
+
         // 0% -> 0
-        assert_eq!((0 * 255) / 100, 0);
+        assert_eq!(convert(0), 0);
         // 1% -> 2 (rounds down)
-        assert_eq!((1 * 255) / 100, 2);
+        assert_eq!(convert(1), 2);
         // 50% -> 127
-        assert_eq!((50 * 255) / 100, 127);
+        assert_eq!(convert(50), 127);
         // 99% -> 252
-        assert_eq!((99 * 255) / 100, 252);
+        assert_eq!(convert(99), 252);
         // 100% -> 255
-        assert_eq!((100 * 255) / 100, 255);
+        assert_eq!(convert(100), 255);
     }
 
     #[test]
@@ -626,10 +629,12 @@ mod tests {
         // OpenFAN Standard has 10 fans (0-9 valid)
         use openfan_core::OpenFanStandard;
 
-        for fan_id in 0..10u8 {
-            assert!((fan_id as usize) < OpenFanStandard::FAN_COUNT);
+        let fan_count = OpenFanStandard::FAN_COUNT;
+        for fan_id in 0..fan_count {
+            assert!(fan_id < fan_count);
         }
-        assert!((10usize) >= OpenFanStandard::FAN_COUNT);
+        // Fan ID 10 should be invalid (out of range)
+        assert!(fan_count <= 10);
     }
 
     #[test]

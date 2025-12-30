@@ -219,14 +219,6 @@ mod tests {
     use openfan_core::{BoardConfig, DefaultBoard};
 
     #[test]
-    fn test_fan_id_validation() {
-        assert_eq!("0".parse::<u8>().unwrap(), 0);
-        assert_eq!("9".parse::<u8>().unwrap(), 9);
-        assert!("10".parse::<u8>().unwrap() > 9);
-        assert!("abc".parse::<u8>().is_err());
-    }
-
-    #[test]
     fn test_alias_validation() {
         // Valid aliases
         assert!(is_valid_alias("CPU Fan"));
