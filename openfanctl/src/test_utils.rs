@@ -72,7 +72,7 @@ impl Default for MockServerState {
             },
         );
 
-        let board_info = openfan_core::BoardType::OpenFanV1.to_board_info();
+        let board_info = openfan_core::BoardType::OpenFanStandard.to_board_info();
         let info = InfoResponse {
             version: "1.0.0-test".to_string(),
             board_info,

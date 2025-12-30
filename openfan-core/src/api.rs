@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn test_info_response() {
-        let board_info = crate::BoardType::OpenFanV1.to_board_info();
+        let board_info = crate::BoardType::OpenFanStandard.to_board_info();
         let response = InfoResponse {
             version: "1.0.0".to_string(),
             board_info,

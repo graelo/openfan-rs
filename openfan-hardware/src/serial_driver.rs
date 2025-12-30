@@ -226,12 +226,12 @@ pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
         if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
             match (info.vid, info.pid) {
                 (0x2E8A, 0x000A) => {
-                    debug!("Detected OpenFAN v1 at: {}", port.port_name);
-                    return Ok(BoardType::OpenFanV1);
+                    debug!("Detected OpenFAN Standard at: {}", port.port_name);
+                    return Ok(BoardType::OpenFanStandard);
                 }
                 (0x2E8A, 0x000B) => {
-                    debug!("Detected OpenFAN Mini at: {}", port.port_name);
-                    return Ok(BoardType::OpenFanMini);
+                    debug!("Detected OpenFAN Micro at: {}", port.port_name);
+                    return Ok(BoardType::OpenFanMicro);
                 }
                 _ => continue,
             }

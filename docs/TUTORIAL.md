@@ -16,7 +16,7 @@ OpenFAN consists of two components:
 openfand
 
 # Or in mock mode for testing
-openfand --mock --board v1
+openfand --mock --board standard
 
 # Check status
 openfanctl status
@@ -34,8 +34,8 @@ openfand
 openfand --config /etc/openfan/config.toml
 
 # Mock mode (no hardware required)
-openfand --mock --board v1
-openfand --mock --board mini
+openfand --mock --board standard
+openfand --mock --board micro
 ```
 
 ### Configuration Files
@@ -132,8 +132,8 @@ openfanctl fan pwm 0
 
 Fan IDs are 0-indexed:
 
-- OpenFAN v1.0: fans 0-9 (10 fans)
-- OpenFAN Mini: fans 0-3 (4 fans)
+- OpenFAN Standard: fans 0-9 (10 fans)
+- OpenFAN Micro: fan 0 (1 fan)
 
 ## Profiles
 
@@ -148,7 +148,7 @@ openfanctl profile list
 # Apply a profile
 openfanctl profile apply "50% PWM"
 
-# Add a new PWM profile (10 values for OpenFAN v1.0)
+# Add a new PWM profile (10 values for OpenFAN Standard)
 openfanctl profile add "Silent" pwm 30,30,30,30,30,30,30,30,30,30
 
 # Add an RPM profile
@@ -388,7 +388,7 @@ Use the CFM@100% value from your fan's specifications.
 
 - CFM values must be positive (> 0)
 - Maximum allowed value is 500 CFM
-- Port IDs must be valid for your board (0-9 for OpenFAN v1.0, 0-3 for Mini)
+- Port IDs must be valid for your board (0-9 for OpenFAN Standard, 0 for Micro)
 
 ## REST API
 
@@ -559,7 +559,7 @@ RUST_LOG=debug openfand
 lsusb | grep -i fan
 
 # Try mock mode to verify software
-openfand --mock --board v1
+openfand --mock --board standard
 ```
 
 ### CLI can't connect
@@ -579,8 +579,8 @@ openfanctl --verbose status
 
 Profiles must have exactly as many values as the board has fans:
 
-- OpenFAN v1.0: 10 values
-- OpenFAN Mini: 4 values
+- OpenFAN Standard: 10 values
+- OpenFAN Micro: 1 value
 
 ```bash
 # Check board info
