@@ -28,8 +28,8 @@ OpenFAN is a fan controller system consisting of:
 
 | Board | Fans | USB VID:PID | Status |
 |-------|------|-------------|--------|
-| OpenFAN v1.0 | 10 | 2E8A:000A | Supported |
-| OpenFAN Mini | 4 | 2E8A:000B | Planned |
+| OpenFAN Standard | 10 | 2E8A:000A | Supported |
+| OpenFAN Micro | 1 | 2E8A:000B | Planned |
 
 The server auto-detects which board is connected via USB. In mock mode, you
 must specify the board type explicitly.
@@ -70,8 +70,8 @@ cargo build --release
 openfand
 
 # In mock mode (for testing without hardware)
-openfand --mock --board v1      # Simulate OpenFAN v1.0 (10 fans)
-openfand --mock --board mini    # Simulate OpenFAN Mini (4 fans)
+openfand --mock --board standard   # Simulate OpenFAN Standard (10 fans)
+openfand --mock --board micro      # Simulate OpenFAN Micro (1 fan)
 
 # With custom config
 openfand --config /path/to/config.toml
@@ -177,7 +177,7 @@ See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.
 
 ```bash
 # Mock mode (for testing)
-docker run -p 3000:3000 graelo/openfan:latest openfand --mock --board v1
+docker run -p 3000:3000 graelo/openfan:latest openfand --mock --board standard
 
 # With real hardware
 docker run -p 3000:3000 \
@@ -215,7 +215,7 @@ sudo usermod -a -G dialout $USER
 sudo journalctl -u openfand -f
 
 # Test with mock mode
-openfand --mock --board v1 --verbose
+openfand --mock --board standard --verbose
 ```
 
 **Config/board mismatch error:**

@@ -115,7 +115,7 @@ impl OpenFanClient {
             max_retries,
             retry_delay,
             board_info: BoardInfo {
-                board_type: openfan_core::BoardType::OpenFanV1,
+                board_type: openfan_core::BoardType::OpenFanStandard,
                 name: "Unknown".to_string(),
                 fan_count: 10,
                 usb_vid: 0,
@@ -1171,7 +1171,7 @@ mod tests {
 
     #[test]
     fn test_board_info_validation() {
-        let board_info = BoardType::OpenFanV1.to_board_info();
+        let board_info = BoardType::OpenFanStandard.to_board_info();
 
         // Test valid fan ID
         assert!(board_info.validate_fan_id(0).is_ok());

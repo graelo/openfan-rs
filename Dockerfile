@@ -91,8 +91,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 ENV RUST_LOG=info
 ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
 
-# Default command (mock mode with v1 board for testing; override for real hardware)
-CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock", "--board", "v1"]
+# Default command (mock mode with standard board for testing; override for real hardware)
+CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock", "--board", "standard"]
 
 # Labels
 ARG VERSION

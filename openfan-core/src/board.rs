@@ -1,7 +1,7 @@
 //! Board definitions and configuration
 //!
 //! This module provides trait-based abstractions for different hardware board configurations.
-//! Each board type (OpenFAN v1.0, OpenFAN Mini, etc.) implements the `BoardConfig` trait
+//! Each board type (OpenFAN Standard, OpenFAN Micro, etc.) implements the `BoardConfig` trait
 //! with its specific characteristics.
 //!
 //! The abstraction uses const generics and traits to provide:
@@ -22,11 +22,11 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```
-/// use openfan_core::board::{BoardConfig, OpenFanV1};
+/// use openfan_core::board::{BoardConfig, OpenFanStandard};
 ///
 /// // Access board properties at compile time
-/// const FAN_COUNT: usize = OpenFanV1::FAN_COUNT;
-/// const NAME: &str = OpenFanV1::NAME;
+/// const FAN_COUNT: usize = OpenFanStandard::FAN_COUNT;
+/// const NAME: &str = OpenFanStandard::NAME;
 /// ```
 pub trait BoardConfig: Send + Sync + 'static {
     /// Human-readable board name
@@ -57,7 +57,7 @@ pub trait BoardConfig: Send + Sync + 'static {
     const MIN_RPM: u32;
 }
 
-/// OpenFAN v1.0 hardware board configuration
+/// OpenFAN Standard hardware board configuration
 ///
 /// This is the standard 10-fan controller board with the following specifications:
 /// - 10 PWM fan channels
@@ -65,10 +65,10 @@ pub trait BoardConfig: Send + Sync + 'static {
 /// - USB PID: 0x000A (OpenFAN device)
 /// - 115200 baud serial communication
 /// - RPM range: 480-16000 (below 480, fan is set to 0/off)
-pub struct OpenFanV1;
+pub struct OpenFanStandard;
 
-impl BoardConfig for OpenFanV1 {
-    const NAME: &'static str = "OpenFAN v1.0";
+impl BoardConfig for OpenFanStandard {
+    const NAME: &'static str = "OpenFAN Standard";
     const FAN_COUNT: usize = 10;
     const USB_VID: u16 = 0x2E8A;
     const USB_PID: u16 = 0x000A;
@@ -85,10 +85,10 @@ impl BoardConfig for OpenFanV1 {
 /// board types that can be detected and used at runtime.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoardType {
-    /// OpenFAN v1.0 - Standard 10-fan controller
-    OpenFanV1,
-    /// OpenFAN Mini - Compact 4-fan controller (future support)
-    OpenFanMini,
+    /// OpenFAN Standard - Standard 10-fan controller
+    OpenFanStandard,
+    /// OpenFAN Micro - Compact 4-fan controller (future support)
+    OpenFanMicro,
 }
 
 impl std::str::FromStr for BoardType {
@@ -102,16 +102,16 @@ impl std::str::FromStr for BoardType {
     /// use std::str::FromStr;
     /// use openfan_core::board::BoardType;
     ///
-    /// assert!(BoardType::from_str("v1").is_ok());
-    /// assert!(BoardType::from_str("mini").is_ok());
+    /// assert!(BoardType::from_str("standard").is_ok());
+    /// assert!(BoardType::from_str("micro").is_ok());
     /// assert!(BoardType::from_str("unknown").is_err());
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "v1" | "openfan-v1" => Ok(BoardType::OpenFanV1),
-            "mini" | "openfan-mini" => Ok(BoardType::OpenFanMini),
+            "standard" | "openfan-standard" => Ok(BoardType::OpenFanStandard),
+            "micro" | "openfan-micro" => Ok(BoardType::OpenFanMicro),
             _ => Err(crate::OpenFanError::InvalidInput(format!(
-                "Unknown board type: '{}'. Valid options: v1, mini",
+                "Unknown board type: '{}'. Valid options: standard, micro",
                 s
             ))),
         }
@@ -122,53 +122,53 @@ impl BoardType {
     /// Get human-readable board name
     pub fn name(&self) -> &'static str {
         match self {
-            BoardType::OpenFanV1 => OpenFanV1::NAME,
-            BoardType::OpenFanMini => "OpenFAN Mini", // TODO: Add OpenFanMini BoardConfig
+            BoardType::OpenFanStandard => OpenFanStandard::NAME,
+            BoardType::OpenFanMicro => "OpenFAN Micro", // TODO: Add OpenFanMicro BoardConfig
         }
     }
 
     /// Get fan count for this board type
     pub fn fan_count(&self) -> usize {
         match self {
-            BoardType::OpenFanV1 => OpenFanV1::FAN_COUNT,
-            BoardType::OpenFanMini => 4, // TODO: Use OpenFanMini::FAN_COUNT
+            BoardType::OpenFanStandard => OpenFanStandard::FAN_COUNT,
+            BoardType::OpenFanMicro => 1, // TODO: Use OpenFanMicro::FAN_COUNT
         }
     }
 
     /// Get USB VID for this board type
     pub fn usb_vid(&self) -> u16 {
         match self {
-            BoardType::OpenFanV1 => OpenFanV1::USB_VID,
-            BoardType::OpenFanMini => 0x2E8A,
+            BoardType::OpenFanStandard => OpenFanStandard::USB_VID,
+            BoardType::OpenFanMicro => 0x2E8A,
         }
     }
 
     /// Get USB PID for this board type
     pub fn usb_pid(&self) -> u16 {
         match self {
-            BoardType::OpenFanV1 => OpenFanV1::USB_PID,
-            BoardType::OpenFanMini => 0x000B,
+            BoardType::OpenFanStandard => OpenFanStandard::USB_PID,
+            BoardType::OpenFanMicro => 0x000B,
         }
     }
 
     /// Convert to runtime board info
     pub fn to_board_info(self) -> BoardInfo {
         match self {
-            BoardType::OpenFanV1 => BoardInfo {
-                board_type: BoardType::OpenFanV1,
-                name: OpenFanV1::NAME.to_string(),
-                fan_count: OpenFanV1::FAN_COUNT,
-                usb_vid: OpenFanV1::USB_VID,
-                usb_pid: OpenFanV1::USB_PID,
-                max_pwm: OpenFanV1::MAX_PWM,
-                max_rpm: OpenFanV1::MAX_RPM,
-                min_rpm: OpenFanV1::MIN_RPM,
-                baud_rate: OpenFanV1::BAUD_RATE,
+            BoardType::OpenFanStandard => BoardInfo {
+                board_type: BoardType::OpenFanStandard,
+                name: OpenFanStandard::NAME.to_string(),
+                fan_count: OpenFanStandard::FAN_COUNT,
+                usb_vid: OpenFanStandard::USB_VID,
+                usb_pid: OpenFanStandard::USB_PID,
+                max_pwm: OpenFanStandard::MAX_PWM,
+                max_rpm: OpenFanStandard::MAX_RPM,
+                min_rpm: OpenFanStandard::MIN_RPM,
+                baud_rate: OpenFanStandard::BAUD_RATE,
             },
-            BoardType::OpenFanMini => BoardInfo {
-                board_type: BoardType::OpenFanMini,
-                name: "OpenFAN Mini".to_string(),
-                fan_count: 4,
+            BoardType::OpenFanMicro => BoardInfo {
+                board_type: BoardType::OpenFanMicro,
+                name: "OpenFAN Micro".to_string(),
+                fan_count: 1,
                 usb_vid: 0x2E8A,
                 usb_pid: 0x000B,
                 max_pwm: 100,
@@ -222,7 +222,7 @@ impl BoardInfo {
     /// ```
     /// use openfan_core::board::BoardType;
     ///
-    /// let board = BoardType::OpenFanV1.to_board_info();
+    /// let board = BoardType::OpenFanStandard.to_board_info();
     /// assert!(board.validate_fan_id(0).is_ok());
     /// assert!(board.validate_fan_id(9).is_ok());
     /// assert!(board.validate_fan_id(10).is_err());
@@ -276,9 +276,9 @@ impl BoardInfo {
 
 /// Default board type used throughout the codebase
 ///
-/// Currently set to OpenFanV1. When adding new board support, this can be
+/// Currently set to OpenFanStandard. When adding new board support, this can be
 /// changed or made configurable via feature flags.
-pub type DefaultBoard = OpenFanV1;
+pub type DefaultBoard = OpenFanStandard;
 
 /// Backward compatibility: MAX_FANS constant
 ///
@@ -342,16 +342,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_openfan_v1_config() {
-        assert_eq!(OpenFanV1::NAME, "OpenFAN v1.0");
-        assert_eq!(OpenFanV1::FAN_COUNT, 10);
-        assert_eq!(OpenFanV1::USB_VID, 0x2E8A);
-        assert_eq!(OpenFanV1::USB_PID, 0x000A);
-        assert_eq!(OpenFanV1::BAUD_RATE, 115200);
-        assert_eq!(OpenFanV1::DEFAULT_TIMEOUT_MS, 1000);
-        assert_eq!(OpenFanV1::MAX_PWM, 100);
-        assert_eq!(OpenFanV1::MAX_RPM, 16000);
-        assert_eq!(OpenFanV1::MIN_RPM, 480);
+    fn test_openfan_standard_config() {
+        assert_eq!(OpenFanStandard::NAME, "OpenFAN Standard");
+        assert_eq!(OpenFanStandard::FAN_COUNT, 10);
+        assert_eq!(OpenFanStandard::USB_VID, 0x2E8A);
+        assert_eq!(OpenFanStandard::USB_PID, 0x000A);
+        assert_eq!(OpenFanStandard::BAUD_RATE, 115200);
+        assert_eq!(OpenFanStandard::DEFAULT_TIMEOUT_MS, 1000);
+        assert_eq!(OpenFanStandard::MAX_PWM, 100);
+        assert_eq!(OpenFanStandard::MAX_RPM, 16000);
+        assert_eq!(OpenFanStandard::MIN_RPM, 480);
     }
 
     #[test]
@@ -362,14 +362,14 @@ mod tests {
 
     #[test]
     fn test_board_helper() {
-        let board = Board::<OpenFanV1>::new();
-        assert_eq!(board.name(), "OpenFAN v1.0");
+        let board = Board::<OpenFanStandard>::new();
+        assert_eq!(board.name(), "OpenFAN Standard");
         assert_eq!(board.fan_count(), 10);
     }
 
     #[test]
     fn test_board_fan_id_validation() {
-        let board = Board::<OpenFanV1>::new();
+        let board = Board::<OpenFanStandard>::new();
 
         // Valid fan IDs
         assert!(board.validate_fan_id(0).is_ok());
@@ -383,8 +383,8 @@ mod tests {
 
     #[test]
     fn test_board_default() {
-        let board1 = Board::<OpenFanV1>::new();
-        let board2 = Board::<OpenFanV1>::default();
+        let board1 = Board::<OpenFanStandard>::new();
+        let board2 = Board::<OpenFanStandard>::default();
 
         assert_eq!(board1.name(), board2.name());
         assert_eq!(board1.fan_count(), board2.fan_count());

@@ -42,8 +42,8 @@ struct Args {
     #[arg(long)]
     mock: bool,
 
-    /// Board type to emulate in mock mode (v1, mini)
-    #[arg(long, default_value = "v1", requires = "mock")]
+    /// Board type to emulate in mock mode (standard, micro)
+    #[arg(long, default_value = "standard", requires = "mock")]
     board: String,
 }
 
