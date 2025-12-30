@@ -668,4 +668,37 @@ mod tests {
         assert_eq!(micro.usb_vid(), 0x2E8A);
         assert_eq!(micro.usb_pid(), 0x000B);
     }
+
+    #[test]
+    fn test_parse_fan_rpm_duplicate_fan_ids() {
+        // When duplicate fan IDs appear, last value wins
+        let response = "<DATA|0:1000;0:2000;>";
+        let rpm_map = parse_rpm_response(response).unwrap();
+
+        assert_eq!(rpm_map.len(), 1);
+        assert_eq!(rpm_map.get(&0), Some(&0x2000));
+    }
+
+    #[test]
+    fn test_parse_fan_rpm_out_of_order_fan_ids() {
+        // Fan IDs don't need to be in order
+        let response = "<DATA|5:5555;0:0000;9:9999;1:1111;>";
+        let rpm_map = parse_rpm_response(response).unwrap();
+
+        assert_eq!(rpm_map.len(), 4);
+        assert_eq!(rpm_map.get(&0), Some(&0x0000));
+        assert_eq!(rpm_map.get(&1), Some(&0x1111));
+        assert_eq!(rpm_map.get(&5), Some(&0x5555));
+        assert_eq!(rpm_map.get(&9), Some(&0x9999));
+    }
+
+    #[test]
+    fn test_parse_fan_rpm_large_hex_values() {
+        // Verify upper bound of 16-bit RPM values
+        let response = "<DATA|0:FFFE;1:FFFF;>";
+        let rpm_map = parse_rpm_response(response).unwrap();
+
+        assert_eq!(rpm_map.get(&0), Some(&0xFFFE));
+        assert_eq!(rpm_map.get(&1), Some(&0xFFFF));
+    }
 }

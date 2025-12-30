@@ -412,4 +412,40 @@ mod tests {
         let query: FanControlQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.value, Some(100.0));
     }
+
+    #[test]
+    fn test_fan_id_board_validation() {
+        use openfan_core::BoardType;
+
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+
+        // Valid fan IDs (0-9 for Standard board)
+        for fan_id in 0..10u8 {
+            assert!(
+                board_info.validate_fan_id(fan_id).is_ok(),
+                "Fan ID {} should be valid",
+                fan_id
+            );
+        }
+
+        // Invalid fan ID (10 and above)
+        assert!(board_info.validate_fan_id(10).is_err());
+        assert!(board_info.validate_fan_id(255).is_err());
+    }
+
+    #[test]
+    fn test_fan_control_query_negative_value() {
+        let json = r#"{"value": -50.0}"#;
+        let query: FanControlQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.value, Some(-50.0));
+        // Note: Negative values are clamped to 0 in the handler
+    }
+
+    #[test]
+    fn test_fan_control_query_large_value() {
+        let json = r#"{"value": 9999.0}"#;
+        let query: FanControlQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.value, Some(9999.0));
+        // Note: For PWM, this is clamped to 100; for RPM, this fails validation
+    }
 }
