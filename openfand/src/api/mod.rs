@@ -5,7 +5,7 @@
 pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
-use crate::hardware::FanController;
+use crate::hardware::DefaultFanController;
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -28,7 +28,7 @@ pub(crate) struct AppState {
     /// Runtime configuration (static config + mutable data)
     pub config: Arc<RuntimeConfig>,
     /// Hardware controller
-    pub fan_controller: Option<Arc<Mutex<FanController>>>,
+    pub fan_controller: Option<Arc<Mutex<DefaultFanController>>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
 }
@@ -38,7 +38,7 @@ impl AppState {
     pub fn new(
         board_info: BoardInfo,
         config: RuntimeConfig,
-        fan_controller: Option<FanController>,
+        fan_controller: Option<DefaultFanController>,
     ) -> Self {
         Self {
             board_info: Arc::new(board_info),

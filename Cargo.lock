@@ -1006,6 +1006,7 @@ dependencies = [
 name = "openfan-hardware"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "openfan-core",
  "thiserror 1.0.69",
  "tokio",

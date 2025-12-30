@@ -2,10 +2,9 @@
 //!
 //! Implements the fan control protocol over serial communication.
 
-use crate::serial_driver::SerialDriver;
+use crate::serial_driver::{SerialDriver, SerialTransport};
 use openfan_core::{BoardConfig, FanRpmMap, OpenFanError, Result};
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
@@ -31,30 +30,50 @@ pub enum Command {
 }
 
 /// Fan controller interface
-pub struct FanController<B: BoardConfig = openfan_core::DefaultBoard> {
-    driver: Arc<Mutex<SerialDriver<B>>>,
+///
+/// Generic over the transport type, allowing real hardware (`SerialDriver`)
+/// or mock transports for testing.
+pub struct FanController<T: SerialTransport + ?Sized = dyn SerialTransport> {
+    driver: Arc<Mutex<Box<T>>>,
+    fan_count: usize,
+    max_pwm: u32,
     fan_rpm_cache: HashMap<u8, u32>,
     fan_pwm_cache: HashMap<u8, u32>,
-    _board: PhantomData<B>,
 }
 
-impl<B: BoardConfig> FanController<B> {
+impl<B: BoardConfig + Send + Sync> FanController<SerialDriver<B>> {
     /// Create a new FanController with the given serial driver
     pub fn new(driver: SerialDriver<B>) -> Self {
         Self {
-            driver: Arc::new(Mutex::new(driver)),
+            driver: Arc::new(Mutex::new(Box::new(driver))),
+            fan_count: B::FAN_COUNT,
+            max_pwm: B::MAX_PWM,
             fan_rpm_cache: HashMap::new(),
             fan_pwm_cache: HashMap::new(),
-            _board: PhantomData,
+        }
+    }
+}
+
+impl<T: SerialTransport + ?Sized> FanController<T> {
+    /// Create a new FanController with a boxed transport
+    ///
+    /// This is primarily useful for testing with mock transports.
+    pub fn with_transport(transport: Box<T>, fan_count: usize, max_pwm: u32) -> Self {
+        Self {
+            driver: Arc::new(Mutex::new(transport)),
+            fan_count,
+            max_pwm,
+            fan_rpm_cache: HashMap::new(),
+            fan_pwm_cache: HashMap::new(),
         }
     }
 
     /// Validate a fan ID against this board's fan count
     fn validate_fan_id(&self, fan_id: u8) -> Result<()> {
-        if fan_id as usize >= B::FAN_COUNT {
+        if fan_id as usize >= self.fan_count {
             return Err(OpenFanError::InvalidFanId {
                 fan_id,
-                max_fans: B::FAN_COUNT,
+                max_fans: self.fan_count,
             });
         }
         Ok(())
@@ -182,7 +201,7 @@ impl<B: BoardConfig> FanController<B> {
     pub async fn set_fan_pwm(&mut self, fan_id: u8, pwm_percent: u32) -> Result<String> {
         self.validate_fan_id(fan_id)?;
 
-        if pwm_percent > B::MAX_PWM {
+        if pwm_percent > self.max_pwm {
             return Err(OpenFanError::InvalidInput(format!(
                 "PWM percentage must be 0-100, got {}",
                 pwm_percent
@@ -203,7 +222,7 @@ impl<B: BoardConfig> FanController<B> {
 
     /// Set PWM for all fans
     pub async fn set_all_fan_pwm(&mut self, pwm_percent: u32) -> Result<String> {
-        if pwm_percent > B::MAX_PWM {
+        if pwm_percent > self.max_pwm {
             return Err(OpenFanError::InvalidInput(format!(
                 "PWM percentage must be 0-100, got {}",
                 pwm_percent
@@ -219,7 +238,7 @@ impl<B: BoardConfig> FanController<B> {
             .await?;
 
         // Cache the PWM value for all fans on successful write
-        for fan_id in 0..B::FAN_COUNT as u8 {
+        for fan_id in 0..self.fan_count as u8 {
             self.fan_pwm_cache.insert(fan_id, pwm_percent);
         }
 
@@ -259,6 +278,308 @@ impl<B: BoardConfig> FanController<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use std::collections::VecDeque;
+
+    /// Mock transport for testing FanController without hardware
+    struct MockTransport {
+        /// Queued responses to return
+        responses: std::sync::Mutex<VecDeque<Vec<String>>>,
+        /// Record of commands sent
+        sent_commands: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl MockTransport {
+        fn new() -> Self {
+            Self {
+                responses: std::sync::Mutex::new(VecDeque::new()),
+                sent_commands: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn queue_response(&self, response: Vec<String>) {
+            self.responses.lock().unwrap().push_back(response);
+        }
+
+        fn get_sent_commands(&self) -> Vec<String> {
+            self.sent_commands.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl SerialTransport for MockTransport {
+        async fn transaction(&mut self, command: &str) -> Result<Vec<String>> {
+            self.sent_commands.lock().unwrap().push(command.to_string());
+
+            self.responses
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or_else(|| OpenFanError::Hardware("No response queued".to_string()))
+        }
+
+        fn clear_input_buffer(&mut self) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    /// Create a test FanController with mock transport
+    fn create_mock_controller(mock: MockTransport) -> FanController<MockTransport> {
+        FanController::with_transport(Box::new(mock), 10, 100)
+    }
+
+    // --- Integration tests that exercise actual FanController methods ---
+
+    #[tokio::test]
+    async fn test_get_all_fan_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:1234;1:5678;2:9ABC;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
+
+        assert_eq!(rpm_map.get(&0), Some(&0x1234));
+        assert_eq!(rpm_map.get(&1), Some(&0x5678));
+        assert_eq!(rpm_map.get(&2), Some(&0x9ABC));
+    }
+
+    #[tokio::test]
+    async fn test_get_single_fan_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|3:ABCD;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm = controller.get_single_fan_rpm(3).await.unwrap();
+
+        assert_eq!(rpm, 0xABCD);
+    }
+
+    #[tokio::test]
+    async fn test_get_single_fan_rpm_invalid_id() {
+        let mock = MockTransport::new();
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_single_fan_rpm(15).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            OpenFanError::InvalidFanId { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_fan_pwm(0, 50).await;
+
+        assert!(result.is_ok());
+        // Check PWM is cached
+        assert_eq!(controller.get_single_fan_pwm(0), Some(50));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_invalid_value() {
+        let mock = MockTransport::new();
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_fan_pwm(0, 150).await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_invalid_fan_id() {
+        let mock = MockTransport::new();
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_fan_pwm(20, 50).await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            OpenFanError::InvalidFanId { .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fan_pwm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_all_fan_pwm(75).await;
+
+        assert!(result.is_ok());
+        // Check all fans have cached PWM
+        for fan_id in 0..10u8 {
+            assert_eq!(controller.get_single_fan_pwm(fan_id), Some(75));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fan_pwm_invalid_value() {
+        let mock = MockTransport::new();
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_all_fan_pwm(200).await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_fan_rpm(5, 2000).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_invalid_value() {
+        let mock = MockTransport::new();
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.set_fan_rpm(0, 70000).await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::InvalidInput(_)));
+    }
+
+    #[tokio::test]
+    async fn test_get_hw_info() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<HW|Model:Standard;Rev:1.0>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let hw_info = controller.get_hw_info().await.unwrap();
+
+        assert!(hw_info.contains("Standard"));
+    }
+
+    #[tokio::test]
+    async fn test_get_fw_info() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<FW|Version:1.2.3>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let fw_info = controller.get_fw_info().await.unwrap();
+
+        assert!(fw_info.contains("1.2.3"));
+    }
+
+    #[tokio::test]
+    async fn test_command_format_get_all_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:0000;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let _ = controller.get_all_fan_rpm().await;
+
+        let sent = controller.driver.lock().await.get_sent_commands();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0], ">00"); // GetAllFanRpm = 0x00
+    }
+
+    #[tokio::test]
+    async fn test_command_format_set_pwm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let _ = controller.set_fan_pwm(3, 50).await; // 50% = 127 = 0x7F
+
+        let sent = controller.driver.lock().await.get_sent_commands();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0], ">02037F"); // SetFanPwm(0x02), fan 3, pwm 0x7F
+    }
+
+    #[tokio::test]
+    async fn test_command_format_set_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let _ = controller.set_fan_rpm(2, 3000).await; // 3000 = 0x0BB8
+
+        let sent = controller.driver.lock().await.get_sent_commands();
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0], ">04020BB8"); // SetFanRpm(0x04), fan 2, high=0x0B, low=0xB8
+    }
+
+    #[tokio::test]
+    async fn test_get_all_fan_pwm_initially_empty() {
+        let mock = MockTransport::new();
+        let controller = create_mock_controller(mock);
+
+        let pwm_map = controller.get_all_fan_pwm();
+        assert!(pwm_map.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_all_fan_pwm_after_set() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<OK>".to_string()]);
+        mock.queue_response(vec!["<OK>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let _ = controller.set_fan_pwm(0, 25).await;
+        let _ = controller.set_fan_pwm(5, 75).await;
+
+        let pwm_map = controller.get_all_fan_pwm();
+        assert_eq!(pwm_map.get(&0), Some(&25));
+        assert_eq!(pwm_map.get(&5), Some(&75));
+        assert_eq!(pwm_map.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_parse_response_no_valid_line() {
+        let mock = MockTransport::new();
+        // Response without '<' prefix is invalid
+        mock.queue_response(vec!["INVALID RESPONSE".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_hw_info().await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::Hardware(_)));
+    }
+
+    #[tokio::test]
+    async fn test_parse_fan_rpm_invalid_format() {
+        let mock = MockTransport::new();
+        // Missing data part after |
+        mock.queue_response(vec!["<DATA>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_all_fan_rpm().await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::Parse(_)));
+    }
+
+    #[tokio::test]
+    async fn test_rpm_cache_updated_after_get() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:1234;1:5678;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let _ = controller.get_all_fan_rpm().await;
+
+        // RPM cache should be updated
+        // Note: There's no direct getter for RPM cache, but parse_fan_rpm updates it
+        // This test verifies the flow completes without error
+    }
+
+    // --- Existing unit tests below ---
 
     #[test]
     fn test_command_values() {

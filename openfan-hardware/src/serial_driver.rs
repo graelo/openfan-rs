@@ -2,12 +2,26 @@
 //!
 //! Provides async serial I/O with the fan controller hardware.
 
+use async_trait::async_trait;
 use openfan_core::{BoardConfig, OpenFanError, Result};
 use std::marker::PhantomData;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_serial::{SerialPort, SerialPortBuilderExt, SerialStream};
 use tracing::{debug, error, warn};
+
+/// Trait for serial transport abstraction
+///
+/// This trait enables testing of `FanController` without real hardware
+/// by allowing mock implementations.
+#[async_trait]
+pub trait SerialTransport: Send + Sync {
+    /// Send a command and wait for response lines
+    async fn transaction(&mut self, command: &str) -> Result<Vec<String>>;
+
+    /// Clear the input buffer
+    fn clear_input_buffer(&mut self) -> Result<()>;
+}
 
 /// Serial driver for hardware communication
 pub struct SerialDriver<B: BoardConfig = openfan_core::DefaultBoard> {
@@ -63,9 +77,9 @@ impl<B: BoardConfig> SerialDriver<B> {
     /// 1. Flushing input buffer
     /// 2. Sending command with prefix/suffix
     /// 3. Reading response lines until one starts with '<'
-    pub async fn transaction(&mut self, command: &str) -> Result<Vec<String>> {
+    pub async fn transaction_direct(&mut self, command: &str) -> Result<Vec<String>> {
         // Clear any pending input
-        self.clear_input_buffer()?;
+        self.clear_input_buffer_impl()?;
 
         // Send command
         self.send(command).await?;
@@ -161,13 +175,31 @@ impl<B: BoardConfig> SerialDriver<B> {
     }
 
     /// Clear the input buffer
-    fn clear_input_buffer(&mut self) -> Result<()> {
+    fn clear_input_buffer_impl(&mut self) -> Result<()> {
         self.port
             .clear(tokio_serial::ClearBuffer::Input)
             .map_err(|e| {
                 warn!("Failed to clear input buffer: {}", e);
                 OpenFanError::Serial(format!("Failed to clear buffer: {}", e))
             })
+    }
+}
+
+#[async_trait]
+impl<B: BoardConfig + Send + Sync> SerialTransport for SerialDriver<B> {
+    async fn transaction(&mut self, command: &str) -> Result<Vec<String>> {
+        // Clear any pending input
+        self.clear_input_buffer_impl()?;
+
+        // Send command
+        self.send(command).await?;
+
+        // Read response
+        self.read_until_response().await
+    }
+
+    fn clear_input_buffer(&mut self) -> Result<()> {
+        self.clear_input_buffer_impl()
     }
 }
 
