@@ -10,6 +10,30 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
 
+/// Convert PWM percentage (0-100) to byte value (0-255)
+///
+/// Uses integer arithmetic to avoid floating point:
+/// - 0% → 0
+/// - 50% → 127
+/// - 100% → 255
+#[inline]
+pub fn pwm_percent_to_byte(percent: u32) -> u8 {
+    ((percent * 255) / 100) as u8
+}
+
+/// Convert RPM value to high and low bytes for serial protocol
+///
+/// The protocol expects RPM as two bytes: high byte first, then low byte.
+/// - RPM 0 → (0x00, 0x00)
+/// - RPM 3000 (0x0BB8) → (0x0B, 0xB8)
+/// - RPM 65535 → (0xFF, 0xFF)
+#[inline]
+pub fn rpm_to_bytes(rpm: u32) -> (u8, u8) {
+    let high = ((rpm >> 8) & 0xFF) as u8;
+    let low = (rpm & 0xFF) as u8;
+    (high, low)
+}
+
 /// Commands supported by the fan controller
 #[repr(u8)]
 #[derive(Debug, Clone, Copy)]
@@ -210,9 +234,7 @@ impl<T: SerialTransport + ?Sized> FanController<T> {
             )));
         }
 
-        // Convert percentage to 0-255 range
-        let pwm_value = (pwm_percent * 255) / 100;
-        let data = [fan_id, pwm_value as u8];
+        let data = [fan_id, pwm_percent_to_byte(pwm_percent)];
 
         let result = self.send_command(Command::SetFanPwm, Some(&data)).await?;
 
@@ -231,9 +253,7 @@ impl<T: SerialTransport + ?Sized> FanController<T> {
             )));
         }
 
-        // Convert percentage to 0-255 range
-        let pwm_value = (pwm_percent * 255) / 100;
-        let data = [pwm_value as u8];
+        let data = [pwm_percent_to_byte(pwm_percent)];
 
         let result = self
             .send_command(Command::SetAllFanPwm, Some(&data))
@@ -258,9 +278,7 @@ impl<T: SerialTransport + ?Sized> FanController<T> {
             )));
         }
 
-        // Split RPM into high and low bytes
-        let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-        let rpm_low = (rpm & 0xFF) as u8;
+        let (rpm_high, rpm_low) = rpm_to_bytes(rpm);
         let data = [fan_id, rpm_high, rpm_low];
 
         self.send_command(Command::SetFanRpm, Some(&data)).await
@@ -608,60 +626,18 @@ mod tests {
         assert_eq!(cmd as u8, cloned as u8);
     }
 
-    /// Helper to parse fan RPM response (mirrors FanController::parse_fan_rpm logic)
-    fn parse_rpm_response(response: &str) -> Result<HashMap<u8, u32>> {
-        let parts: Vec<&str> = response.split('|').collect();
-        if parts.len() < 2 {
-            return Err(OpenFanError::Parse(format!(
-                "Invalid RPM response format: {}",
-                response
-            )));
-        }
+    // --- RPM parsing edge case tests (via MockTransport) ---
 
-        let data_part = parts[1].trim_end_matches(';').trim_end_matches('>');
-        let mut rpm_map = HashMap::new();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_ten_fans() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec![
+            "<DATA|0:0100;1:0200;2:0300;3:0400;4:0500;5:0600;6:0700;7:0800;8:0900;9:0A00;>"
+                .to_string(),
+        ]);
 
-        for fan_data in data_part.split(';') {
-            if fan_data.is_empty() {
-                continue;
-            }
-
-            let fan_parts: Vec<&str> = fan_data.split(':').collect();
-            if fan_parts.len() != 2 {
-                continue; // Skip invalid entries (mirrors FanController behavior)
-            }
-
-            let fan_id = fan_parts[0].parse::<u8>().map_err(|e| {
-                OpenFanError::Parse(format!("Invalid fan ID: {} - {}", fan_parts[0], e))
-            })?;
-
-            let rpm = u32::from_str_radix(fan_parts[1], 16).map_err(|e| {
-                OpenFanError::Parse(format!("Invalid RPM value: {} - {}", fan_parts[1], e))
-            })?;
-
-            rpm_map.insert(fan_id, rpm);
-        }
-
-        Ok(rpm_map)
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_standard_response() {
-        let response = "<DATA|0:1234;1:5678;2:9ABC;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
-
-        assert_eq!(rpm_map.get(&0), Some(&0x1234));
-        assert_eq!(rpm_map.get(&1), Some(&0x5678));
-        assert_eq!(rpm_map.get(&2), Some(&0x9ABC));
-        assert_eq!(rpm_map.len(), 3);
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_ten_fans() {
-        // OpenFAN Standard has 10 fans
-        let response =
-            "<DATA|0:0100;1:0200;2:0300;3:0400;4:0500;5:0600;6:0700;7:0800;8:0900;9:0A00;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.len(), 10);
         for i in 0..10 {
@@ -670,198 +646,226 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_fan_rpm_zero_rpm() {
-        let response = "<DATA|0:0000;1:0000;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_zero_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:0000;1:0000;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.get(&0), Some(&0));
         assert_eq!(rpm_map.get(&1), Some(&0));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_max_rpm() {
-        let response = "<DATA|0:FFFF;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_max_rpm() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:FFFF;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.get(&0), Some(&0xFFFF));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_single_fan() {
-        let response = "<DATA|5:1A2B;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_lowercase_hex() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:abcd;1:ef00;>".to_string()]);
 
-        assert_eq!(rpm_map.len(), 1);
-        assert_eq!(rpm_map.get(&5), Some(&0x1A2B));
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_lowercase_hex() {
-        let response = "<DATA|0:abcd;1:ef00;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.get(&0), Some(&0xABCD));
         assert_eq!(rpm_map.get(&1), Some(&0xEF00));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_mixed_case_hex() {
-        let response = "<DATA|0:AbCd;1:eF01;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_mixed_case_hex() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:AbCd;1:eF01;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.get(&0), Some(&0xABCD));
         assert_eq!(rpm_map.get(&1), Some(&0xEF01));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_empty_data() {
-        let response = "<DATA|;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_empty_data() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert!(rpm_map.is_empty());
     }
 
-    #[test]
-    fn test_parse_fan_rpm_no_separator() {
-        let response = "<DATA>";
-        let result = parse_rpm_response(response);
+    #[tokio::test]
+    async fn test_parse_fan_rpm_no_separator() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA>".to_string()]);
 
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_invalid_fan_id() {
-        let response = "<DATA|abc:1234;>";
-        let result = parse_rpm_response(response);
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_all_fan_rpm().await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), OpenFanError::Parse(_)));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_invalid_rpm_value() {
-        let response = "<DATA|0:GHIJ;>";
-        let result = parse_rpm_response(response);
+    #[tokio::test]
+    async fn test_parse_fan_rpm_invalid_fan_id() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|abc:1234;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_all_fan_rpm().await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), OpenFanError::Parse(_)));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_skips_malformed_entries() {
-        // Entries without ':' should be skipped
-        let response = "<DATA|0:1234;invalid;2:5678;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_invalid_rpm_value() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:GHIJ;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let result = controller.get_all_fan_rpm().await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), OpenFanError::Parse(_)));
+    }
+
+    #[tokio::test]
+    async fn test_parse_fan_rpm_skips_malformed_entries() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:1234;invalid;2:5678;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.len(), 2);
         assert_eq!(rpm_map.get(&0), Some(&0x1234));
         assert_eq!(rpm_map.get(&2), Some(&0x5678));
     }
 
-    #[test]
-    fn test_parse_fan_rpm_trailing_semicolons() {
-        let response = "<DATA|0:1234;;;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
+    #[tokio::test]
+    async fn test_parse_fan_rpm_trailing_semicolons() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:1234;;;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
 
         assert_eq!(rpm_map.len(), 1);
         assert_eq!(rpm_map.get(&0), Some(&0x1234));
     }
 
-    /// Helper to check if a response line is valid (mirrors parse_response logic)
-    fn is_valid_response(line: &str) -> bool {
-        line.starts_with('<')
+    #[tokio::test]
+    async fn test_parse_fan_rpm_duplicate_fan_ids() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:1000;0:2000;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
+
+        // When duplicate fan IDs appear, last value wins
+        assert_eq!(rpm_map.len(), 1);
+        assert_eq!(rpm_map.get(&0), Some(&0x2000));
+    }
+
+    #[tokio::test]
+    async fn test_parse_fan_rpm_out_of_order_fan_ids() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|5:5555;0:0000;9:9999;1:1111;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
+
+        assert_eq!(rpm_map.len(), 4);
+        assert_eq!(rpm_map.get(&0), Some(&0x0000));
+        assert_eq!(rpm_map.get(&1), Some(&0x1111));
+        assert_eq!(rpm_map.get(&5), Some(&0x5555));
+        assert_eq!(rpm_map.get(&9), Some(&0x9999));
+    }
+
+    #[tokio::test]
+    async fn test_parse_fan_rpm_large_hex_values() {
+        let mock = MockTransport::new();
+        mock.queue_response(vec!["<DATA|0:FFFE;1:FFFF;>".to_string()]);
+
+        let mut controller = create_mock_controller(mock);
+        let rpm_map = controller.get_all_fan_rpm().await.unwrap();
+
+        assert_eq!(rpm_map.get(&0), Some(&0xFFFE));
+        assert_eq!(rpm_map.get(&1), Some(&0xFFFF));
     }
 
     #[test]
-    fn test_response_validation_valid() {
-        assert!(is_valid_response("<DATA|0:1234;>"));
-        assert!(is_valid_response("<OK>"));
-        assert!(is_valid_response("<ERROR|Something went wrong>"));
-        assert!(is_valid_response("<"));
-    }
-
-    #[test]
-    fn test_response_validation_invalid() {
-        assert!(!is_valid_response(">COMMAND"));
-        assert!(!is_valid_response("DATA|0:1234"));
-        assert!(!is_valid_response(""));
-        assert!(!is_valid_response(" <DATA>"));
-    }
-
-    #[test]
-    fn test_pwm_percentage_to_value_boundaries() {
-        // Test the PWM percentage to value formula: (percent * 255) / 100
-        let convert = |percent: u32| (percent * 255) / 100;
-
+    fn test_pwm_percent_to_byte_boundaries() {
+        // Test the actual pwm_percent_to_byte() function
         // 0% -> 0
-        assert_eq!(convert(0), 0);
+        assert_eq!(pwm_percent_to_byte(0), 0);
         // 1% -> 2 (rounds down)
-        assert_eq!(convert(1), 2);
+        assert_eq!(pwm_percent_to_byte(1), 2);
         // 50% -> 127
-        assert_eq!(convert(50), 127);
+        assert_eq!(pwm_percent_to_byte(50), 127);
         // 99% -> 252
-        assert_eq!(convert(99), 252);
+        assert_eq!(pwm_percent_to_byte(99), 252);
         // 100% -> 255
-        assert_eq!(convert(100), 255);
+        assert_eq!(pwm_percent_to_byte(100), 255);
     }
 
     #[test]
-    fn test_pwm_value_range() {
-        // Verify all percentages map to valid u8 range
-        for percent in 0..=100 {
-            let value = (percent * 255) / 100;
-            assert!(value <= 255);
+    fn test_pwm_percent_to_byte_full_range() {
+        // Verify monotonicity: higher percent → higher (or equal) byte value
+        for percent in 1..=100 {
+            assert!(pwm_percent_to_byte(percent) >= pwm_percent_to_byte(percent - 1));
         }
+        // Verify endpoints
+        assert_eq!(pwm_percent_to_byte(0), 0);
+        assert_eq!(pwm_percent_to_byte(100), 255);
     }
 
     #[test]
-    fn test_rpm_byte_splitting_zero() {
-        let rpm = 0u32;
-        let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-        let rpm_low = (rpm & 0xFF) as u8;
-
-        assert_eq!(rpm_high, 0);
-        assert_eq!(rpm_low, 0);
-        assert_eq!((rpm_high as u32) << 8 | rpm_low as u32, rpm);
+    fn test_rpm_to_bytes_zero() {
+        // Test the actual rpm_to_bytes() function at zero
+        let (high, low) = rpm_to_bytes(0);
+        assert_eq!(high, 0);
+        assert_eq!(low, 0);
     }
 
     #[test]
-    fn test_rpm_byte_splitting_max() {
-        let rpm = 65535u32;
-        let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-        let rpm_low = (rpm & 0xFF) as u8;
-
-        assert_eq!(rpm_high, 0xFF);
-        assert_eq!(rpm_low, 0xFF);
-        assert_eq!((rpm_high as u32) << 8 | rpm_low as u32, rpm);
+    fn test_rpm_to_bytes_max() {
+        // Test the actual rpm_to_bytes() function at max 16-bit value
+        let (high, low) = rpm_to_bytes(65535);
+        assert_eq!(high, 0xFF);
+        assert_eq!(low, 0xFF);
     }
 
     #[test]
-    fn test_rpm_byte_splitting_high_byte_only() {
-        let rpm = 0xFF00u32;
-        let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-        let rpm_low = (rpm & 0xFF) as u8;
-
-        assert_eq!(rpm_high, 0xFF);
-        assert_eq!(rpm_low, 0x00);
-        assert_eq!((rpm_high as u32) << 8 | rpm_low as u32, rpm);
+    fn test_rpm_to_bytes_high_byte_only() {
+        // Test rpm_to_bytes() with only high byte set
+        let (high, low) = rpm_to_bytes(0xFF00);
+        assert_eq!(high, 0xFF);
+        assert_eq!(low, 0x00);
     }
 
     #[test]
-    fn test_rpm_byte_splitting_low_byte_only() {
-        let rpm = 0x00FFu32;
-        let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-        let rpm_low = (rpm & 0xFF) as u8;
-
-        assert_eq!(rpm_high, 0x00);
-        assert_eq!(rpm_low, 0xFF);
-        assert_eq!((rpm_high as u32) << 8 | rpm_low as u32, rpm);
+    fn test_rpm_to_bytes_low_byte_only() {
+        // Test rpm_to_bytes() with only low byte set
+        let (high, low) = rpm_to_bytes(0x00FF);
+        assert_eq!(high, 0x00);
+        assert_eq!(low, 0xFF);
     }
 
     #[test]
-    fn test_rpm_byte_splitting_typical_values() {
-        // Typical fan RPM values
+    fn test_rpm_to_bytes_typical_values() {
+        // Test rpm_to_bytes() with typical fan RPM values
         let test_cases = [
             (1000u32, 0x03, 0xE8), // ~1000 RPM
             (1500u32, 0x05, 0xDC), // ~1500 RPM
@@ -871,94 +875,23 @@ mod tests {
         ];
 
         for (rpm, expected_high, expected_low) in test_cases {
-            let rpm_high = ((rpm >> 8) & 0xFF) as u8;
-            let rpm_low = (rpm & 0xFF) as u8;
-
-            assert_eq!(
-                rpm_high, expected_high,
-                "High byte mismatch for RPM {}",
-                rpm
-            );
-            assert_eq!(rpm_low, expected_low, "Low byte mismatch for RPM {}", rpm);
-            assert_eq!(
-                (rpm_high as u32) << 8 | rpm_low as u32,
-                rpm,
-                "Reconstruction mismatch for RPM {}",
-                rpm
-            );
+            let (high, low) = rpm_to_bytes(rpm);
+            assert_eq!(high, expected_high, "High byte mismatch for RPM {}", rpm);
+            assert_eq!(low, expected_low, "Low byte mismatch for RPM {}", rpm);
         }
     }
 
-    /// Helper to build command payload (mirrors send_command logic)
-    fn build_command_payload(cmd: Command, data: Option<&[u8]>) -> String {
-        let mut payload = format!(">{:02X}", cmd as u8);
-
-        if let Some(data_bytes) = data {
-            for byte in data_bytes {
-                payload.push_str(&format!("{:02X}", byte));
-            }
+    #[test]
+    fn test_rpm_to_bytes_roundtrip() {
+        // Verify bytes can reconstruct the original RPM value
+        for rpm in [0, 500, 1000, 2000, 3000, 5000, 9000, 65535] {
+            let (high, low) = rpm_to_bytes(rpm);
+            let reconstructed = ((high as u32) << 8) | (low as u32);
+            assert_eq!(reconstructed, rpm, "Roundtrip failed for RPM {}", rpm);
         }
-
-        payload
     }
 
-    #[test]
-    fn test_command_payload_get_all_rpm() {
-        let payload = build_command_payload(Command::GetAllFanRpm, None);
-        assert_eq!(payload, ">00");
-    }
-
-    #[test]
-    fn test_command_payload_get_single_rpm() {
-        let payload = build_command_payload(Command::GetSingleFanRpm, Some(&[5]));
-        assert_eq!(payload, ">0105");
-    }
-
-    #[test]
-    fn test_command_payload_set_fan_pwm() {
-        // Fan 3 at 50% (127 = 0x7F)
-        let payload = build_command_payload(Command::SetFanPwm, Some(&[3, 127]));
-        assert_eq!(payload, ">02037F");
-    }
-
-    #[test]
-    fn test_command_payload_set_all_pwm() {
-        // All fans at 100% (255 = 0xFF)
-        let payload = build_command_payload(Command::SetAllFanPwm, Some(&[255]));
-        assert_eq!(payload, ">03FF");
-    }
-
-    #[test]
-    fn test_command_payload_set_fan_rpm() {
-        // Fan 2, target 3000 RPM (0x0BB8 -> high=0x0B, low=0xB8)
-        let payload = build_command_payload(Command::SetFanRpm, Some(&[2, 0x0B, 0xB8]));
-        assert_eq!(payload, ">04020BB8");
-    }
-
-    #[test]
-    fn test_command_payload_get_hw_info() {
-        let payload = build_command_payload(Command::GetHwInfo, None);
-        assert_eq!(payload, ">05");
-    }
-
-    #[test]
-    fn test_command_payload_get_fw_info() {
-        let payload = build_command_payload(Command::GetFwInfo, None);
-        assert_eq!(payload, ">06");
-    }
-
-    #[test]
-    fn test_fan_id_validation_standard_board() {
-        // OpenFAN Standard has 10 fans (0-9 valid)
-        use openfan_core::OpenFanStandard;
-
-        let fan_count = OpenFanStandard::FAN_COUNT;
-        for fan_id in 0..fan_count {
-            assert!(fan_id < fan_count);
-        }
-        // Fan ID 10 should be invalid (out of range)
-        assert!(fan_count <= 10);
-    }
+    // --- openfan_core type tests ---
 
     #[test]
     fn test_fan_id_validation_micro_board() {
@@ -990,38 +923,5 @@ mod tests {
         assert_eq!(micro.name(), "OpenFAN Micro");
         assert_eq!(micro.usb_vid(), 0x2E8A);
         assert_eq!(micro.usb_pid(), 0x000B);
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_duplicate_fan_ids() {
-        // When duplicate fan IDs appear, last value wins
-        let response = "<DATA|0:1000;0:2000;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
-
-        assert_eq!(rpm_map.len(), 1);
-        assert_eq!(rpm_map.get(&0), Some(&0x2000));
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_out_of_order_fan_ids() {
-        // Fan IDs don't need to be in order
-        let response = "<DATA|5:5555;0:0000;9:9999;1:1111;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
-
-        assert_eq!(rpm_map.len(), 4);
-        assert_eq!(rpm_map.get(&0), Some(&0x0000));
-        assert_eq!(rpm_map.get(&1), Some(&0x1111));
-        assert_eq!(rpm_map.get(&5), Some(&0x5555));
-        assert_eq!(rpm_map.get(&9), Some(&0x9999));
-    }
-
-    #[test]
-    fn test_parse_fan_rpm_large_hex_values() {
-        // Verify upper bound of 16-bit RPM values
-        let response = "<DATA|0:FFFE;1:FFFF;>";
-        let rpm_map = parse_rpm_response(response).unwrap();
-
-        assert_eq!(rpm_map.get(&0), Some(&0xFFFE));
-        assert_eq!(rpm_map.get(&1), Some(&0xFFFF));
     }
 }
