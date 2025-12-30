@@ -459,7 +459,7 @@ mod integration_tests {
         Router,
     };
     use http_body_util::BodyExt;
-    use openfan_core::BoardType;
+    use openfan_core::{config::StaticConfig, BoardType};
     use tower::ServiceExt;
 
     use crate::api::{create_router, AppState};
@@ -469,8 +469,12 @@ mod integration_tests {
     async fn create_test_app() -> Router {
         let board_info = BoardType::OpenFanStandard.to_board_info();
         let temp_dir = tempfile::tempdir().unwrap();
-        // RuntimeConfig::load expects a path to a TOML config file
+        // Create a config with data_dir inside the temp directory
         let config_path = temp_dir.path().join("config.toml");
+        let static_config = StaticConfig::with_data_dir(temp_dir.path().join("data"));
+        tokio::fs::write(&config_path, static_config.to_toml().unwrap())
+            .await
+            .unwrap();
         let config = RuntimeConfig::load(&config_path).await.unwrap();
         let state = AppState::new(board_info, config, None);
         create_router(state)
