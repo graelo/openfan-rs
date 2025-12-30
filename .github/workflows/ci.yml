@@ -59,11 +59,8 @@ jobs:
       - name: Build release binaries
         run: cargo build --release --workspace
 
-      - name: Run end-to-end tests (mock only)
-        run: |
-          # Skip actual E2E tests in CI since they spawn processes
-          # Instead verify the test builds compile
-          cargo test --test e2e_integration_tests --no-run
+      - name: Run end-to-end tests (mock mode)
+        run: cargo test --test e2e_integration_tests --verbose
 
       - name: Test CLI help output
         run: |
