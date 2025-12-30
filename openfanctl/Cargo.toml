@@ -1,10 +1,12 @@
 [package]
 name = "openfanctl"
+description = "CLI client for OpenFAN fan controllers"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+publish = false
 
 [[bin]]
 name = "openfanctl"
