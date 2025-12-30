@@ -184,8 +184,6 @@ pub(crate) async fn delete_cfm(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_port_id_parsing() {
         assert_eq!("0".parse::<u8>().unwrap(), 0);

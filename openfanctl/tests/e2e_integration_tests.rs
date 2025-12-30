@@ -1041,3 +1041,228 @@ async fn test_e2e_zone_errors() -> Result<()> {
     harness.stop_server().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn test_e2e_cfm_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing CFM mappings (should be empty initially)
+    let list_output = harness.run_cli_success(&["cfm", "list"]).await?;
+    println!("Initial CFM mappings: {}", list_output);
+    assert!(
+        list_output.contains("No CFM") || list_output.contains("mappings") || list_output.contains("{}"),
+        "Should show empty or no mappings: {}",
+        list_output
+    );
+
+    // Test setting a CFM mapping
+    let set_output = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "45.0"])
+        .await?;
+    assert!(
+        set_output.contains("Set") || set_output.contains("45") || set_output.contains("✓"),
+        "Should confirm CFM set: {}",
+        set_output
+    );
+
+    // Test getting the CFM mapping
+    let get_output = harness.run_cli_success(&["cfm", "get", "0"]).await?;
+    assert!(
+        get_output.contains("45") || get_output.contains("CFM"),
+        "Should show CFM value: {}",
+        get_output
+    );
+
+    // Test JSON output for CFM get
+    let get_json = harness
+        .run_cli_success(&["--format", "json", "cfm", "get", "0"])
+        .await?;
+    let cfm_value: Value = serde_json::from_str(&get_json)?;
+    assert!(
+        cfm_value.get("port").is_some() && cfm_value.get("cfm_at_100").is_some(),
+        "JSON should contain port and cfm_at_100: {}",
+        get_json
+    );
+
+    // Test setting another CFM mapping
+    let _set_output2 = harness
+        .run_cli_success(&["cfm", "set", "1", "--cfm-at-100", "60.5"])
+        .await?;
+
+    // Test listing CFM mappings again (should show our mappings)
+    let list_output2 = harness.run_cli_success(&["cfm", "list"]).await?;
+    assert!(
+        list_output2.contains("45") || list_output2.contains("0"),
+        "Should contain first mapping: {}",
+        list_output2
+    );
+
+    // Test JSON output for CFM list
+    let list_json = harness
+        .run_cli_success(&["--format", "json", "cfm", "list"])
+        .await?;
+    let list_value: Value = serde_json::from_str(&list_json)?;
+    assert!(
+        list_value.get("mappings").is_some(),
+        "JSON should contain mappings: {}",
+        list_json
+    );
+
+    // Test updating a CFM mapping (set again with different value)
+    let _update_output = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "50.0"])
+        .await?;
+
+    // Verify the update
+    let get_updated = harness.run_cli_success(&["cfm", "get", "0"]).await?;
+    assert!(
+        get_updated.contains("50"),
+        "Should show updated CFM value: {}",
+        get_updated
+    );
+
+    // Test deleting a CFM mapping
+    let delete_output = harness.run_cli_success(&["cfm", "delete", "1"]).await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("Removed") || delete_output.contains("✓"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify mapping is deleted
+    let list_output3 = harness.run_cli_success(&["cfm", "list"]).await?;
+    assert!(
+        !list_output3.contains("60.5"),
+        "Deleted mapping should be removed: {}",
+        list_output3
+    );
+
+    // Clean up remaining mapping
+    let _cleanup = harness.run_cli_success(&["cfm", "delete", "0"]).await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_cfm_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent CFM mapping
+    let error_output = harness
+        .run_cli_expect_failure(&["cfm", "get", "5"])
+        .await?;
+    assert!(
+        error_output.contains("not") || error_output.contains("No") || error_output.contains("mapping"),
+        "Should show no mapping error: {}",
+        error_output
+    );
+
+    // Test invalid port ID (out of range)
+    let error_output2 = harness
+        .run_cli_expect_failure(&["cfm", "set", "99", "--cfm-at-100", "45.0"])
+        .await?;
+    assert!(
+        error_output2.to_lowercase().contains("port")
+            || error_output2.contains("Invalid")
+            || error_output2.contains("range"),
+        "Should show invalid port error: {}",
+        error_output2
+    );
+
+    // Test invalid CFM value (zero)
+    let error_output3 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "0.0"])
+        .await?;
+    assert!(
+        error_output3.to_lowercase().contains("cfm")
+            || error_output3.contains("positive")
+            || error_output3.contains("value"),
+        "Should show invalid CFM error: {}",
+        error_output3
+    );
+
+    // Test invalid CFM value (negative)
+    let error_output4 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "-10.0"])
+        .await?;
+    assert!(
+        error_output4.to_lowercase().contains("cfm")
+            || error_output4.contains("positive")
+            || error_output4.contains("value"),
+        "Should show invalid CFM error for negative: {}",
+        error_output4
+    );
+
+    // Test invalid CFM value (exceeds maximum)
+    let error_output5 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "1000.0"])
+        .await?;
+    assert!(
+        error_output5.to_lowercase().contains("cfm")
+            || error_output5.contains("500")
+            || error_output5.contains("max"),
+        "Should show CFM exceeds max error: {}",
+        error_output5
+    );
+
+    // Test deleting non-existent CFM mapping
+    let error_output6 = harness
+        .run_cli_expect_failure(&["cfm", "delete", "7"])
+        .await?;
+    assert!(
+        error_output6.contains("not") || error_output6.contains("No") || error_output6.contains("mapping"),
+        "Should show no mapping to delete error: {}",
+        error_output6
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_status_with_cfm() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Get status without CFM mappings (should not show CFM column)
+    let status_no_cfm = harness.run_cli_success(&["status"]).await?;
+    println!("Status without CFM: {}", status_no_cfm);
+
+    // Add CFM mappings
+    let _set1 = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "45.0"])
+        .await?;
+    let _set2 = harness
+        .run_cli_success(&["cfm", "set", "1", "--cfm-at-100", "60.0"])
+        .await?;
+
+    // Get status with CFM mappings (should show CFM column)
+    let status_with_cfm = harness.run_cli_success(&["status"]).await?;
+    println!("Status with CFM: {}", status_with_cfm);
+    assert!(
+        status_with_cfm.contains("CFM"),
+        "Status should show CFM column when mappings exist: {}",
+        status_with_cfm
+    );
+
+    // Test JSON status output includes CFM
+    let status_json = harness
+        .run_cli_success(&["--format", "json", "status"])
+        .await?;
+    let status_value: Value = serde_json::from_str(&status_json)?;
+    assert!(
+        status_value.get("cfm").is_some() || status_value.get("rpms").is_some(),
+        "JSON status should contain cfm or rpms: {}",
+        status_json
+    );
+
+    // Clean up
+    let _del1 = harness.run_cli_success(&["cfm", "delete", "0"]).await?;
+    let _del2 = harness.run_cli_success(&["cfm", "delete", "1"]).await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
