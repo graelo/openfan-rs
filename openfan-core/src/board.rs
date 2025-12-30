@@ -50,11 +50,11 @@ pub trait BoardConfig: Send + Sync + 'static {
     /// Maximum PWM percentage value (typically 100)
     const MAX_PWM: u32;
 
-    /// Maximum RPM value supported by hardware
-    const MAX_RPM: u32;
+    /// Minimum RPM for target mode (per OpenFAN docs: 500)
+    const MIN_TARGET_RPM: u32;
 
-    /// Minimum operational RPM (below this, fan is turned off)
-    const MIN_RPM: u32;
+    /// Maximum RPM for target mode (per OpenFAN docs: 9000)
+    const MAX_TARGET_RPM: u32;
 }
 
 /// OpenFAN Standard hardware board configuration
@@ -64,7 +64,8 @@ pub trait BoardConfig: Send + Sync + 'static {
 /// - USB VID: 0x2E8A (Raspberry Pi Foundation)
 /// - USB PID: 0x000A (OpenFAN device)
 /// - 115200 baud serial communication
-/// - RPM range: 480-16000 (below 480, fan is set to 0/off)
+/// - PWM mode: 0-100%
+/// - RPM target mode: 500-9000 (per OpenFAN docs)
 pub struct OpenFanStandard;
 
 impl BoardConfig for OpenFanStandard {
@@ -75,8 +76,8 @@ impl BoardConfig for OpenFanStandard {
     const BAUD_RATE: u32 = 115200;
     const DEFAULT_TIMEOUT_MS: u64 = 1000;
     const MAX_PWM: u32 = 100;
-    const MAX_RPM: u32 = 16000;
-    const MIN_RPM: u32 = 480;
+    const MIN_TARGET_RPM: u32 = 500;
+    const MAX_TARGET_RPM: u32 = 9000;
 }
 
 /// Runtime board type enumeration
@@ -161,8 +162,8 @@ impl BoardType {
                 usb_vid: OpenFanStandard::USB_VID,
                 usb_pid: OpenFanStandard::USB_PID,
                 max_pwm: OpenFanStandard::MAX_PWM,
-                max_rpm: OpenFanStandard::MAX_RPM,
-                min_rpm: OpenFanStandard::MIN_RPM,
+                min_target_rpm: OpenFanStandard::MIN_TARGET_RPM,
+                max_target_rpm: OpenFanStandard::MAX_TARGET_RPM,
                 baud_rate: OpenFanStandard::BAUD_RATE,
             },
             BoardType::OpenFanMicro => BoardInfo {
@@ -172,8 +173,8 @@ impl BoardType {
                 usb_vid: 0x2E8A,
                 usb_pid: 0x000B,
                 max_pwm: 100,
-                max_rpm: 16000,
-                min_rpm: 480,
+                min_target_rpm: 500,
+                max_target_rpm: 9000,
                 baud_rate: 115200,
             },
         }
@@ -200,12 +201,12 @@ pub struct BoardInfo {
     pub usb_vid: u16,
     /// USB Product ID
     pub usb_pid: u16,
-    /// Maximum PWM percentage value
+    /// Maximum PWM percentage value (0-100)
     pub max_pwm: u32,
-    /// Maximum RPM value
-    pub max_rpm: u32,
-    /// Minimum operational RPM
-    pub min_rpm: u32,
+    /// Minimum RPM for target mode
+    pub min_target_rpm: u32,
+    /// Maximum RPM for target mode
+    pub max_target_rpm: u32,
     /// Serial communication baud rate
     pub baud_rate: u32,
 }
@@ -252,22 +253,22 @@ impl BoardInfo {
         Ok(())
     }
 
-    /// Validate an RPM value against this board's range
+    /// Validate an RPM value for target mode against this board's range
     ///
     /// # Errors
     ///
-    /// Returns an error if the RPM value exceeds max_rpm
-    pub fn validate_rpm(&self, rpm: u32) -> crate::Result<()> {
-        if rpm > 0 && rpm < self.min_rpm {
+    /// Returns an error if the RPM value is outside the valid target range
+    pub fn validate_target_rpm(&self, rpm: u32) -> crate::Result<()> {
+        if rpm < self.min_target_rpm {
             return Err(crate::OpenFanError::InvalidInput(format!(
-                "RPM must be 0 or >= {}, got {}",
-                self.min_rpm, rpm
+                "Target RPM must be >= {}, got {}",
+                self.min_target_rpm, rpm
             )));
         }
-        if rpm > self.max_rpm {
+        if rpm > self.max_target_rpm {
             return Err(crate::OpenFanError::InvalidInput(format!(
-                "RPM must be <= {}, got {}",
-                self.max_rpm, rpm
+                "Target RPM must be <= {}, got {}",
+                self.max_target_rpm, rpm
             )));
         }
         Ok(())
@@ -350,8 +351,8 @@ mod tests {
         assert_eq!(OpenFanStandard::BAUD_RATE, 115200);
         assert_eq!(OpenFanStandard::DEFAULT_TIMEOUT_MS, 1000);
         assert_eq!(OpenFanStandard::MAX_PWM, 100);
-        assert_eq!(OpenFanStandard::MAX_RPM, 16000);
-        assert_eq!(OpenFanStandard::MIN_RPM, 480);
+        assert_eq!(OpenFanStandard::MIN_TARGET_RPM, 500);
+        assert_eq!(OpenFanStandard::MAX_TARGET_RPM, 9000);
     }
 
     #[test]

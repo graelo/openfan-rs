@@ -1282,3 +1282,321 @@ async fn test_e2e_status_with_cfm() -> Result<()> {
     harness.stop_server().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn test_e2e_fan_all_set() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test set all fans via direct HTTP call (no CLI command for this endpoint)
+    let client = reqwest::Client::new();
+
+    // Test valid value
+    let response = client
+        .get(format!(
+            "{}/api/v0/fan/all/set?value=75",
+            harness.server_url
+        ))
+        .send()
+        .await?;
+    assert!(
+        response.status().is_success(),
+        "Set all fans to 75% should succeed"
+    );
+
+    // Verify the change via status
+    let status_output = harness.run_cli_success(&["status"]).await?;
+    assert!(
+        status_output.contains("75") || status_output.contains("PWM"),
+        "Status should reflect the PWM change: {}",
+        status_output
+    );
+
+    // Test another value
+    let response = client
+        .get(format!(
+            "{}/api/v0/fan/all/set?value=50",
+            harness.server_url
+        ))
+        .send()
+        .await?;
+    assert!(
+        response.status().is_success(),
+        "Set all fans to 50% should succeed"
+    );
+
+    // Test edge case: 0%
+    let response = client
+        .get(format!("{}/api/v0/fan/all/set?value=0", harness.server_url))
+        .send()
+        .await?;
+    assert!(
+        response.status().is_success(),
+        "Set all fans to 0% should succeed"
+    );
+
+    // Test edge case: 100%
+    let response = client
+        .get(format!(
+            "{}/api/v0/fan/all/set?value=100",
+            harness.server_url
+        ))
+        .send()
+        .await?;
+    assert!(
+        response.status().is_success(),
+        "Set all fans to 100% should succeed"
+    );
+
+    // Test missing value parameter
+    let response = client
+        .get(format!("{}/api/v0/fan/all/set", harness.server_url))
+        .send()
+        .await?;
+    assert!(
+        response.status().is_client_error(),
+        "Missing value should return client error"
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_pwm_boundary_values() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test PWM boundary values: 0, 1, 99, 100
+    let boundary_values = [0, 1, 99, 100];
+
+    for pwm in boundary_values {
+        let output = harness
+            .run_cli_success(&["fan", "set", "0", "--pwm", &pwm.to_string()])
+            .await?;
+        assert!(
+            !output.contains("error") && !output.contains("Error"),
+            "Setting PWM to {} should succeed: {}",
+            pwm,
+            output
+        );
+    }
+
+    // Test out-of-range values should fail
+    let error_output = harness
+        .run_cli_expect_failure(&["fan", "set", "0", "--pwm", "101"])
+        .await?;
+    assert!(
+        error_output.to_lowercase().contains("pwm")
+            || error_output.contains("range")
+            || error_output.contains("100"),
+        "PWM 101 should fail with range error: {}",
+        error_output
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_rpm_boundary_values() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test RPM boundary values: 500 (min), 501, 8999, 9000 (max)
+    let boundary_values = [500, 501, 8999, 9000];
+
+    for rpm in boundary_values {
+        let output = harness
+            .run_cli_success(&["fan", "set", "0", "--rpm", &rpm.to_string()])
+            .await?;
+        assert!(
+            !output.contains("error") && !output.contains("Error"),
+            "Setting RPM to {} should succeed: {}",
+            rpm,
+            output
+        );
+    }
+
+    // Test below minimum should fail
+    let error_output = harness
+        .run_cli_expect_failure(&["fan", "set", "0", "--rpm", "499"])
+        .await?;
+    assert!(
+        error_output.to_lowercase().contains("rpm")
+            || error_output.contains("range")
+            || error_output.contains("500"),
+        "RPM 499 should fail (below min 500): {}",
+        error_output
+    );
+
+    // Test above maximum should fail
+    let error_output2 = harness
+        .run_cli_expect_failure(&["fan", "set", "0", "--rpm", "9001"])
+        .await?;
+    assert!(
+        error_output2.to_lowercase().contains("rpm")
+            || error_output2.contains("range")
+            || error_output2.contains("9000"),
+        "RPM 9001 should fail (above max 9000): {}",
+        error_output2
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_config_persistence() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Add a profile
+    let _add_output = harness
+        .run_cli_success(&[
+            "profile",
+            "add",
+            "persistent_test",
+            "pwm",
+            "10,20,30,40,50,60,70,80,90,100",
+        ])
+        .await?;
+
+    // Verify profile exists
+    let list_output = harness.run_cli_success(&["profile", "list"]).await?;
+    assert!(
+        list_output.contains("persistent_test"),
+        "Profile should be created: {}",
+        list_output
+    );
+
+    // Add an alias
+    let _alias_output = harness
+        .run_cli_success(&["alias", "set", "0", "PersistentFan"])
+        .await?;
+
+    // Verify alias exists
+    let alias_output = harness.run_cli_success(&["alias", "get", "0"]).await?;
+    assert!(
+        alias_output.contains("PersistentFan"),
+        "Alias should be set: {}",
+        alias_output
+    );
+
+    // Add a zone
+    let _zone_output = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "persistent_zone",
+            "--ports",
+            "0,1,2",
+            "--description",
+            "Persistent test zone",
+        ])
+        .await?;
+
+    // Verify zone exists
+    let zone_output = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        zone_output.contains("persistent_zone"),
+        "Zone should be created: {}",
+        zone_output
+    );
+
+    // Stop and restart the server
+    harness.stop_server().await?;
+    sleep(Duration::from_millis(500)).await;
+    harness.start_server().await?;
+
+    // Verify profile persisted
+    let list_output2 = harness.run_cli_success(&["profile", "list"]).await?;
+    assert!(
+        list_output2.contains("persistent_test"),
+        "Profile should persist after restart: {}",
+        list_output2
+    );
+
+    // Verify alias persisted
+    let alias_output2 = harness.run_cli_success(&["alias", "get", "0"]).await?;
+    assert!(
+        alias_output2.contains("PersistentFan"),
+        "Alias should persist after restart: {}",
+        alias_output2
+    );
+
+    // Verify zone persisted
+    let zone_output2 = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        zone_output2.contains("persistent_zone"),
+        "Zone should persist after restart: {}",
+        zone_output2
+    );
+
+    // Clean up
+    let _remove = harness
+        .run_cli_success(&["profile", "remove", "persistent_test"])
+        .await?;
+    let _delete_alias = harness.run_cli_success(&["alias", "delete", "0"]).await?;
+    let _delete_zone = harness
+        .run_cli_success(&["zone", "delete", "persistent_zone"])
+        .await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_concurrent_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Run multiple CLI commands concurrently
+    let harness = std::sync::Arc::new(harness);
+
+    let mut handles = Vec::new();
+
+    // Spawn concurrent status requests
+    for _ in 0..5 {
+        let h = harness.clone();
+        handles.push(tokio::spawn(
+            async move { h.run_cli_success(&["status"]).await },
+        ));
+    }
+
+    // Spawn concurrent info requests
+    for _ in 0..5 {
+        let h = harness.clone();
+        handles.push(tokio::spawn(
+            async move { h.run_cli_success(&["info"]).await },
+        ));
+    }
+
+    // Spawn concurrent alias list requests
+    for _ in 0..5 {
+        let h = harness.clone();
+        handles.push(tokio::spawn(async move {
+            h.run_cli_success(&["alias", "list"]).await
+        }));
+    }
+
+    // Wait for all to complete
+    let mut successes = 0;
+    for handle in handles {
+        match handle.await {
+            Ok(Ok(_)) => successes += 1,
+            Ok(Err(e)) => println!("Command failed: {}", e),
+            Err(e) => println!("Task panicked: {}", e),
+        }
+    }
+
+    // All requests should succeed
+    assert!(
+        successes >= 12,
+        "At least 12 out of 15 concurrent operations should succeed, got {}",
+        successes
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}

@@ -92,7 +92,7 @@ openfanctl status
 # Set fan PWM (0-100%)
 openfanctl fan set 0 --pwm 75
 
-# Set fan RPM target
+# Set fan RPM target (500-9000)
 openfanctl fan set 0 --rpm 1200
 
 # Apply a profile
@@ -131,8 +131,8 @@ details.
 ```bash
 openfanctl info                          # Show board and server info
 openfanctl status                        # Show all fans with RPM
-openfanctl fan set <id> --pwm <0-100>   # Set fan PWM percentage
-openfanctl fan set <id> --rpm <value>   # Set fan RPM target
+openfanctl fan set <id> --pwm <0-100>      # Set fan PWM percentage
+openfanctl fan set <id> --rpm <500-9000>  # Set fan RPM target
 openfanctl profile list                  # List available profiles
 openfanctl profile apply <name>          # Apply a profile
 openfanctl alias set <id> <name>         # Set fan alias

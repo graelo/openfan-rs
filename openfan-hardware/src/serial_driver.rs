@@ -2,12 +2,26 @@
 //!
 //! Provides async serial I/O with the fan controller hardware.
 
+use async_trait::async_trait;
 use openfan_core::{BoardConfig, OpenFanError, Result};
 use std::marker::PhantomData;
 use std::time::Duration;
 use tokio::time::timeout;
 use tokio_serial::{SerialPort, SerialPortBuilderExt, SerialStream};
 use tracing::{debug, error, warn};
+
+/// Trait for serial transport abstraction
+///
+/// This trait enables testing of `FanController` without real hardware
+/// by allowing mock implementations.
+#[async_trait]
+pub trait SerialTransport: Send + Sync {
+    /// Send a command and wait for response lines
+    async fn transaction(&mut self, command: &str) -> Result<Vec<String>>;
+
+    /// Clear the input buffer
+    fn clear_input_buffer(&mut self) -> Result<()>;
+}
 
 /// Serial driver for hardware communication
 pub struct SerialDriver<B: BoardConfig = openfan_core::DefaultBoard> {
@@ -55,23 +69,6 @@ impl<B: BoardConfig> SerialDriver<B> {
             debug_uart,
             _board: PhantomData,
         })
-    }
-
-    /// Send a command and wait for response
-    ///
-    /// This is the main transaction function that handles:
-    /// 1. Flushing input buffer
-    /// 2. Sending command with prefix/suffix
-    /// 3. Reading response lines until one starts with '<'
-    pub async fn transaction(&mut self, command: &str) -> Result<Vec<String>> {
-        // Clear any pending input
-        self.clear_input_buffer()?;
-
-        // Send command
-        self.send(command).await?;
-
-        // Read response
-        self.read_until_response().await
     }
 
     /// Send a command to the serial port
@@ -161,13 +158,31 @@ impl<B: BoardConfig> SerialDriver<B> {
     }
 
     /// Clear the input buffer
-    fn clear_input_buffer(&mut self) -> Result<()> {
+    fn clear_input_buffer_impl(&mut self) -> Result<()> {
         self.port
             .clear(tokio_serial::ClearBuffer::Input)
             .map_err(|e| {
                 warn!("Failed to clear input buffer: {}", e);
                 OpenFanError::Serial(format!("Failed to clear buffer: {}", e))
             })
+    }
+}
+
+#[async_trait]
+impl<B: BoardConfig + Send + Sync> SerialTransport for SerialDriver<B> {
+    async fn transaction(&mut self, command: &str) -> Result<Vec<String>> {
+        // Clear any pending input
+        self.clear_input_buffer_impl()?;
+
+        // Send command
+        self.send(command).await?;
+
+        // Read response
+        self.read_until_response().await
+    }
+
+    fn clear_input_buffer(&mut self) -> Result<()> {
+        self.clear_input_buffer_impl()
     }
 }
 
@@ -259,5 +274,134 @@ mod tests {
         let result = find_fan_controller::<openfan_core::DefaultBoard>();
         // Just verify the function runs without panicking
         let _ = result;
+    }
+
+    #[test]
+    fn test_detect_board_from_usb_no_device() {
+        // Without hardware connected, should return DeviceNotFound
+        let result = detect_board_from_usb();
+        // We can't guarantee the error type without mocking USB,
+        // but verify the function runs without panicking
+        let _ = result;
+    }
+
+    #[test]
+    fn test_board_usb_identifiers_standard() {
+        use openfan_core::OpenFanStandard;
+
+        // OpenFAN Standard: VID=0x2E8A, PID=0x000A
+        assert_eq!(OpenFanStandard::USB_VID, 0x2E8A);
+        assert_eq!(OpenFanStandard::USB_PID, 0x000A);
+    }
+
+    #[test]
+    fn test_board_usb_identifiers_micro() {
+        use openfan_core::BoardType;
+
+        // OpenFAN Micro: VID=0x2E8A, PID=0x000B (via BoardType methods)
+        let micro = BoardType::OpenFanMicro;
+        assert_eq!(micro.usb_vid(), 0x2E8A);
+        assert_eq!(micro.usb_pid(), 0x000B);
+    }
+
+    #[test]
+    fn test_board_baud_rate_standard() {
+        use openfan_core::OpenFanStandard;
+
+        assert_eq!(OpenFanStandard::BAUD_RATE, 115200);
+    }
+
+    #[test]
+    fn test_board_timeout_default_standard() {
+        use openfan_core::OpenFanStandard;
+
+        assert_eq!(OpenFanStandard::DEFAULT_TIMEOUT_MS, 1000);
+    }
+
+    #[test]
+    fn test_board_type_enum_values() {
+        use openfan_core::BoardType;
+
+        // Ensure BoardType enum variants exist
+        let standard = BoardType::OpenFanStandard;
+        let micro = BoardType::OpenFanMicro;
+
+        // They should be distinct
+        assert!(matches!(standard, BoardType::OpenFanStandard));
+        assert!(matches!(micro, BoardType::OpenFanMicro));
+    }
+
+    #[test]
+    fn test_board_fan_counts() {
+        use openfan_core::{BoardType, OpenFanStandard};
+
+        assert_eq!(OpenFanStandard::FAN_COUNT, 10);
+        // Micro uses BoardType method (not implemented as BoardConfig trait)
+        assert_eq!(BoardType::OpenFanMicro.fan_count(), 1);
+    }
+
+    #[test]
+    fn test_board_name_standard() {
+        use openfan_core::OpenFanStandard;
+
+        assert_eq!(OpenFanStandard::NAME, "OpenFAN Standard");
+    }
+
+    #[test]
+    fn test_board_name_micro() {
+        use openfan_core::BoardType;
+
+        assert_eq!(BoardType::OpenFanMicro.name(), "OpenFAN Micro");
+    }
+
+    #[test]
+    fn test_default_board_is_standard() {
+        use openfan_core::{DefaultBoard, OpenFanStandard};
+
+        assert_eq!(DefaultBoard::FAN_COUNT, OpenFanStandard::FAN_COUNT);
+        assert_eq!(DefaultBoard::USB_VID, OpenFanStandard::USB_VID);
+        assert_eq!(DefaultBoard::USB_PID, OpenFanStandard::USB_PID);
+    }
+
+    #[test]
+    fn test_board_rpm_limits_standard() {
+        use openfan_core::OpenFanStandard;
+
+        assert_eq!(OpenFanStandard::MIN_TARGET_RPM, 500);
+        assert_eq!(OpenFanStandard::MAX_TARGET_RPM, 9000);
+    }
+
+    #[test]
+    fn test_board_info_from_type() {
+        use openfan_core::BoardType;
+
+        let info = BoardType::OpenFanStandard.to_board_info();
+        assert_eq!(info.name, "OpenFAN Standard");
+        assert_eq!(info.fan_count, 10);
+        assert_eq!(info.usb_vid, 0x2E8A);
+        assert_eq!(info.usb_pid, 0x000A);
+        assert_eq!(info.max_pwm, 100);
+        assert_eq!(info.baud_rate, 115200);
+    }
+
+    #[test]
+    fn test_board_info_validation() {
+        use openfan_core::BoardType;
+
+        let info = BoardType::OpenFanStandard.to_board_info();
+
+        // Valid fan IDs
+        assert!(info.validate_fan_id(0).is_ok());
+        assert!(info.validate_fan_id(9).is_ok());
+
+        // Invalid fan ID
+        assert!(info.validate_fan_id(10).is_err());
+
+        // Valid PWM
+        assert!(info.validate_pwm(0).is_ok());
+        assert!(info.validate_pwm(100).is_ok());
+
+        // Invalid PWM
+        assert!(info.validate_pwm(101).is_err());
     }
 }

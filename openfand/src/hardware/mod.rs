@@ -8,6 +8,9 @@ pub use openfan_hardware::{
     detect_board_from_usb, find_fan_controller, FanController, SerialDriver,
 };
 
+/// Type alias for the standard fan controller with default board
+pub type DefaultFanController = FanController<SerialDriver<openfan_core::DefaultBoard>>;
+
 /// Hardware initialization and connection utilities
 pub(crate) mod connection {
     use super::*;
@@ -21,7 +24,7 @@ pub(crate) mod connection {
     /// 1. Search by board VID/PID (auto-detected)
     /// 2. Use OPENFAN_COMPORT environment variable
     /// 3. Try common device paths
-    pub async fn auto_connect(timeout_ms: u64, debug_uart: bool) -> Result<FanController> {
+    pub async fn auto_connect(timeout_ms: u64, debug_uart: bool) -> Result<DefaultFanController> {
         info!("Initializing hardware connection...");
 
         // Method 1: Auto-detect by VID/PID
@@ -86,7 +89,7 @@ pub(crate) mod connection {
     }
 
     /// Test hardware connection by getting firmware info
-    pub async fn test_connection(controller: &mut FanController) -> Result<()> {
+    pub async fn test_connection(controller: &mut DefaultFanController) -> Result<()> {
         info!("Testing hardware connection...");
 
         match controller.get_fw_info().await {

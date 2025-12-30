@@ -121,8 +121,8 @@ impl OpenFanClient {
                 usb_vid: 0,
                 usb_pid: 0,
                 max_pwm: 100,
-                max_rpm: 16000,
-                min_rpm: 480,
+                min_target_rpm: 500,
+                max_target_rpm: 9000,
                 baud_rate: 115200,
             },
         };
@@ -341,7 +341,7 @@ impl OpenFanClient {
     /// - The RPM value is out of range for this board type
     pub async fn set_fan_rpm(&self, fan_id: u8, rpm: u32) -> Result<()> {
         self.board_info.validate_fan_id(fan_id)?;
-        self.board_info.validate_rpm(rpm)?;
+        self.board_info.validate_target_rpm(rpm)?;
 
         let url = format!("{}/api/v0/fan/{}/rpm?value={}", self.base_url, fan_id, rpm);
         let endpoint = &format!("fan/{}/rpm", fan_id);
