@@ -125,6 +125,114 @@ pub struct AliasRequest {
     pub alias: String,
 }
 
+/// Zone response containing all zones
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ZoneResponse {
+    /// Map of zone name to zone data
+    pub zones: HashMap<String, crate::Zone>,
+}
+
+/// Single zone response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleZoneResponse {
+    /// Zone data
+    pub zone: crate::Zone,
+}
+
+/// Zone addition request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddZoneRequest {
+    /// Zone name
+    pub name: String,
+    /// Port IDs to include in the zone
+    pub port_ids: Vec<u8>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Zone update request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateZoneRequest {
+    /// Port IDs to include in the zone
+    pub port_ids: Vec<u8>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Thermal curve response containing all curves
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThermalCurveResponse {
+    /// Map of curve name to curve data
+    pub curves: std::collections::HashMap<String, crate::ThermalCurve>,
+}
+
+/// Single thermal curve response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SingleCurveResponse {
+    /// Curve data
+    pub curve: crate::ThermalCurve,
+}
+
+/// Thermal curve addition request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AddCurveRequest {
+    /// Curve name
+    pub name: String,
+    /// Curve points
+    pub points: Vec<crate::CurvePoint>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Thermal curve update request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateCurveRequest {
+    /// Curve points
+    pub points: Vec<crate::CurvePoint>,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// Interpolation response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterpolateResponse {
+    /// Temperature that was queried
+    pub temperature: f32,
+    /// Interpolated PWM value
+    pub pwm: u8,
+}
+
+/// CFM mappings list response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfmListResponse {
+    /// Map of port ID to CFM@100%
+    #[serde(
+        serialize_with = "serialize_u8_f32_map",
+        deserialize_with = "deserialize_u8_f32_map"
+    )]
+    pub mappings: HashMap<u8, f32>,
+}
+
+/// Single CFM mapping response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfmGetResponse {
+    /// Port ID
+    pub port: u8,
+    /// CFM value at 100% PWM
+    pub cfm_at_100: f32,
+}
+
+/// CFM mapping set request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetCfmRequest {
+    /// CFM value at 100% PWM
+    pub cfm_at_100: f32,
+}
+
 /// System information response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfoResponse {
@@ -239,6 +347,56 @@ where
     }
 
     deserializer.deserialize_map(U8StringMapVisitor)
+}
+
+// Custom serialization for HashMap<u8, f32>
+fn serialize_u8_f32_map<S>(map: &HashMap<u8, f32>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut ser_map = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        ser_map.serialize_entry(&k.to_string(), v)?;
+    }
+    ser_map.end()
+}
+
+// Custom deserialization for HashMap<u8, f32>
+fn deserialize_u8_f32_map<'de, D>(deserializer: D) -> Result<HashMap<u8, f32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct U8F32MapVisitor;
+
+    impl<'de> Visitor<'de> for U8F32MapVisitor {
+        type Value = HashMap<u8, f32>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map with string keys representing u8 values and f32 values")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: de::MapAccess<'de>,
+        {
+            let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+
+            while let Some((key, value)) = access.next_entry::<String, f32>()? {
+                let port_id = key
+                    .parse::<u8>()
+                    .map_err(|_| de::Error::custom(format!("Invalid port ID: {}", key)))?;
+                map.insert(port_id, value);
+            }
+
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(U8F32MapVisitor)
 }
 
 #[cfg(test)]

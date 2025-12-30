@@ -1,10 +1,13 @@
 [package]
 name = "openfan-hardware"
+description = "Serial communication driver for OpenFAN hardware"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+keywords = ["fan-control", "serial", "usb", "hardware", "pwm"]
+categories = ["hardware-support", "embedded"]
 
 [dependencies]
 openfan-core = { path = "../openfan-core" }

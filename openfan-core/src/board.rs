@@ -1,14 +1,16 @@
-//! Hardware board abstraction layer
+//! Board definitions and configuration
 //!
-//! This module provides a trait-based abstraction for different hardware board configurations.
+//! This module provides trait-based abstractions for different hardware board configurations.
 //! Each board type (OpenFAN v1.0, OpenFAN Mini, etc.) implements the `BoardConfig` trait
-//! with its specific hardware characteristics.
+//! with its specific characteristics.
 //!
 //! The abstraction uses const generics and traits to provide:
 //! - Zero-cost abstraction (all resolved at compile time)
 //! - Type safety (can't mix board configurations)
 //! - Extensibility (easy to add new board variants)
-//! - Auto-detection (runtime discovery of connected hardware)
+//!
+//! Note: Actual hardware I/O is in the `openfan-hardware` crate. This module only
+//! contains board specifications and type definitions.
 
 use std::marker::PhantomData;
 
@@ -20,7 +22,7 @@ use std::marker::PhantomData;
 /// # Example
 ///
 /// ```
-/// use openfan_core::hardware::{BoardConfig, OpenFanV1};
+/// use openfan_core::board::{BoardConfig, OpenFanV1};
 ///
 /// // Access board properties at compile time
 /// const FAN_COUNT: usize = OpenFanV1::FAN_COUNT;
@@ -98,7 +100,7 @@ impl std::str::FromStr for BoardType {
     ///
     /// ```
     /// use std::str::FromStr;
-    /// use openfan_core::hardware::BoardType;
+    /// use openfan_core::board::BoardType;
     ///
     /// assert!(BoardType::from_str("v1").is_ok());
     /// assert!(BoardType::from_str("mini").is_ok());
@@ -218,7 +220,7 @@ impl BoardInfo {
     /// # Examples
     ///
     /// ```
-    /// use openfan_core::hardware::BoardType;
+    /// use openfan_core::board::BoardType;
     ///
     /// let board = BoardType::OpenFanV1.to_board_info();
     /// assert!(board.validate_fan_id(0).is_ok());

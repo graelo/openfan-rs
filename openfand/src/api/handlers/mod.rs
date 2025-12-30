@@ -8,6 +8,9 @@
 //! - [`fans`] - Fan status and control (PWM/RPM)
 //! - [`profiles`] - Fan profile management (CRUD operations)
 //! - [`aliases`] - Fan alias management
+//! - [`zones`] - Zone management for grouped fan control
+//! - [`thermal_curves`] - Thermal curve management for temperature-based PWM control
+//! - [`cfm`] - CFM mapping management for display-only airflow information
 //!
 //! # API Structure
 //!
@@ -22,10 +25,13 @@
 //! When hardware is not available (`state.fan_controller` is `None`),
 //! handlers return simulated data for testing and development purposes.
 
-pub mod aliases;
-pub mod fans;
-pub mod info;
-pub mod profiles;
+pub(crate) mod aliases;
+pub(crate) mod cfm;
+pub(crate) mod fans;
+pub(crate) mod info;
+pub(crate) mod profiles;
+pub(crate) mod thermal_curves;
+pub(crate) mod zones;
 
 // Re-export handler functions for easier access
 // Re-exports removed - handlers are used directly in routing

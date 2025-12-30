@@ -56,17 +56,11 @@ jobs:
       - name: Run unit tests
         run: cargo test --lib --verbose --workspace
 
-      - name: Run integration tests
-        run: cargo test --test simple_integration_tests --verbose
-
       - name: Build release binaries
         run: cargo build --release --workspace
 
-      - name: Run end-to-end tests (mock only)
-        run: |
-          # Skip actual E2E tests in CI since they spawn processes
-          # Instead verify the test builds compile
-          cargo test --test e2e_integration_tests --no-run
+      - name: Run end-to-end tests (mock mode)
+        run: cargo test --test e2e_integration_tests --verbose
 
       - name: Test CLI help output
         run: |
@@ -181,7 +175,6 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/openfand artifacts/
           cp target/${{ matrix.target }}/release/openfanctl artifacts/
-          cp config.yaml artifacts/
           cp README.md artifacts/
 
       - name: Copy binaries (Windows)
@@ -189,7 +182,6 @@ jobs:
         run: |
           copy target\${{ matrix.target }}\release\openfand.exe artifacts\
           copy target\${{ matrix.target }}\release\openfanctl.exe artifacts\
-          copy config.yaml artifacts\
           copy README.md artifacts\
 
       - name: Create archive (Unix)

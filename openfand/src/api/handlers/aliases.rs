@@ -14,7 +14,7 @@ use tracing::{debug, info};
 
 /// Query parameters for alias operations.
 #[derive(Deserialize)]
-pub struct AliasQuery {
+pub(crate) struct AliasQuery {
     /// Alias value to set (must contain only allowed characters)
     pub value: Option<String>,
 }
@@ -27,13 +27,13 @@ pub struct AliasQuery {
 /// # Endpoint
 ///
 /// `GET /api/v0/alias/all/get`
-pub async fn get_all_aliases(
+pub(crate) async fn get_all_aliases(
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
     debug!("Request: GET /api/v0/alias/all/get");
 
-    let config = state.config.read().await;
-    let aliases = config.config().fan_aliases.clone();
+    let alias_data = state.config.aliases().await;
+    let aliases = alias_data.aliases.clone();
 
     let response = AliasResponse { aliases };
 
@@ -52,7 +52,7 @@ pub async fn get_all_aliases(
 /// # Path Parameters
 ///
 /// - `id` - Fan identifier (0-9)
-pub async fn get_alias(
+pub(crate) async fn get_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
 ) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
@@ -66,13 +66,8 @@ pub async fn get_alias(
     // Validate fan ID against board configuration
     state.board_info.validate_fan_id(fan_index)?;
 
-    let config = state.config.read().await;
-    let alias = config
-        .config()
-        .fan_aliases
-        .get(&fan_index)
-        .cloned()
-        .unwrap_or_else(|| format!("Fan #{}", fan_index + 1));
+    let alias_data = state.config.aliases().await;
+    let alias = alias_data.get(fan_index);
 
     let mut aliases = HashMap::new();
     aliases.insert(fan_index, alias.clone());
@@ -110,7 +105,7 @@ pub async fn get_alias(
 /// # Query Parameters
 ///
 /// - `value` - Alias to set (must match allowed character set)
-pub async fn set_alias(
+pub(crate) async fn set_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<AliasQuery>,
@@ -137,14 +132,13 @@ pub async fn set_alias(
     }
 
     // Update configuration
-    let mut config = state.config.write().await;
-    config
-        .config_mut()
-        .fan_aliases
-        .insert(fan_index, alias_value.clone());
+    {
+        let mut aliases = state.config.aliases_mut().await;
+        aliases.set(fan_index, alias_value.clone());
+    }
 
     // Save configuration
-    if let Err(e) = config.save().await {
+    if let Err(e) = state.config.save_aliases().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -152,6 +146,49 @@ pub async fn set_alias(
     }
 
     info!("Set alias for fan {} to '{}'", fan_index, alias_value);
+    api_ok!(())
+}
+
+/// Delete the alias for a specific fan (reverts to default).
+///
+/// After deletion, the fan will display its default alias "Fan #N".
+///
+/// # Endpoint
+///
+/// `DELETE /api/v0/alias/:id`
+///
+/// # Path Parameters
+///
+/// - `id` - Fan identifier (0-9)
+pub(crate) async fn delete_alias(
+    State(state): State<AppState>,
+    Path(fan_id): Path<String>,
+) -> Result<Json<ApiResponse<()>>, ApiError> {
+    debug!("Request: GET /api/v0/alias/{}/delete", fan_id);
+
+    // Parse and validate fan ID
+    let fan_index = fan_id
+        .parse::<u8>()
+        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
+
+    // Validate fan ID against board configuration
+    state.board_info.validate_fan_id(fan_index)?;
+
+    // Remove alias from configuration
+    {
+        let mut aliases = state.config.aliases_mut().await;
+        aliases.remove(fan_index);
+    }
+
+    // Save configuration
+    if let Err(e) = state.config.save_aliases().await {
+        return Err(ApiError::internal_error(format!(
+            "Failed to save configuration: {}",
+            e
+        )));
+    }
+
+    info!("Deleted alias for fan {}", fan_index);
     api_ok!(())
 }
 

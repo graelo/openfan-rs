@@ -9,7 +9,7 @@ pub use openfan_hardware::{
 };
 
 /// Hardware initialization and connection utilities
-pub mod connection {
+pub(crate) mod connection {
     use super::*;
     use openfan_core::{DefaultBoard, OpenFanError, Result};
     use std::env;

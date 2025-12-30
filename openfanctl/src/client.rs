@@ -3,16 +3,22 @@
 use anyhow::{Context, Result};
 use openfan_core::{
     api::{
-        AliasResponse, ApiResponse, FanRpmResponse, FanStatusResponse, InfoResponse,
-        ProfileResponse,
+        AliasResponse, ApiResponse, CfmGetResponse, CfmListResponse, FanRpmResponse,
+        FanStatusResponse, InfoResponse, InterpolateResponse, ProfileResponse, SetCfmRequest,
+        SingleCurveResponse, SingleZoneResponse, ThermalCurveResponse, ZoneResponse,
     },
     types::FanProfile,
-    BoardInfo,
+    BoardInfo, CurvePoint,
 };
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::time::Duration;
+
+/// Normalize a server URL by removing trailing slashes.
+fn normalize_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
+}
 
 /// HTTP client for communicating with the OpenFAN daemon's REST API.
 ///
@@ -100,7 +106,7 @@ impl OpenFanClient {
             .build()
             .context("Failed to create HTTP client")?;
 
-        let base_url = server_url.trim_end_matches('/').to_string();
+        let base_url = normalize_url(&server_url);
 
         // Create a temporary client to fetch board info
         let temp_client = Self {
@@ -526,6 +532,533 @@ impl OpenFanClient {
             .map(|_: ()| ())
     }
 
+    /// Delete the alias for a specific fan (reverts to default).
+    ///
+    /// After deletion, the fan will display its default alias "Fan #N".
+    ///
+    /// # Arguments
+    ///
+    /// * `fan_id` - Fan identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the fan ID is invalid for this board type.
+    pub async fn delete_alias(&self, fan_id: u8) -> Result<()> {
+        self.board_info.validate_fan_id(fan_id)?;
+
+        let url = format!("{}/api/v0/alias/{}", self.base_url, fan_id);
+        let endpoint = &format!("alias/{}", fan_id);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
+    // =========================================================================
+    // Zone operations
+    // =========================================================================
+
+    /// Retrieve all configured zones.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of zone names to their configurations.
+    pub async fn get_zones(&self) -> Result<ZoneResponse> {
+        let url = format!("{}/api/v0/zones/list", self.base_url);
+        let endpoint = "zones/list";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Retrieve a specific zone by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the zone
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the zone name is empty or whitespace.
+    pub async fn get_zone(&self, name: &str) -> Result<SingleZoneResponse> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Zone name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/zone/{}/get", self.base_url, encoded_name);
+        let endpoint = &format!("zone/{}/get", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Create a new zone.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the new zone
+    /// * `port_ids` - Fan port IDs to include in the zone
+    /// * `description` - Optional description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The zone name is empty or whitespace
+    /// - Any port ID is invalid for this board type
+    pub async fn add_zone(
+        &self,
+        name: &str,
+        port_ids: Vec<u8>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Zone name cannot be empty"));
+        }
+
+        // Validate port IDs
+        for &port_id in &port_ids {
+            self.board_info.validate_fan_id(port_id)?;
+        }
+
+        let url = format!("{}/api/v0/zones/add", self.base_url);
+        let mut request_body = HashMap::new();
+        request_body.insert("name", serde_json::Value::String(name.to_string()));
+        request_body.insert("port_ids", serde_json::to_value(&port_ids)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = "zones/add";
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send add zone request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Update an existing zone.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the zone to update
+    /// * `port_ids` - New fan port IDs for the zone
+    /// * `description` - Optional new description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The zone name is empty or whitespace
+    /// - Any port ID is invalid for this board type
+    pub async fn update_zone(
+        &self,
+        name: &str,
+        port_ids: Vec<u8>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Zone name cannot be empty"));
+        }
+
+        // Validate port IDs
+        for &port_id in &port_ids {
+            self.board_info.validate_fan_id(port_id)?;
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/zone/{}/update", self.base_url, encoded_name);
+        let mut request_body = HashMap::new();
+        request_body.insert("port_ids", serde_json::to_value(&port_ids)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = &format!("zone/{}/update", name);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update zone request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Delete a zone by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the zone to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the zone name is empty or whitespace.
+    pub async fn delete_zone(&self, name: &str) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Zone name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/zone/{}/delete", self.base_url, encoded_name);
+        let endpoint = &format!("zone/{}/delete", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Apply a PWM or RPM value to all fans in a zone.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the zone
+    /// * `mode` - Control mode ("pwm" or "rpm")
+    /// * `value` - Control value (0-100 for PWM, 0-16000 for RPM)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The zone name is empty or whitespace
+    /// - The mode is invalid
+    /// - The value is out of range for the specified mode
+    pub async fn apply_zone(&self, name: &str, mode: &str, value: u16) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Zone name cannot be empty"));
+        }
+
+        // Validate mode
+        match mode.to_lowercase().as_str() {
+            "pwm" => {
+                if value > 100 {
+                    return Err(anyhow::anyhow!(
+                        "PWM value {} exceeds maximum of 100",
+                        value
+                    ));
+                }
+            }
+            "rpm" => {
+                if value > 16000 {
+                    return Err(anyhow::anyhow!(
+                        "RPM value {} exceeds maximum of 16000",
+                        value
+                    ));
+                }
+            }
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "Invalid mode '{}'. Must be 'pwm' or 'rpm'.",
+                    mode
+                ));
+            }
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!(
+            "{}/api/v0/zone/{}/apply?mode={}&value={}",
+            self.base_url, encoded_name, mode, value
+        );
+        let endpoint = &format!("zone/{}/apply", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
+    // =========================================================================
+    // Thermal curve operations
+    // =========================================================================
+
+    /// Retrieve all configured thermal curves.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of curve names to their configurations.
+    pub async fn get_curves(&self) -> Result<ThermalCurveResponse> {
+        let url = format!("{}/api/v0/curves/list", self.base_url);
+        let endpoint = "curves/list";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Retrieve a specific thermal curve by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the curve name is empty or whitespace.
+    pub async fn get_curve(&self, name: &str) -> Result<SingleCurveResponse> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}/get", self.base_url, encoded_name);
+        let endpoint = &format!("curve/{}/get", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Create a new thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name for the new curve
+    /// * `points` - Temperature-to-PWM curve points
+    /// * `description` - Optional description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve already exists
+    /// - The points are invalid
+    pub async fn add_curve(
+        &self,
+        name: &str,
+        points: Vec<CurvePoint>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let url = format!("{}/api/v0/curves/add", self.base_url);
+        let mut request_body = HashMap::new();
+        request_body.insert("name", serde_json::Value::String(name.to_string()));
+        request_body.insert("points", serde_json::to_value(&points)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = "curves/add";
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send add curve request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Update an existing thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve to update
+    /// * `points` - New temperature-to-PWM curve points
+    /// * `description` - Optional new description
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve doesn't exist
+    /// - The points are invalid
+    pub async fn update_curve(
+        &self,
+        name: &str,
+        points: Vec<CurvePoint>,
+        description: Option<String>,
+    ) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}/update", self.base_url, encoded_name);
+        let mut request_body = HashMap::new();
+        request_body.insert("points", serde_json::to_value(&points)?);
+        if let Some(desc) = description {
+            request_body.insert("description", serde_json::Value::String(desc));
+        }
+
+        let endpoint = &format!("curve/{}/update", name);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request_body)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send update curve request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Delete a thermal curve by name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the curve to delete
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the curve name is empty or whitespace.
+    pub async fn delete_curve(&self, name: &str) -> Result<()> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!("{}/api/v0/curve/{}", self.base_url, encoded_name);
+        let endpoint = &format!("curve/{}", name);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Interpolate PWM value for a given temperature using a thermal curve.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the thermal curve
+    /// * `temp` - Temperature in Celsius
+    ///
+    /// # Returns
+    ///
+    /// Returns the interpolated PWM value (0-100) for the given temperature.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The curve name is empty or whitespace
+    /// - The curve doesn't exist
+    pub async fn interpolate_curve(&self, name: &str, temp: f32) -> Result<InterpolateResponse> {
+        if name.trim().is_empty() {
+            return Err(anyhow::anyhow!("Curve name cannot be empty"));
+        }
+
+        let encoded_name = name.replace(' ', "%20").replace('&', "%26");
+        let url = format!(
+            "{}/api/v0/curve/{}/interpolate?temp={}",
+            self.base_url, encoded_name, temp
+        );
+        let endpoint = &format!("curve/{}/interpolate", name);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    // =========================================================================
+    // CFM mapping operations
+    // =========================================================================
+
+    /// Retrieve all configured CFM mappings.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of port IDs to their CFM@100% values.
+    pub async fn get_cfm_mappings(&self) -> Result<CfmListResponse> {
+        let url = format!("{}/api/v0/cfm/list", self.base_url);
+        let endpoint = "cfm/list";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Retrieve the CFM mapping for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port ID is invalid for this board type.
+    pub async fn get_cfm(&self, port: u8) -> Result<CfmGetResponse> {
+        self.board_info.validate_fan_id(port)?;
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let endpoint = &format!("cfm/{}", port);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Set the CFM@100% value for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    /// * `cfm_at_100` - CFM value when fan runs at 100% PWM
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The port ID is invalid for this board type
+    /// - The CFM value is not positive
+    /// - The CFM value exceeds the maximum allowed (500)
+    pub async fn set_cfm(&self, port: u8, cfm_at_100: f32) -> Result<()> {
+        self.board_info.validate_fan_id(port)?;
+
+        if cfm_at_100 <= 0.0 {
+            return Err(anyhow::anyhow!("CFM value must be positive"));
+        }
+        if cfm_at_100 > 500.0 {
+            return Err(anyhow::anyhow!("CFM value must be <= 500"));
+        }
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let request = SetCfmRequest { cfm_at_100 };
+        let endpoint = &format!("cfm/{}", port);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send set CFM request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Delete the CFM mapping for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port ID is invalid for this board type.
+    pub async fn delete_cfm(&self, port: u8) -> Result<()> {
+        self.board_info.validate_fan_id(port)?;
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let endpoint = &format!("cfm/{}", port);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
+    }
+
     /// Test basic connectivity to the server.
     ///
     /// Use a short timeout (3 seconds) to quickly determine if the server is reachable.
@@ -616,38 +1149,24 @@ mod tests {
     use super::*;
     use openfan_core::BoardType;
 
-    // Note: These tests would require a running server to fetch board info
-    // They are marked as integration tests that should be run separately
-
-    #[tokio::test]
-    #[ignore] // Requires running server
-    async fn test_client_creation() {
-        let client = OpenFanClient::with_config(
-            "http://localhost:3000".to_string(),
-            10,
-            3,
-            Duration::from_millis(500),
-        )
-        .await;
-        assert!(client.is_ok());
-
-        let client = client.unwrap();
-        assert_eq!(client.base_url, "http://localhost:3000");
-        assert!(client.board_info.fan_count > 0);
-    }
-
-    #[tokio::test]
-    #[ignore] // Requires running server
-    async fn test_url_trimming() {
-        let client = OpenFanClient::with_config(
-            "http://localhost:3000/".to_string(),
-            10,
-            3,
-            Duration::from_millis(500),
-        )
-        .await
-        .unwrap();
-        assert_eq!(client.base_url, "http://localhost:3000");
+    #[test]
+    fn test_normalize_url() {
+        assert_eq!(
+            normalize_url("http://localhost:3000"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://localhost:3000/"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://localhost:3000///"),
+            "http://localhost:3000"
+        );
+        assert_eq!(
+            normalize_url("http://example.com/api/"),
+            "http://example.com/api"
+        );
     }
 
     #[test]

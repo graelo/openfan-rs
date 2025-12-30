@@ -67,26 +67,33 @@ impl E2ETestHarness {
 
         println!("Starting server on port {}", self.server_port);
 
-        // Create a temporary config file for testing
-        let config_content = r#"
-server:
-  port: 8080
-  bind: "127.0.0.1"
+        // Create a temporary config file for testing (TOML format)
+        let data_dir = self
+            .temp_dir
+            .as_ref()
+            .join(format!("data_{}", self.server_port));
+        std::fs::create_dir_all(&data_dir)?;
 
-hardware:
-  device_path: "/dev/ttyUSB0"
-  baud_rate: 115200
-  timeout_ms: 2000
+        let config_content = format!(
+            r#"data_dir = "{}"
 
-fans:
-  count: 10
+[server]
+hostname = "127.0.0.1"
+port = {}
+communication_timeout = 1
 
-profiles: {}
-"#;
+[hardware]
+hostname = "127.0.0.1"
+port = 3000
+communication_timeout = 1
+"#,
+            data_dir.display(),
+            self.server_port
+        );
         let config_path = self
             .temp_dir
             .as_ref()
-            .join(format!("test_config_{}.yaml", self.server_port));
+            .join(format!("test_config_{}.toml", self.server_port));
         std::fs::write(&config_path, config_content)?;
 
         // Start the server process in mock mode
@@ -425,6 +432,22 @@ async fn test_e2e_alias_operations() -> Result<()> {
         list_output2
     );
 
+    // Test deleting an alias
+    let delete_output = harness.run_cli_success(&["alias", "delete", "0"]).await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("reverted"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify alias is reverted to default
+    let get_after_delete = harness.run_cli_success(&["alias", "get", "0"]).await?;
+    assert!(
+        get_after_delete.contains("Fan #1") || !get_after_delete.contains("CPU_Fan"),
+        "Should show default alias after delete: {}",
+        get_after_delete
+    );
+
     harness.stop_server().await?;
     Ok(())
 }
@@ -669,6 +692,592 @@ async fn test_e2e_profile_with_different_modes() -> Result<()> {
     let _remove_rpm = harness
         .run_cli_success(&["profile", "remove", "rpm_profile"])
         .await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_thermal_curve_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing curves (should have defaults: Balanced, Silent, Aggressive)
+    let list_output = harness.run_cli_success(&["curve", "list"]).await?;
+    println!("Initial curves: {}", list_output);
+    assert!(
+        list_output.contains("Balanced") || list_output.contains("Silent"),
+        "Should contain default curves: {}",
+        list_output
+    );
+
+    // Test getting a specific curve
+    let get_output = harness
+        .run_cli_success(&["curve", "get", "Balanced"])
+        .await?;
+    assert!(
+        get_output.contains("Balanced") && get_output.contains("Points"),
+        "Should show curve details: {}",
+        get_output
+    );
+
+    // Test adding a new curve
+    let _add_output = harness
+        .run_cli_success(&[
+            "curve",
+            "add",
+            "TestCurve",
+            "--points",
+            "30:20,50:50,70:80,85:100",
+            "--description",
+            "Test curve for E2E",
+        ])
+        .await?;
+
+    // Test listing curves again (should show our new curve)
+    let list_output2 = harness.run_cli_success(&["curve", "list"]).await?;
+    assert!(
+        list_output2.contains("TestCurve"),
+        "Should contain the added curve: {}",
+        list_output2
+    );
+
+    // Test interpolating with the curve
+    let interp_output = harness
+        .run_cli_success(&["curve", "interpolate", "TestCurve", "--temp", "40.0"])
+        .await?;
+    assert!(
+        interp_output.contains("40") && interp_output.contains("PWM"),
+        "Should show interpolation result: {}",
+        interp_output
+    );
+
+    // Test JSON output for interpolation
+    let interp_json = harness
+        .run_cli_success(&[
+            "--format",
+            "json",
+            "curve",
+            "interpolate",
+            "TestCurve",
+            "--temp",
+            "60.0",
+        ])
+        .await?;
+    let interp_value: Value = serde_json::from_str(&interp_json)?;
+    assert!(
+        interp_value.get("temperature").is_some() && interp_value.get("pwm").is_some(),
+        "JSON should contain temperature and pwm: {}",
+        interp_json
+    );
+
+    // Test updating the curve
+    let _update_output = harness
+        .run_cli_success(&[
+            "curve",
+            "update",
+            "TestCurve",
+            "--points",
+            "25:15,45:45,65:75,80:100",
+        ])
+        .await?;
+
+    // Test getting the updated curve
+    let get_updated = harness
+        .run_cli_success(&["curve", "get", "TestCurve"])
+        .await?;
+    assert!(
+        get_updated.contains("25") || get_updated.contains("15"),
+        "Should show updated curve points: {}",
+        get_updated
+    );
+
+    // Test deleting the curve
+    let delete_output = harness
+        .run_cli_success(&["curve", "delete", "TestCurve"])
+        .await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("TestCurve"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify curve is deleted
+    let list_output3 = harness.run_cli_success(&["curve", "list"]).await?;
+    assert!(
+        !list_output3.contains("TestCurve"),
+        "Curve should be removed: {}",
+        list_output3
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_thermal_curve_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent curve
+    let error_output = harness
+        .run_cli_expect_failure(&["curve", "get", "NonExistentCurve"])
+        .await?;
+    assert!(
+        error_output.contains("not exist") || error_output.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output
+    );
+
+    // Test deleting non-existent curve
+    let error_output2 = harness
+        .run_cli_expect_failure(&["curve", "delete", "NonExistentCurve"])
+        .await?;
+    assert!(
+        error_output2.contains("not exist") || error_output2.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output2
+    );
+
+    // Test interpolating on non-existent curve
+    let error_output3 = harness
+        .run_cli_expect_failure(&["curve", "interpolate", "NonExistentCurve", "--temp", "50.0"])
+        .await?;
+    assert!(
+        error_output3.contains("not exist") || error_output3.contains("not found"),
+        "Should show curve not found error: {}",
+        error_output3
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_zone_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing zones (should be empty initially)
+    let list_output = harness.run_cli_success(&["zone", "list"]).await?;
+    println!("Initial zones: {}", list_output);
+    assert!(
+        list_output.contains("No zones") || !list_output.contains("intake"),
+        "Should have no zones initially: {}",
+        list_output
+    );
+
+    // Test adding a zone
+    let add_output = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "intake",
+            "--ports",
+            "0,1,2",
+            "--description",
+            "Front intake fans",
+        ])
+        .await?;
+    assert!(
+        add_output.contains("Added") || add_output.contains("intake"),
+        "Should confirm zone creation: {}",
+        add_output
+    );
+
+    // Test listing zones again (should show our new zone)
+    let list_output2 = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        list_output2.contains("intake"),
+        "Should contain the added zone: {}",
+        list_output2
+    );
+
+    // Test getting a specific zone
+    let get_output = harness.run_cli_success(&["zone", "get", "intake"]).await?;
+    assert!(
+        get_output.contains("intake") && (get_output.contains("0") || get_output.contains("Ports")),
+        "Should show zone details: {}",
+        get_output
+    );
+
+    // Test JSON output for zone get
+    let get_json = harness
+        .run_cli_success(&["--format", "json", "zone", "get", "intake"])
+        .await?;
+    let zone_value: Value = serde_json::from_str(&get_json)?;
+    assert!(
+        zone_value.get("zone").is_some(),
+        "JSON should contain zone: {}",
+        get_json
+    );
+
+    // Test adding another zone
+    let _add_output2 = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "exhaust",
+            "--ports",
+            "3,4",
+            "--description",
+            "Rear exhaust fans",
+        ])
+        .await?;
+
+    // Test updating a zone
+    let update_output = harness
+        .run_cli_success(&[
+            "zone",
+            "update",
+            "intake",
+            "--ports",
+            "0,1,2,5",
+            "--description",
+            "Updated intake zone",
+        ])
+        .await?;
+    assert!(
+        update_output.contains("Updated") || update_output.contains("intake"),
+        "Should confirm zone update: {}",
+        update_output
+    );
+
+    // Test getting the updated zone
+    let get_updated = harness.run_cli_success(&["zone", "get", "intake"]).await?;
+    assert!(
+        get_updated.contains("5") || get_updated.contains("Updated"),
+        "Should show updated zone: {}",
+        get_updated
+    );
+
+    // Test applying PWM to a zone
+    let apply_pwm_output = harness
+        .run_cli_success(&["zone", "apply", "intake", "--pwm", "75"])
+        .await?;
+    assert!(
+        apply_pwm_output.contains("Applied") || apply_pwm_output.contains("75"),
+        "Should confirm PWM applied: {}",
+        apply_pwm_output
+    );
+
+    // Test applying RPM to a zone
+    let apply_rpm_output = harness
+        .run_cli_success(&["zone", "apply", "exhaust", "--rpm", "1500"])
+        .await?;
+    assert!(
+        apply_rpm_output.contains("Applied") || apply_rpm_output.contains("1500"),
+        "Should confirm RPM applied: {}",
+        apply_rpm_output
+    );
+
+    // Test deleting a zone
+    let delete_output = harness
+        .run_cli_success(&["zone", "delete", "exhaust"])
+        .await?;
+    assert!(
+        delete_output.contains("Deleted") || delete_output.contains("exhaust"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify zone is deleted
+    let list_output3 = harness.run_cli_success(&["zone", "list"]).await?;
+    assert!(
+        !list_output3.contains("exhaust"),
+        "Zone should be removed: {}",
+        list_output3
+    );
+    assert!(
+        list_output3.contains("intake"),
+        "Other zone should still exist: {}",
+        list_output3
+    );
+
+    // Clean up remaining zone
+    let _cleanup = harness
+        .run_cli_success(&["zone", "delete", "intake"])
+        .await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_zone_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent zone
+    let error_output = harness
+        .run_cli_expect_failure(&["zone", "get", "NonExistentZone"])
+        .await?;
+    assert!(
+        error_output.contains("not exist") || error_output.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output
+    );
+
+    // Test deleting non-existent zone
+    let error_output2 = harness
+        .run_cli_expect_failure(&["zone", "delete", "NonExistentZone"])
+        .await?;
+    assert!(
+        error_output2.contains("not exist") || error_output2.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output2
+    );
+
+    // Test applying to non-existent zone
+    let error_output3 = harness
+        .run_cli_expect_failure(&["zone", "apply", "NonExistentZone", "--pwm", "50"])
+        .await?;
+    assert!(
+        error_output3.contains("not exist") || error_output3.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output3
+    );
+
+    // Test updating non-existent zone
+    let error_output4 = harness
+        .run_cli_expect_failure(&["zone", "update", "NonExistentZone", "--ports", "0,1"])
+        .await?;
+    assert!(
+        error_output4.contains("not exist") || error_output4.contains("not found"),
+        "Should show zone not found error: {}",
+        error_output4
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_cfm_operations() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing CFM mappings (should be empty initially)
+    let list_output = harness.run_cli_success(&["cfm", "list"]).await?;
+    println!("Initial CFM mappings: {}", list_output);
+    assert!(
+        list_output.contains("No CFM")
+            || list_output.contains("mappings")
+            || list_output.contains("{}"),
+        "Should show empty or no mappings: {}",
+        list_output
+    );
+
+    // Test setting a CFM mapping
+    let set_output = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "45.0"])
+        .await?;
+    assert!(
+        set_output.contains("Set") || set_output.contains("45") || set_output.contains("✓"),
+        "Should confirm CFM set: {}",
+        set_output
+    );
+
+    // Test getting the CFM mapping
+    let get_output = harness.run_cli_success(&["cfm", "get", "0"]).await?;
+    assert!(
+        get_output.contains("45") || get_output.contains("CFM"),
+        "Should show CFM value: {}",
+        get_output
+    );
+
+    // Test JSON output for CFM get
+    let get_json = harness
+        .run_cli_success(&["--format", "json", "cfm", "get", "0"])
+        .await?;
+    let cfm_value: Value = serde_json::from_str(&get_json)?;
+    assert!(
+        cfm_value.get("port").is_some() && cfm_value.get("cfm_at_100").is_some(),
+        "JSON should contain port and cfm_at_100: {}",
+        get_json
+    );
+
+    // Test setting another CFM mapping
+    let _set_output2 = harness
+        .run_cli_success(&["cfm", "set", "1", "--cfm-at-100", "60.5"])
+        .await?;
+
+    // Test listing CFM mappings again (should show our mappings)
+    let list_output2 = harness.run_cli_success(&["cfm", "list"]).await?;
+    assert!(
+        list_output2.contains("45") || list_output2.contains("0"),
+        "Should contain first mapping: {}",
+        list_output2
+    );
+
+    // Test JSON output for CFM list
+    let list_json = harness
+        .run_cli_success(&["--format", "json", "cfm", "list"])
+        .await?;
+    let list_value: Value = serde_json::from_str(&list_json)?;
+    assert!(
+        list_value.get("mappings").is_some(),
+        "JSON should contain mappings: {}",
+        list_json
+    );
+
+    // Test updating a CFM mapping (set again with different value)
+    let _update_output = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "50.0"])
+        .await?;
+
+    // Verify the update
+    let get_updated = harness.run_cli_success(&["cfm", "get", "0"]).await?;
+    assert!(
+        get_updated.contains("50"),
+        "Should show updated CFM value: {}",
+        get_updated
+    );
+
+    // Test deleting a CFM mapping
+    let delete_output = harness.run_cli_success(&["cfm", "delete", "1"]).await?;
+    assert!(
+        delete_output.contains("Deleted")
+            || delete_output.contains("Removed")
+            || delete_output.contains("✓"),
+        "Should confirm deletion: {}",
+        delete_output
+    );
+
+    // Verify mapping is deleted
+    let list_output3 = harness.run_cli_success(&["cfm", "list"]).await?;
+    assert!(
+        !list_output3.contains("60.5"),
+        "Deleted mapping should be removed: {}",
+        list_output3
+    );
+
+    // Clean up remaining mapping
+    let _cleanup = harness.run_cli_success(&["cfm", "delete", "0"]).await?;
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_cfm_errors() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting non-existent CFM mapping
+    let error_output = harness.run_cli_expect_failure(&["cfm", "get", "5"]).await?;
+    assert!(
+        error_output.contains("not")
+            || error_output.contains("No")
+            || error_output.contains("mapping"),
+        "Should show no mapping error: {}",
+        error_output
+    );
+
+    // Test invalid port ID (out of range)
+    let error_output2 = harness
+        .run_cli_expect_failure(&["cfm", "set", "99", "--cfm-at-100", "45.0"])
+        .await?;
+    assert!(
+        error_output2.to_lowercase().contains("port")
+            || error_output2.contains("Invalid")
+            || error_output2.contains("range"),
+        "Should show invalid port error: {}",
+        error_output2
+    );
+
+    // Test invalid CFM value (zero)
+    let error_output3 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "0.0"])
+        .await?;
+    assert!(
+        error_output3.to_lowercase().contains("cfm")
+            || error_output3.contains("positive")
+            || error_output3.contains("value"),
+        "Should show invalid CFM error: {}",
+        error_output3
+    );
+
+    // Test invalid CFM value (negative)
+    let error_output4 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "-10.0"])
+        .await?;
+    assert!(
+        error_output4.to_lowercase().contains("cfm")
+            || error_output4.contains("positive")
+            || error_output4.contains("value"),
+        "Should show invalid CFM error for negative: {}",
+        error_output4
+    );
+
+    // Test invalid CFM value (exceeds maximum)
+    let error_output5 = harness
+        .run_cli_expect_failure(&["cfm", "set", "0", "--cfm-at-100", "1000.0"])
+        .await?;
+    assert!(
+        error_output5.to_lowercase().contains("cfm")
+            || error_output5.contains("500")
+            || error_output5.contains("max"),
+        "Should show CFM exceeds max error: {}",
+        error_output5
+    );
+
+    // Test deleting non-existent CFM mapping
+    let error_output6 = harness
+        .run_cli_expect_failure(&["cfm", "delete", "7"])
+        .await?;
+    assert!(
+        error_output6.contains("not")
+            || error_output6.contains("No")
+            || error_output6.contains("mapping"),
+        "Should show no mapping to delete error: {}",
+        error_output6
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_status_with_cfm() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Get status without CFM mappings (should not show CFM column)
+    let status_no_cfm = harness.run_cli_success(&["status"]).await?;
+    println!("Status without CFM: {}", status_no_cfm);
+
+    // Add CFM mappings
+    let _set1 = harness
+        .run_cli_success(&["cfm", "set", "0", "--cfm-at-100", "45.0"])
+        .await?;
+    let _set2 = harness
+        .run_cli_success(&["cfm", "set", "1", "--cfm-at-100", "60.0"])
+        .await?;
+
+    // Get status with CFM mappings (should show CFM column)
+    let status_with_cfm = harness.run_cli_success(&["status"]).await?;
+    println!("Status with CFM: {}", status_with_cfm);
+    assert!(
+        status_with_cfm.contains("CFM"),
+        "Status should show CFM column when mappings exist: {}",
+        status_with_cfm
+    );
+
+    // Test JSON status output includes CFM
+    let status_json = harness
+        .run_cli_success(&["--format", "json", "status"])
+        .await?;
+    let status_value: Value = serde_json::from_str(&status_json)?;
+    assert!(
+        status_value.get("cfm").is_some() || status_value.get("rpms").is_some(),
+        "JSON status should contain cfm or rpms: {}",
+        status_json
+    );
+
+    // Clean up
+    let _del1 = harness.run_cli_success(&["cfm", "delete", "0"]).await?;
+    let _del2 = harness.run_cli_success(&["cfm", "delete", "1"]).await?;
 
     harness.stop_server().await?;
     Ok(())

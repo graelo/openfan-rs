@@ -2,9 +2,9 @@
 //!
 //! Contains the REST API implementation with Axum router and handlers.
 
-pub mod handlers;
+pub(crate) mod handlers;
 
-use crate::config::ConfigManager;
+use crate::config::RuntimeConfig;
 use crate::hardware::FanController;
 use axum::{
     extract::DefaultBodyLimit,
@@ -16,18 +16,17 @@ use openfan_core::BoardInfo;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 
 /// Application state shared across all handlers
 #[derive(Clone)]
-pub struct AppState {
+pub(crate) struct AppState {
     /// Runtime board information
     pub board_info: Arc<BoardInfo>,
-    /// Configuration manager
-    pub config: Arc<RwLock<ConfigManager>>,
+    /// Runtime configuration (static config + mutable data)
+    pub config: Arc<RuntimeConfig>,
     /// Hardware controller
     pub fan_controller: Option<Arc<Mutex<FanController>>>,
     /// Server start time for uptime calculation
@@ -38,12 +37,12 @@ impl AppState {
     /// Create new application state
     pub fn new(
         board_info: BoardInfo,
-        config: ConfigManager,
+        config: RuntimeConfig,
         fan_controller: Option<FanController>,
     ) -> Self {
         Self {
             board_info: Arc::new(board_info),
-            config: Arc::new(RwLock::new(config)),
+            config: Arc::new(config),
             fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
             start_time: Instant::now(),
         }
@@ -51,7 +50,7 @@ impl AppState {
 }
 
 /// Create the main API router with all endpoints
-pub fn create_router(state: AppState) -> Router {
+pub(crate) fn create_router(state: AppState) -> Router {
     info!("Setting up API router...");
 
     let cors = CorsLayer::new()
@@ -93,6 +92,56 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v0/alias/:id/get", get(handlers::aliases::get_alias))
         .route("/api/v0/alias/:id/set", get(handlers::aliases::set_alias))
+        .route(
+            "/api/v0/alias/:id",
+            axum::routing::delete(handlers::aliases::delete_alias),
+        )
+        // Zone endpoints
+        .route("/api/v0/zones/list", get(handlers::zones::list_zones))
+        .route("/api/v0/zones/add", post(handlers::zones::add_zone))
+        .route("/api/v0/zone/:name/get", get(handlers::zones::get_zone))
+        .route(
+            "/api/v0/zone/:name/update",
+            post(handlers::zones::update_zone),
+        )
+        .route(
+            "/api/v0/zone/:name/delete",
+            get(handlers::zones::delete_zone),
+        )
+        .route("/api/v0/zone/:name/apply", get(handlers::zones::apply_zone))
+        // Thermal curve endpoints
+        .route(
+            "/api/v0/curves/list",
+            get(handlers::thermal_curves::list_curves),
+        )
+        .route(
+            "/api/v0/curves/add",
+            post(handlers::thermal_curves::add_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/get",
+            get(handlers::thermal_curves::get_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/update",
+            post(handlers::thermal_curves::update_curve),
+        )
+        .route(
+            "/api/v0/curve/:name",
+            axum::routing::delete(handlers::thermal_curves::delete_curve),
+        )
+        .route(
+            "/api/v0/curve/:name/interpolate",
+            get(handlers::thermal_curves::interpolate_curve),
+        )
+        // CFM mapping endpoints
+        .route("/api/v0/cfm/list", get(handlers::cfm::list_cfm))
+        .route("/api/v0/cfm/:port", get(handlers::cfm::get_cfm))
+        .route("/api/v0/cfm/:port", post(handlers::cfm::set_cfm))
+        .route(
+            "/api/v0/cfm/:port",
+            axum::routing::delete(handlers::cfm::delete_cfm),
+        )
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
         // Root endpoint
@@ -102,7 +151,7 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 /// Error handling utilities
-pub mod error {
+pub(crate) mod error {
     use axum::{
         http::StatusCode,
         response::{IntoResponse, Response},

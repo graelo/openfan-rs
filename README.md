@@ -1,19 +1,26 @@
 # OpenFAN Controller
 
-A Rust-based controller for OpenFAN hardware - manage your fans via REST API or CLI.
+[![release](https://img.shields.io/github/v/release/graelo/openfan-rs)](https://github.com/graelo/openfan-rs/releases/latest)
+[![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml)
+[![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
+[![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
+
+A Rust-based controller for OpenFAN hardware - manage your fans via REST API or
+CLI.
 
 ## Overview
 
 OpenFAN is a fan controller system consisting of:
+
 - **Hardware**: A microcontroller board that controls PWM fans via USB serial
 - **Server** (`openfand`): REST API daemon that communicates with the hardware
 - **CLI** (`openfanctl`): Command-line tool for managing fans
 
-```
-┌─────────────┐     HTTP      ┌──────────┐    Serial    ┌──────────────┐
+```text
+┌─────────────┐     HTTP      ┌──────────┐    Serial   ┌───────────────┐
 │  openfanctl │ ────────────> │ openfand │ ──────────> │ OpenFAN Board │
 │    (CLI)    │   REST API    │ (Server) │   USB/TTY   │  (Hardware)   │
-└─────────────┘               └──────────┘              └──────────────┘
+└─────────────┘               └──────────┘             └───────────────┘
 ```
 
 ## Supported Hardware
@@ -23,19 +30,22 @@ OpenFAN is a fan controller system consisting of:
 | OpenFAN v1.0 | 10 | 2E8A:000A | Supported |
 | OpenFAN Mini | 4 | 2E8A:000B | Planned |
 
-The server auto-detects which board is connected via USB. In mock mode, you must specify the board type explicitly.
+The server auto-detects which board is connected via USB. In mock mode, you
+must specify the board type explicitly.
 
 ## Quick Start
 
 ### Install from Release
 
 **Debian/Ubuntu:**
+
 ```bash
-curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_0.1.0_amd64.deb
-sudo dpkg -i openfan-controller_0.1.0_amd64.deb
+curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-controller_<VERSION>_amd64.deb
+sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
 **Other Linux:**
+
 ```bash
 curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-linux-x86_64.tar.gz
 tar xzf openfan-linux-x86_64.tar.gz
@@ -63,7 +73,7 @@ openfand --mock --board v1      # Simulate OpenFAN v1.0 (10 fans)
 openfand --mock --board mini    # Simulate OpenFAN Mini (4 fans)
 
 # With custom config
-openfand --config /path/to/config.yaml
+openfand --config /path/to/config.toml
 
 # Verbose logging
 openfand --verbose
@@ -93,34 +103,27 @@ openfanctl --format json status
 
 ## Configuration
 
-Config file location: `/etc/openfan/config.yaml` (or specify with `--config`)
+OpenFAN discovers configuration using XDG paths with system fallback:
 
-```yaml
-server:
-  port: 3000
-  bind: "127.0.0.1"
+| Type | User config | System config (fallback) |
+|------|--------------|----------------|
+| Static config | `~/.config/openfan/config.toml` | `/etc/openfan/config.toml` |
+| Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/` | `/var/lib/openfan/` |
 
-hardware:
-  device_path: "/dev/ttyUSB0"    # Auto-detected if not specified
-  baud_rate: 115200
+Both `openfand` and `openfanctl` accept `--config` to override the default path.
 
-# Profiles must match your board's fan count
-# OpenFAN v1.0 = 10 values, OpenFAN Mini = 4 values
-fan_profiles:
-  "Quiet":
-    type: pwm
-    values: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
-  "Performance":
-    type: pwm
-    values: [80, 80, 80, 80, 80, 80, 80, 80, 80, 80]
+```toml
+[server]
+bind_address = "127.0.0.1"
+port = 3000
 
-fan_aliases:
-  0: "CPU Fan"
-  1: "GPU Fan"
-  2: "Case Front"
+[hardware]
+connection_type = "auto"        # Auto-detects USB device
 ```
 
-The server validates your config against the detected board at startup. If your profile has 10 values but you connect an OpenFAN Mini (4 fans), the server will refuse to start with a clear error message.
+Data files (aliases, profiles, zones, thermal curves) are managed via CLI
+commands rather than edited directly. See the [Tutorial](docs/TUTORIAL.md) for
+details.
 
 ## CLI Commands
 
@@ -137,7 +140,8 @@ openfanctl completion <shell>            # Generate shell completion
 ```
 
 Options:
-- `--server <url>` - Server URL (default: http://localhost:3000)
+
+- `--server <url>` - Server URL (default: <http://localhost:3000>)
 - `--format <table|json>` - Output format (default: table)
 
 ## REST API
@@ -148,28 +152,25 @@ The server exposes a REST API on port 3000 (configurable):
 # System info
 curl http://localhost:3000/api/v0/info
 
-# Fan status
+# Fan status (all fans)
 curl http://localhost:3000/api/v0/fan/status
 
-# Single fan status
-curl http://localhost:3000/api/v0/fan/0/status
-
-# Set fan PWM
-curl -X POST http://localhost:3000/api/v0/fan/0/pwm/75
+# Set fan PWM (0-100%)
+curl "http://localhost:3000/api/v0/fan/0/pwm?value=75"
 
 # Set fan RPM
-curl -X POST http://localhost:3000/api/v0/fan/0/rpm/1200
+curl "http://localhost:3000/api/v0/fan/0/rpm?value=1200"
 
-# List profiles
-curl http://localhost:3000/api/v0/profile/list
+# List and apply profiles
+curl http://localhost:3000/api/v0/profiles/list
+curl "http://localhost:3000/api/v0/profiles/set?name=50%25%20PWM"
 
-# Apply profile
-curl -X POST http://localhost:3000/api/v0/profile/apply/Quiet
-
-# Get/set aliases
-curl http://localhost:3000/api/v0/alias/list
-curl -X POST "http://localhost:3000/api/v0/alias/0/CPU%20Fan"
+# Aliases
+curl http://localhost:3000/api/v0/alias/all/get
+curl "http://localhost:3000/api/v0/alias/0/set?value=CPU%20Fan"
 ```
+
+See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.
 
 ## Docker
 
@@ -200,12 +201,14 @@ sudo journalctl -u openfand -f
 ## Troubleshooting
 
 **Permission denied on /dev/ttyUSB0:**
+
 ```bash
 sudo usermod -a -G dialout $USER
 # Log out and back in
 ```
 
 **Server won't start:**
+
 ```bash
 # Check logs
 sudo journalctl -u openfand -f
@@ -216,10 +219,12 @@ openfand --mock --board v1 --verbose
 
 **Config/board mismatch error:**
 Your config file has profiles with the wrong number of fan values. Either:
+
 - Update the profile values to match your board's fan count
 - Delete the config file to regenerate defaults
 
 **CLI can't connect:**
+
 ```bash
 # Check server is running
 curl http://localhost:3000/api/v0/info
@@ -230,7 +235,7 @@ openfanctl --server http://localhost:3000 info
 
 ## Project Structure
 
-```
+```text
 openfan-rs/
 ├── openfan-core/      # Shared types, models, error handling
 ├── openfan-hardware/  # Serial communication, hardware protocol
@@ -241,7 +246,3 @@ openfan-rs/
 ## License
 
 MIT
-
-## Version
-
-0.1.0
