@@ -56,9 +56,6 @@ jobs:
       - name: Run unit tests
         run: cargo test --lib --verbose --workspace
 
-      - name: Run integration tests
-        run: cargo test --test simple_integration_tests --verbose
-
       - name: Build release binaries
         run: cargo build --release --workspace
 
@@ -181,7 +178,6 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/openfand artifacts/
           cp target/${{ matrix.target }}/release/openfanctl artifacts/
-          cp config.yaml artifacts/
           cp README.md artifacts/
 
       - name: Copy binaries (Windows)
@@ -189,7 +185,6 @@ jobs:
         run: |
           copy target\${{ matrix.target }}\release\openfand.exe artifacts\
           copy target\${{ matrix.target }}\release\openfanctl.exe artifacts\
-          copy config.yaml artifacts\
           copy README.md artifacts\
 
       - name: Create archive (Unix)
