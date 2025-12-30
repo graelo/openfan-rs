@@ -71,23 +71,6 @@ impl<B: BoardConfig> SerialDriver<B> {
         })
     }
 
-    /// Send a command and wait for response
-    ///
-    /// This is the main transaction function that handles:
-    /// 1. Flushing input buffer
-    /// 2. Sending command with prefix/suffix
-    /// 3. Reading response lines until one starts with '<'
-    pub async fn transaction_direct(&mut self, command: &str) -> Result<Vec<String>> {
-        // Clear any pending input
-        self.clear_input_buffer_impl()?;
-
-        // Send command
-        self.send(command).await?;
-
-        // Read response
-        self.read_until_response().await
-    }
-
     /// Send a command to the serial port
     async fn send(&mut self, command: &str) -> Result<()> {
         let full_command = format!("{}{}{}", self.prefix, command, self.suffix);

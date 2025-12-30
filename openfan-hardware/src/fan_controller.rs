@@ -5,6 +5,7 @@
 use crate::serial_driver::{SerialDriver, SerialTransport};
 use openfan_core::{BoardConfig, FanRpmMap, OpenFanError, Result};
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, warn};
@@ -88,7 +89,8 @@ impl<T: SerialTransport + ?Sized> FanController<T> {
 
         if let Some(data_bytes) = data {
             for byte in data_bytes {
-                payload.push_str(&format!("{:02X}", byte));
+                // write! to String is infallible
+                let _ = write!(payload, "{:02X}", byte);
             }
         }
 
