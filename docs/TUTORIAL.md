@@ -115,10 +115,10 @@ openfanctl config reset
 ### Individual Fan Control
 
 ```bash
-# Set fan 0 to 50% PWM
+# Set fan 0 to 50% PWM (valid range: 0-100)
 openfanctl fan set 0 --pwm 50
 
-# Set fan 3 to 1200 RPM
+# Set fan 3 to 1200 RPM (valid range: 500-9000)
 openfanctl fan set 3 --rpm 1200
 
 # Get current RPM
@@ -134,6 +134,14 @@ Fan IDs are 0-indexed:
 
 - OpenFAN Standard: fans 0-9 (10 fans)
 - OpenFAN Micro: fan 0 (1 fan)
+
+### Control Modes
+
+OpenFAN supports two control modes:
+
+- **PWM mode**: Set fan speed as percentage (0-100%)
+- **RPM target mode**: Set target RPM (500-9000) - hardware adjusts PWM to reach
+  target
 
 ## Profiles
 
@@ -165,6 +173,11 @@ The server creates these default profiles:
 - `50% PWM` - All fans at 50%
 - `100% PWM` - All fans at 100%
 - `1000 RPM` - All fans at 1000 RPM
+
+### Profile Value Ranges
+
+- **PWM profiles**: values must be 0-100 (percentage)
+- **RPM profiles**: values must be 500-9000 (target RPM)
 
 ## Aliases
 
@@ -400,8 +413,8 @@ The server exposes a REST API on port 3000 (default).
 |----------|--------|-------------|
 | `/api/v0/info` | GET | Server info |
 | `/api/v0/fan/status` | GET | All fan status |
-| `/api/v0/fan/:id/pwm?value=N` | GET | Set fan PWM |
-| `/api/v0/fan/:id/rpm?value=N` | GET | Set fan RPM |
+| `/api/v0/fan/:id/pwm?value=N` | GET | Set fan PWM (0-100) |
+| `/api/v0/fan/:id/rpm?value=N` | GET | Set fan RPM target (500-9000) |
 | `/api/v0/profiles/list` | GET | List profiles |
 | `/api/v0/profiles/set?name=X` | GET | Apply profile |
 | `/api/v0/profiles/add` | POST | Add profile |

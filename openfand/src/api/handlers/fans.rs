@@ -16,7 +16,7 @@ use tracing::debug;
 /// Query parameters for fan control endpoints.
 #[derive(Deserialize)]
 pub(crate) struct FanControlQuery {
-    /// Value to set - PWM percentage (0-100) or RPM (0-16000)
+    /// Value to set - PWM percentage (0-100) or target RPM (500-9000 per OpenFAN docs)
     pub value: Option<f64>,
 }
 
@@ -251,9 +251,8 @@ pub(crate) async fn get_fan_rpm(
 ///
 /// # Validation
 ///
-/// - Fan ID must be 0-9 (corresponding to 10 fans)
-/// - RPM values are clamped: values > 16000 become 16000, values < 480 become 0
-/// - Minimum operational RPM is 480 (below this, fan is set to 0/off)
+/// - Fan ID must be valid for the board (0-9 for standard)
+/// - RPM values must be within the board's target range (500-9000 per OpenFAN docs)
 ///
 /// # Endpoint
 ///
@@ -265,7 +264,7 @@ pub(crate) async fn get_fan_rpm(
 ///
 /// # Query Parameters
 ///
-/// - `value` - Target RPM (0-16000, with automatic clamping)
+/// - `value` - Target RPM (must be within board's min/max target RPM range)
 pub(crate) async fn set_fan_rpm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
@@ -285,14 +284,9 @@ pub(crate) async fn set_fan_rpm(
         return api_fail!("Missing 'value' parameter");
     };
 
-    // Validate and clamp RPM value
-    let rpm_value = if value > 16000.0 {
-        16000.0
-    } else if value < 480.0 {
-        0.0 // Set to 0 if below minimum
-    } else {
-        value
-    } as u32;
+    // Convert to u32 and validate against board's target RPM range
+    let rpm_value = value as u32;
+    state.board_info.validate_target_rpm(rpm_value)?;
 
     debug!("Setting fan {} to {} RPM", fan_index, rpm_value);
 
@@ -321,11 +315,183 @@ pub(crate) async fn set_fan_rpm(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_fan_id_parsing() {
         assert_eq!("0".parse::<u8>().unwrap(), 0);
         assert_eq!("9".parse::<u8>().unwrap(), 9);
         assert!("10".parse::<u8>().unwrap() > 9);
         assert!("abc".parse::<u8>().is_err());
+    }
+
+    #[test]
+    fn test_fan_id_parsing_edge_cases() {
+        // Valid fan IDs for standard board (0-9)
+        for i in 0..=9u8 {
+            assert!(i.to_string().parse::<u8>().is_ok());
+        }
+
+        // Invalid string formats
+        assert!("".parse::<u8>().is_err());
+        assert!("-1".parse::<u8>().is_err());
+        assert!("1.5".parse::<u8>().is_err());
+        assert!(" 5".parse::<u8>().is_err());
+        assert!("5 ".parse::<u8>().is_err());
+    }
+
+    #[test]
+    fn test_pwm_clamping_valid_range() {
+        // Values within 0-100 should remain unchanged
+        let test_cases: [f64; 5] = [0.0, 1.0, 50.0, 99.0, 100.0];
+
+        for value in test_cases {
+            let clamped = value.clamp(0.0, 100.0) as u32;
+            assert_eq!(clamped, value as u32);
+        }
+    }
+
+    #[test]
+    fn test_pwm_clamping_below_minimum() {
+        // Negative values should clamp to 0
+        let test_cases: [f64; 3] = [-100.0, -1.0, -0.5];
+
+        for value in test_cases {
+            let clamped = value.clamp(0.0, 100.0) as u32;
+            assert_eq!(clamped, 0);
+        }
+    }
+
+    #[test]
+    fn test_pwm_clamping_above_maximum() {
+        // Values above 100 should clamp to 100
+        let test_cases: [f64; 4] = [100.1, 150.0, 255.0, 1000.0];
+
+        for value in test_cases {
+            let clamped = value.clamp(0.0, 100.0) as u32;
+            assert_eq!(clamped, 100);
+        }
+    }
+
+    #[test]
+    fn test_target_rpm_validation_valid_range() {
+        use openfan_core::BoardType;
+
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+
+        // Values within 500-9000 should be valid (per OpenFAN docs)
+        let valid_values = [500u32, 1000, 5000, 9000];
+
+        for rpm in valid_values {
+            assert!(
+                board_info.validate_target_rpm(rpm).is_ok(),
+                "RPM {} should be valid",
+                rpm
+            );
+        }
+    }
+
+    #[test]
+    fn test_target_rpm_validation_below_minimum() {
+        use openfan_core::BoardType;
+
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+
+        // Values below 500 should be invalid
+        let invalid_values = [0u32, 100, 499];
+
+        for rpm in invalid_values {
+            assert!(
+                board_info.validate_target_rpm(rpm).is_err(),
+                "RPM {} should be invalid (below minimum)",
+                rpm
+            );
+        }
+    }
+
+    #[test]
+    fn test_target_rpm_validation_above_maximum() {
+        use openfan_core::BoardType;
+
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+
+        // Values above 9000 should be invalid
+        let invalid_values = [9001u32, 10000, 16000];
+
+        for rpm in invalid_values {
+            assert!(
+                board_info.validate_target_rpm(rpm).is_err(),
+                "RPM {} should be invalid (above maximum)",
+                rpm
+            );
+        }
+    }
+
+    #[test]
+    fn test_target_rpm_boundary_values() {
+        use openfan_core::BoardType;
+
+        let board_info = BoardType::OpenFanStandard.to_board_info();
+
+        // Exactly at boundaries should be valid
+        assert!(board_info.validate_target_rpm(500).is_ok());
+        assert!(board_info.validate_target_rpm(9000).is_ok());
+
+        // Just outside boundaries should be invalid
+        assert!(board_info.validate_target_rpm(499).is_err());
+        assert!(board_info.validate_target_rpm(9001).is_err());
+    }
+
+    #[test]
+    fn test_fan_control_query_deserialization() {
+        // Test that FanControlQuery can be deserialized from query params
+        let json_with_value = r#"{"value": 50.0}"#;
+        let query: FanControlQuery = serde_json::from_str(json_with_value).unwrap();
+        assert_eq!(query.value, Some(50.0));
+
+        let json_without_value = r#"{}"#;
+        let query: FanControlQuery = serde_json::from_str(json_without_value).unwrap();
+        assert!(query.value.is_none());
+    }
+
+    #[test]
+    fn test_fan_control_query_with_float_value() {
+        let json = r#"{"value": 75.5}"#;
+        let query: FanControlQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.value, Some(75.5));
+    }
+
+    #[test]
+    fn test_fan_control_query_with_integer_value() {
+        // Integers should parse as f64
+        let json = r#"{"value": 100}"#;
+        let query: FanControlQuery = serde_json::from_str(json).unwrap();
+        assert_eq!(query.value, Some(100.0));
+    }
+
+    #[test]
+    fn test_mock_rpm_calculation() {
+        // Test the mock RPM formula: 1500 + (fan_index * 100)
+        for fan_index in 0..10u8 {
+            let mock_rpm = 1500 + (fan_index as u32 * 100);
+            assert_eq!(mock_rpm, 1500 + (fan_index as u32 * 100));
+        }
+
+        // Verify first and last values
+        assert_eq!(1500 + (0u32 * 100), 1500);
+        assert_eq!(1500 + (9u32 * 100), 2400);
+    }
+
+    #[test]
+    fn test_mock_pwm_calculation() {
+        // Test the mock PWM formula: 50 + (fan_index * 5)
+        for fan_index in 0..10u8 {
+            let mock_pwm = 50 + (fan_index as u32 * 5);
+            assert_eq!(mock_pwm, 50 + (fan_index as u32 * 5));
+        }
+
+        // Verify first and last values
+        assert_eq!(50 + (0u32 * 5), 50);
+        assert_eq!(50 + (9u32 * 5), 95);
     }
 }

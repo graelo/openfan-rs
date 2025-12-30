@@ -1,0 +1,34 @@
+# Codecov configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  # Overall project coverage settings
+  status:
+    project:
+      default:
+        # Target 70% overall coverage (matches issue #37 acceptance criteria)
+        target: 70%
+        # Allow up to 5% decrease without failing
+        threshold: 5%
+        # Only check coverage on files that are tracked
+        only_pulls: true
+
+    # Patch coverage (coverage of changed lines in PR)
+    patch:
+      default:
+        # Make patch coverage informational only - don't block PRs
+        # This prevents blocking PRs for minor changes that don't warrant tests
+        informational: true
+
+# Ignore generated files and test utilities
+ignore:
+  - "**/*_test.rs"
+  - "**/tests/**"
+  - "**/test_utils.rs"
+  - "**/main.rs"  # Entry points are hard to unit test
+
+# Comment configuration
+comment:
+  layout: "header, diff, flags, components"
+  behavior: default
+  require_changes: true
