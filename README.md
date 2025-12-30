@@ -2,6 +2,7 @@
 
 [![release](https://img.shields.io/github/v/release/graelo/openfan-rs)](https://github.com/graelo/openfan-rs/releases/latest)
 [![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/graelo/openfan-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/graelo/openfan-rs)
 [![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
 [![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
 
