@@ -10,6 +10,7 @@
 //! - [`aliases`] - Fan alias management
 //! - [`zones`] - Zone management for grouped fan control
 //! - [`thermal_curves`] - Thermal curve management for temperature-based PWM control
+//! - [`cfm`] - CFM mapping management for display-only airflow information
 //!
 //! # API Structure
 //!
@@ -25,6 +26,7 @@
 //! handlers return simulated data for testing and development purposes.
 
 pub(crate) mod aliases;
+pub(crate) mod cfm;
 pub(crate) mod fans;
 pub(crate) mod info;
 pub(crate) mod profiles;

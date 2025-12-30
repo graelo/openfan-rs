@@ -4,7 +4,10 @@
 
 use anyhow::Result;
 use colored::*;
-use openfan_core::api::{AliasResponse, FanStatusResponse, InfoResponse, ProfileResponse};
+use openfan_core::api::{
+    AliasResponse, CfmListResponse, FanStatusResponse, InfoResponse, ProfileResponse,
+};
+use std::collections::HashMap;
 
 use tabled::{settings::Style, Table, Tabled};
 
@@ -56,53 +59,152 @@ pub fn format_info(info: &InfoResponse, format: &OutputFormat) -> Result<String>
     }
 }
 
-/// Format fan status response
+/// Format fan status response (without CFM)
 pub fn format_fan_status(status: &FanStatusResponse, format: &OutputFormat) -> Result<String> {
+    format_fan_status_with_cfm(status, None, format)
+}
+
+/// Format fan status response with optional CFM mappings
+pub fn format_fan_status_with_cfm(
+    status: &FanStatusResponse,
+    cfm_mappings: Option<&CfmListResponse>,
+    format: &OutputFormat,
+) -> Result<String> {
     match format {
-        OutputFormat::Json => Ok(serde_json::to_string_pretty(status)?),
-        OutputFormat::Table => {
-            #[derive(Tabled)]
-            struct FanRow {
-                #[tabled(rename = "Fan ID")]
-                fan_id: String,
-                #[tabled(rename = "RPM")]
-                rpm: String,
-                #[tabled(rename = "PWM %")]
-                pwm: String,
-            }
-
-            let mut rows = Vec::new();
-            // Collect all fan IDs from both rpms and pwms maps
-            let mut fan_ids: Vec<u8> = status
-                .rpms
-                .keys()
-                .chain(status.pwms.keys())
-                .copied()
-                .collect();
-            fan_ids.sort_unstable();
-            fan_ids.dedup();
-
-            for fan_id in fan_ids {
-                let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
-                let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
-
-                rows.push(FanRow {
-                    fan_id: format!("{}", fan_id),
-                    rpm: if *rpm > 0 {
-                        format!("{}", rpm).green().to_string()
-                    } else {
-                        "0".red().to_string()
-                    },
-                    pwm: if *pwm > 0 {
-                        format!("{}%", pwm).cyan().to_string()
-                    } else {
-                        "0%".dimmed().to_string()
-                    },
+        OutputFormat::Json => {
+            // For JSON output, include CFM if mappings exist
+            if let Some(cfm) = cfm_mappings {
+                let mut combined = serde_json::json!({
+                    "rpms": status.rpms,
+                    "pwms": status.pwms,
                 });
+                // Calculate CFM values
+                let cfm_values: HashMap<String, f32> = status
+                    .pwms
+                    .iter()
+                    .filter_map(|(port, pwm)| {
+                        cfm.mappings.get(port).map(|cfm_at_100| {
+                            let cfm = (*pwm as f32 / 100.0) * cfm_at_100;
+                            (port.to_string(), cfm)
+                        })
+                    })
+                    .collect();
+                if !cfm_values.is_empty() {
+                    combined["cfm"] = serde_json::to_value(cfm_values)?;
+                }
+                Ok(serde_json::to_string_pretty(&combined)?)
+            } else {
+                Ok(serde_json::to_string_pretty(status)?)
             }
+        }
+        OutputFormat::Table => {
+            // Check if we have CFM mappings to display
+            let has_cfm = cfm_mappings
+                .map(|c| !c.mappings.is_empty())
+                .unwrap_or(false);
 
-            let table = Table::new(rows).with(Style::rounded()).to_string();
-            Ok(format!("{}\n{}", "Fan Status:".bold(), table))
+            if has_cfm {
+                #[derive(Tabled)]
+                struct FanRowWithCfm {
+                    #[tabled(rename = "Fan ID")]
+                    fan_id: String,
+                    #[tabled(rename = "RPM")]
+                    rpm: String,
+                    #[tabled(rename = "PWM %")]
+                    pwm: String,
+                    #[tabled(rename = "CFM")]
+                    cfm: String,
+                }
+
+                let cfm_data = cfm_mappings.unwrap();
+                let mut rows = Vec::new();
+
+                // Collect all fan IDs from both rpms and pwms maps
+                let mut fan_ids: Vec<u8> = status
+                    .rpms
+                    .keys()
+                    .chain(status.pwms.keys())
+                    .copied()
+                    .collect();
+                fan_ids.sort_unstable();
+                fan_ids.dedup();
+
+                for fan_id in fan_ids {
+                    let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
+                    let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
+
+                    // Calculate CFM if mapping exists
+                    let cfm_str = if let Some(cfm_at_100) = cfm_data.mappings.get(&fan_id) {
+                        let cfm = (*pwm as f32 / 100.0) * cfm_at_100;
+                        format!("{:.1}", cfm).yellow().to_string()
+                    } else {
+                        "-".dimmed().to_string()
+                    };
+
+                    rows.push(FanRowWithCfm {
+                        fan_id: format!("{}", fan_id),
+                        rpm: if *rpm > 0 {
+                            format!("{}", rpm).green().to_string()
+                        } else {
+                            "0".red().to_string()
+                        },
+                        pwm: if *pwm > 0 {
+                            format!("{}%", pwm).cyan().to_string()
+                        } else {
+                            "0%".dimmed().to_string()
+                        },
+                        cfm: cfm_str,
+                    });
+                }
+
+                let table = Table::new(rows).with(Style::rounded()).to_string();
+                Ok(format!("{}\n{}", "Fan Status:".bold(), table))
+            } else {
+                // No CFM mappings, use simple format
+                #[derive(Tabled)]
+                struct FanRow {
+                    #[tabled(rename = "Fan ID")]
+                    fan_id: String,
+                    #[tabled(rename = "RPM")]
+                    rpm: String,
+                    #[tabled(rename = "PWM %")]
+                    pwm: String,
+                }
+
+                let mut rows = Vec::new();
+
+                // Collect all fan IDs from both rpms and pwms maps
+                let mut fan_ids: Vec<u8> = status
+                    .rpms
+                    .keys()
+                    .chain(status.pwms.keys())
+                    .copied()
+                    .collect();
+                fan_ids.sort_unstable();
+                fan_ids.dedup();
+
+                for fan_id in fan_ids {
+                    let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
+                    let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
+
+                    rows.push(FanRow {
+                        fan_id: format!("{}", fan_id),
+                        rpm: if *rpm > 0 {
+                            format!("{}", rpm).green().to_string()
+                        } else {
+                            "0".red().to_string()
+                        },
+                        pwm: if *pwm > 0 {
+                            format!("{}%", pwm).cyan().to_string()
+                        } else {
+                            "0%".dimmed().to_string()
+                        },
+                    });
+                }
+
+                let table = Table::new(rows).with(Style::rounded()).to_string();
+                Ok(format!("{}\n{}", "Fan Status:".bold(), table))
+            }
         }
     }
 }

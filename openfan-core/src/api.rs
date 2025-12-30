@@ -206,6 +206,33 @@ pub struct InterpolateResponse {
     pub pwm: u8,
 }
 
+/// CFM mappings list response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfmListResponse {
+    /// Map of port ID to CFM@100%
+    #[serde(
+        serialize_with = "serialize_u8_f32_map",
+        deserialize_with = "deserialize_u8_f32_map"
+    )]
+    pub mappings: HashMap<u8, f32>,
+}
+
+/// Single CFM mapping response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CfmGetResponse {
+    /// Port ID
+    pub port: u8,
+    /// CFM value at 100% PWM
+    pub cfm_at_100: f32,
+}
+
+/// CFM mapping set request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetCfmRequest {
+    /// CFM value at 100% PWM
+    pub cfm_at_100: f32,
+}
+
 /// System information response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemInfoResponse {
@@ -320,6 +347,56 @@ where
     }
 
     deserializer.deserialize_map(U8StringMapVisitor)
+}
+
+// Custom serialization for HashMap<u8, f32>
+fn serialize_u8_f32_map<S>(map: &HashMap<u8, f32>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut ser_map = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        ser_map.serialize_entry(&k.to_string(), v)?;
+    }
+    ser_map.end()
+}
+
+// Custom deserialization for HashMap<u8, f32>
+fn deserialize_u8_f32_map<'de, D>(deserializer: D) -> Result<HashMap<u8, f32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+    use std::fmt;
+
+    struct U8F32MapVisitor;
+
+    impl<'de> Visitor<'de> for U8F32MapVisitor {
+        type Value = HashMap<u8, f32>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map with string keys representing u8 values and f32 values")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: de::MapAccess<'de>,
+        {
+            let mut map = HashMap::with_capacity(access.size_hint().unwrap_or(0));
+
+            while let Some((key, value)) = access.next_entry::<String, f32>()? {
+                let port_id = key
+                    .parse::<u8>()
+                    .map_err(|_| de::Error::custom(format!("Invalid port ID: {}", key)))?;
+                map.insert(port_id, value);
+            }
+
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(U8F32MapVisitor)
 }
 
 #[cfg(test)]

@@ -3,9 +3,10 @@
 use anyhow::{Context, Result};
 use openfan_core::{
     api::{
-        AliasResponse, ApiResponse, FanRpmResponse, FanStatusResponse, InfoResponse,
-        InterpolateResponse, ProfileResponse, SingleCurveResponse, SingleZoneResponse,
-        ThermalCurveResponse, ZoneResponse,
+        AliasResponse, ApiResponse, CfmGetResponse, CfmListResponse, FanRpmResponse,
+        FanStatusResponse, InfoResponse, InterpolateResponse, ProfileResponse,
+        SetCfmRequest, SingleCurveResponse, SingleZoneResponse, ThermalCurveResponse,
+        ZoneResponse,
     },
     types::FanProfile,
     BoardInfo, CurvePoint,
@@ -961,6 +962,102 @@ impl OpenFanClient {
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
+    }
+
+    // =========================================================================
+    // CFM mapping operations
+    // =========================================================================
+
+    /// Retrieve all configured CFM mappings.
+    ///
+    /// # Returns
+    ///
+    /// Returns a map of port IDs to their CFM@100% values.
+    pub async fn get_cfm_mappings(&self) -> Result<CfmListResponse> {
+        let url = format!("{}/api/v0/cfm/list", self.base_url);
+        let endpoint = "cfm/list";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Retrieve the CFM mapping for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port ID is invalid for this board type.
+    pub async fn get_cfm(&self, port: u8) -> Result<CfmGetResponse> {
+        self.board_info.validate_fan_id(port)?;
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let endpoint = &format!("cfm/{}", port);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Set the CFM@100% value for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    /// * `cfm_at_100` - CFM value when fan runs at 100% PWM
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The port ID is invalid for this board type
+    /// - The CFM value is not positive
+    /// - The CFM value exceeds the maximum allowed (500)
+    pub async fn set_cfm(&self, port: u8, cfm_at_100: f32) -> Result<()> {
+        self.board_info.validate_fan_id(port)?;
+
+        if cfm_at_100 <= 0.0 {
+            return Err(anyhow::anyhow!("CFM value must be positive"));
+        }
+        if cfm_at_100 > 500.0 {
+            return Err(anyhow::anyhow!("CFM value must be <= 500"));
+        }
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let request = SetCfmRequest { cfm_at_100 };
+        let endpoint = &format!("cfm/{}", port);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&request)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send set CFM request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint)
+            .await
+            .map(|_: ()| ())
+    }
+
+    /// Delete the CFM mapping for a specific port.
+    ///
+    /// # Arguments
+    ///
+    /// * `port` - Port identifier
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the port ID is invalid for this board type.
+    pub async fn delete_cfm(&self, port: u8) -> Result<()> {
+        self.board_info.validate_fan_id(port)?;
+
+        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let endpoint = &format!("cfm/{}", port);
+
+        self.execute_with_retry(endpoint, || self.client.delete(&url).send())
+            .await
+            .map(|_: ()| ())
     }
 
     /// Test basic connectivity to the server.

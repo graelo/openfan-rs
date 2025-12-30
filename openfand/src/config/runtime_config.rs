@@ -4,7 +4,7 @@
 //! thread-safe access and independent save operations.
 
 use openfan_core::{
-    config::{AliasData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
+    config::{AliasData, CfmMappingData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
     BoardInfo, OpenFanError, Result,
 };
 use std::path::Path;
@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 /// Runtime configuration combining static config and mutable data.
 ///
 /// Static config is read once at startup and remains immutable.
-/// Mutable data (aliases, profiles, zones, thermal curves) can be modified via API and saved independently.
+/// Mutable data (aliases, profiles, zones, thermal curves, cfm mappings) can be modified via API and saved independently.
 pub(crate) struct RuntimeConfig {
     /// Static configuration (immutable after load)
     static_config: StaticConfig,
@@ -31,6 +31,9 @@ pub(crate) struct RuntimeConfig {
 
     /// Thermal curve data with independent locking
     thermal_curves: RwLock<ThermalCurveData>,
+
+    /// CFM mapping data with independent locking
+    cfm_mappings: RwLock<CfmMappingData>,
 }
 
 impl RuntimeConfig {
@@ -53,13 +56,15 @@ impl RuntimeConfig {
         let profiles = Self::load_profiles(&static_config.data_dir).await?;
         let zones = Self::load_zones(&static_config.data_dir).await?;
         let thermal_curves = Self::load_thermal_curves(&static_config.data_dir).await?;
+        let cfm_mappings = Self::load_cfm_mappings(&static_config.data_dir).await?;
 
         info!(
-            "Configuration loaded: {} profiles, {} aliases, {} zones, {} thermal curves",
+            "Configuration loaded: {} profiles, {} aliases, {} zones, {} thermal curves, {} CFM mappings",
             profiles.profiles.len(),
             aliases.aliases.len(),
             zones.zones.len(),
-            thermal_curves.curves.len()
+            thermal_curves.curves.len(),
+            cfm_mappings.len()
         );
 
         Ok(Self {
@@ -68,6 +73,7 @@ impl RuntimeConfig {
             profiles: RwLock::new(profiles),
             zones: RwLock::new(zones),
             thermal_curves: RwLock::new(thermal_curves),
+            cfm_mappings: RwLock::new(cfm_mappings),
         })
     }
 
@@ -212,6 +218,25 @@ impl RuntimeConfig {
 
         ThermalCurveData::from_toml(&content)
             .map_err(|e| OpenFanError::Config(format!("Failed to parse thermal curves file: {}", e)))
+    }
+
+    /// Load CFM mappings from TOML file, creating empty if missing.
+    async fn load_cfm_mappings(data_dir: &Path) -> Result<CfmMappingData> {
+        let path = data_dir.join("cfm_mappings.toml");
+
+        if !path.exists() {
+            debug!("CFM mappings file not found. Creating empty.");
+            let data = CfmMappingData::default();
+            Self::write_toml(&path, &data.to_toml().unwrap()).await?;
+            return Ok(data);
+        }
+
+        let content = fs::read_to_string(&path)
+            .await
+            .map_err(|e| OpenFanError::Config(format!("Failed to read CFM mappings file: {}", e)))?;
+
+        CfmMappingData::from_toml(&content)
+            .map_err(|e| OpenFanError::Config(format!("Failed to parse CFM mappings file: {}", e)))
     }
 
     /// Write TOML content atomically (write to temp, then rename).
@@ -360,16 +385,46 @@ impl RuntimeConfig {
     }
 
     // =========================================================================
+    // CFM mapping access and modification
+    // =========================================================================
+
+    /// Get read lock on CFM mapping data.
+    pub async fn cfm_mappings(&self) -> tokio::sync::RwLockReadGuard<'_, CfmMappingData> {
+        self.cfm_mappings.read().await
+    }
+
+    /// Get write lock on CFM mapping data.
+    pub async fn cfm_mappings_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, CfmMappingData> {
+        self.cfm_mappings.write().await
+    }
+
+    /// Save CFM mapping data to disk.
+    pub async fn save_cfm_mappings(&self) -> Result<()> {
+        let mappings = self.cfm_mappings.read().await;
+        let path = self.static_config.data_dir.join("cfm_mappings.toml");
+
+        let content = mappings
+            .to_toml()
+            .map_err(|e| OpenFanError::Config(format!("Failed to serialize CFM mappings: {}", e)))?;
+
+        Self::write_toml(&path, &content).await?;
+
+        debug!("Saved CFM mappings to {}", path.display());
+        Ok(())
+    }
+
+    // =========================================================================
     // Board validation
     // =========================================================================
 
     /// Validate configuration against detected board.
     ///
-    /// Checks that profiles, aliases, and zones are compatible with the board's fan count.
+    /// Checks that profiles, aliases, zones, and CFM mappings are compatible with the board's fan count.
     pub async fn validate_for_board(&self, board: &BoardInfo) -> Result<()> {
         let profiles = self.profiles.read().await;
         let aliases = self.aliases.read().await;
         let zones = self.zones.read().await;
+        let cfm_mappings = self.cfm_mappings.read().await;
 
         // Validate profiles
         for (name, profile) in &profiles.profiles {
@@ -416,6 +471,19 @@ impl RuntimeConfig {
                         board.fan_count - 1
                     )));
                 }
+            }
+        }
+
+        // Validate CFM mappings
+        if let Some(&max_port) = cfm_mappings.mappings.keys().max() {
+            if max_port >= board.fan_count as u8 {
+                return Err(OpenFanError::Config(format!(
+                    "CFM mapping exists for port {} but board '{}' only has {} fans (max ID: {})",
+                    max_port,
+                    board.name,
+                    board.fan_count,
+                    board.fan_count - 1
+                )));
             }
         }
 
@@ -479,6 +547,7 @@ mod tests {
         assert!(config.data_dir().join("profiles.toml").exists());
         assert!(config.data_dir().join("zones.toml").exists());
         assert!(config.data_dir().join("thermal_curves.toml").exists());
+        assert!(config.data_dir().join("cfm_mappings.toml").exists());
 
         // Should have default profiles
         let profiles = config.profiles().await;
@@ -618,5 +687,37 @@ mod tests {
         // Test interpolation
         assert_eq!(custom.interpolate(25.0), 20);
         assert_eq!(custom.interpolate(80.0), 100);
+    }
+
+    #[tokio::test]
+    async fn test_runtime_config_cfm_mapping_operations() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_path = create_test_config(temp_dir.path()).await;
+
+        let config = RuntimeConfig::load(&config_path).await.unwrap();
+
+        // Should start empty
+        {
+            let cfm = config.cfm_mappings().await;
+            assert!(cfm.is_empty());
+        }
+
+        // Add CFM mappings
+        {
+            let mut cfm = config.cfm_mappings_mut().await;
+            cfm.set(0, 45.0);
+            cfm.set(1, 60.0);
+        }
+
+        // Save
+        config.save_cfm_mappings().await.unwrap();
+
+        // Reload and verify
+        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
+        let cfm = config2.cfm_mappings().await;
+        assert_eq!(cfm.len(), 2);
+        assert_eq!(cfm.get(0), Some(45.0));
+        assert_eq!(cfm.get(1), Some(60.0));
+        assert_eq!(cfm.calculate_cfm(0, 50), Some(22.5));
     }
 }

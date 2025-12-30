@@ -95,6 +95,12 @@ pub enum Commands {
         command: CurveCommands,
     },
 
+    /// CFM mapping management commands
+    Cfm {
+        #[command(subcommand)]
+        command: CfmCommands,
+    },
+
     /// Generate shell completion scripts
     Completion {
         /// Shell to generate completion for
@@ -326,5 +332,33 @@ pub enum CurveCommands {
         /// Temperature in Celsius
         #[arg(short, long)]
         temp: f32,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CfmCommands {
+    /// List all CFM mappings
+    List,
+
+    /// Get CFM mapping for a port
+    Get {
+        /// Port ID (0-9)
+        port: u8,
+    },
+
+    /// Set CFM@100% value for a port
+    Set {
+        /// Port ID (0-9)
+        port: u8,
+
+        /// CFM value at 100% PWM
+        #[arg(long)]
+        cfm_at_100: f32,
+    },
+
+    /// Delete CFM mapping for a port
+    Delete {
+        /// Port ID (0-9)
+        port: u8,
     },
 }

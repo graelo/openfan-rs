@@ -134,6 +134,14 @@ pub(crate) fn create_router(state: AppState) -> Router {
             "/api/v0/curve/:name/interpolate",
             get(handlers::thermal_curves::interpolate_curve),
         )
+        // CFM mapping endpoints
+        .route("/api/v0/cfm/list", get(handlers::cfm::list_cfm))
+        .route("/api/v0/cfm/:port", get(handlers::cfm::get_cfm))
+        .route("/api/v0/cfm/:port", post(handlers::cfm::set_cfm))
+        .route(
+            "/api/v0/cfm/:port",
+            axum::routing::delete(handlers::cfm::delete_cfm),
+        )
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
         // Root endpoint

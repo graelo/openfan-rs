@@ -11,10 +11,12 @@
 //! - [`ProfileData`] - Fan profiles, mutable via API
 //! - [`ZoneData`] - Fan zones for grouped control, mutable via API
 //! - [`ThermalCurveData`] - Temperature-to-PWM curves, mutable via API
+//! - [`CfmMappingData`] - CFM display mappings, mutable via API
 //!
 //! Each mutable data type is stored in its own TOML file within the data directory.
 
 mod aliases;
+mod cfm_mappings;
 mod paths;
 mod profiles;
 mod static_config;
@@ -22,6 +24,7 @@ mod thermal_curves;
 mod zones;
 
 pub use aliases::AliasData;
+pub use cfm_mappings::CfmMappingData;
 pub use paths::{default_config_path, default_data_dir};
 pub use profiles::ProfileData;
 pub use static_config::{HardwareConfig, ServerConfig, StaticConfig};

@@ -31,12 +31,18 @@ pub async fn handle_info(client: &OpenFanClient, format: &OutputFormat) -> Resul
 pub async fn handle_status(client: &OpenFanClient, format: &OutputFormat) -> Result<()> {
     let status = client.get_fan_status().await?;
 
+    // Try to fetch CFM mappings (optional, don't fail if unavailable)
+    let cfm_mappings = client.get_cfm_mappings().await.ok();
+
     match format {
         OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(&status)?);
+            let formatted =
+                crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
+            println!("{}", formatted);
         }
         OutputFormat::Table => {
-            let formatted = crate::format::format_fan_status(&status, &format.into())?;
+            let formatted =
+                crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
             println!("{}", formatted);
         }
     }
@@ -503,6 +509,69 @@ pub async fn handle_config(
             let default_config = CliConfig::default();
             default_config.save()?;
             println!("{}", format_success("Configuration reset to defaults"));
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle CFM mapping commands
+pub async fn handle_cfm(
+    client: &OpenFanClient,
+    command: CfmCommands,
+    format: &OutputFormat,
+) -> Result<()> {
+    match command {
+        CfmCommands::List => {
+            let cfm_response = client.get_cfm_mappings().await?;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&cfm_response)?);
+                }
+                OutputFormat::Table => {
+                    if cfm_response.mappings.is_empty() {
+                        println!("No CFM mappings configured.");
+                    } else {
+                        println!("{:<10} CFM@100%", "Port");
+                        println!("{}", "-".repeat(25));
+                        let mut entries: Vec<_> = cfm_response.mappings.iter().collect();
+                        entries.sort_by_key(|(port, _)| *port);
+                        for (port, cfm) in entries {
+                            println!("{:<10} {:.1}", port, cfm);
+                        }
+                    }
+                }
+            }
+        }
+        CfmCommands::Get { port } => {
+            let cfm_response = client.get_cfm(port).await?;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&cfm_response)?);
+                }
+                OutputFormat::Table => {
+                    println!("Port {} CFM@100%: {:.1}", port, cfm_response.cfm_at_100);
+                }
+            }
+        }
+        CfmCommands::Set { port, cfm_at_100 } => {
+            client.set_cfm(port, cfm_at_100).await?;
+            println!(
+                "{}",
+                format_success(&format!(
+                    "Set CFM@100% for port {} to {:.1}",
+                    port, cfm_at_100
+                ))
+            );
+        }
+        CfmCommands::Delete { port } => {
+            client.delete_cfm(port).await?;
+            println!(
+                "{}",
+                format_success(&format!("Deleted CFM mapping for port {}", port))
+            );
         }
     }
 
