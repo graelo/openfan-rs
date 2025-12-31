@@ -1119,4 +1119,99 @@ mod tests {
         let result = handle_cfm(&client, command, &OutputFormat::Table).await;
         assert!(result.is_ok());
     }
+
+    #[tokio::test]
+    async fn test_handle_cfm_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::Delete { port: 0 };
+        let result = handle_cfm(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_alias delete test ====================
+
+    #[tokio::test]
+    async fn test_handle_alias_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::Delete { fan_id: 0 };
+        let result = handle_alias(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_health tests ====================
+
+    #[tokio::test]
+    async fn test_handle_health_json() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_health(&client, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_health_table() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_health(&client, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_config tests ====================
+
+    #[tokio::test]
+    async fn test_handle_config_show_json() {
+        let config = CliConfig::default();
+        let result = handle_config(ConfigCommands::Show, &config, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_show_table() {
+        let config = CliConfig::default();
+        let result = handle_config(ConfigCommands::Show, &config, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_key() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "invalid_key".to_string(),
+            value: "some_value".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown config key"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_output_format() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "output_format".to_string(),
+            value: "invalid".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid output format"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_timeout() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "timeout".to_string(),
+            value: "not_a_number".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid timeout value"));
+    }
 }

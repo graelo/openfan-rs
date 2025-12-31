@@ -264,6 +264,10 @@ impl MockServer {
             .route("/api/v0/alias/all/get", get(get_all_aliases_handler))
             .route("/api/v0/alias/{id}/get", get(get_alias_handler))
             .route("/api/v0/alias/{id}/set", get(set_alias_handler))
+            .route(
+                "/api/v0/alias/{id}",
+                axum::routing::delete(delete_alias_handler),
+            )
             // Zone endpoints
             .route("/api/v0/zones/list", get(list_zones_handler))
             .route("/api/v0/zones/add", post(add_zone_handler))
@@ -286,8 +290,12 @@ impl MockServer {
             )
             // CFM endpoints
             .route("/api/v0/cfm/list", get(list_cfm_handler))
-            .route("/api/v0/cfm/{port}", get(get_cfm_handler))
-            .route("/api/v0/cfm/{port}", post(set_cfm_handler))
+            .route(
+                "/api/v0/cfm/{port}",
+                get(get_cfm_handler)
+                    .post(set_cfm_handler)
+                    .delete(delete_cfm_handler),
+            )
             .with_state(self.state.clone())
     }
 }
@@ -520,6 +528,23 @@ async fn set_alias_handler(
         .lock()
         .unwrap()
         .insert(id.to_string(), params.value.trim().to_string());
+    Ok(Json(ApiResponse::success(())))
+}
+
+async fn delete_alias_handler(
+    Path(id): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    if id > 9 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Reset to default alias
+    state
+        .aliases
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), format!("Fan #{}", id + 1));
     Ok(Json(ApiResponse::success(())))
 }
 
@@ -772,6 +797,17 @@ async fn set_cfm_handler(
         .unwrap()
         .insert(port, req.cfm_at_100);
     Ok(Json(ApiResponse::success(())))
+}
+
+async fn delete_cfm_handler(
+    Path(port): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<ApiResponse<()>>, StatusCode> {
+    if state.cfm_mappings.lock().unwrap().remove(&port).is_some() {
+        Ok(Json(ApiResponse::success(())))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 #[cfg(test)]
