@@ -432,3 +432,432 @@ mod tests {
         assert_eq!(query.value, 75);
     }
 }
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    struct TestApp {
+        router: Router,
+        _config_dir: TempDir,
+    }
+
+    impl TestApp {
+        async fn new() -> Self {
+            let board_info = BoardType::OpenFanStandard.to_board_info();
+            let config_dir = tempfile::tempdir().unwrap();
+
+            let data_dir = config_dir.path().join("data");
+            std::fs::create_dir_all(&data_dir).unwrap();
+
+            let data_dir_str = data_dir.to_string_lossy().replace('\\', "\\\\");
+            let config_content = format!(
+                r#"data_dir = "{}"
+
+[server]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+
+[hardware]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+"#,
+                data_dir_str
+            );
+
+            let config_path = config_dir.path().join("config.toml");
+            std::fs::write(&config_path, config_content).unwrap();
+
+            let config = RuntimeConfig::load(&config_path).await.unwrap();
+            let state = AppState::new(board_info, config, None);
+
+            TestApp {
+                router: create_router(state),
+                _config_dir: config_dir,
+            }
+        }
+
+        fn router(&self) -> Router {
+            self.router.clone()
+        }
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_zones() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zones/list")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert!(data.get("zones").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_add_zone_valid() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "intake", "port_ids": [0, 1, 2]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_zone_with_description() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "exhaust", "port_ids": [3, 4], "description": "Rear exhaust fans"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_zone_invalid_name() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "invalid zone name", "port_ids": [0]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_zone_invalid_port() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "bad-zone", "port_ids": [99]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_zone_duplicate_port_in_request() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "dup-zone", "port_ids": [0, 0, 1]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_zone_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/nonexistent/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_get_zone() {
+        let app = TestApp::new().await;
+
+        // Add zone
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "test-zone", "port_ids": [5, 6]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Get zone
+        let get_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/test-zone/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_delete_zone_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/nonexistent/delete")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_delete_zone() {
+        let app = TestApp::new().await;
+
+        // Add zone
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "to-delete", "port_ids": [7]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Delete zone
+        let delete_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/to-delete/delete")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_apply_zone_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/nonexistent/apply?mode=pwm&value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_apply_zone_invalid_mode() {
+        let app = TestApp::new().await;
+
+        // First add a zone
+        let _ = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "mode-test", "port_ids": [8]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/mode-test/apply?mode=invalid&value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_apply_zone_pwm_value_too_high() {
+        let app = TestApp::new().await;
+
+        // First add a zone
+        let _ = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "pwm-test", "port_ids": [9]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/pwm-test/apply?mode=pwm&value=101")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_apply_zone_mock_mode() {
+        let app = TestApp::new().await;
+
+        // Add zone
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/zones/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "apply-test", "port_ids": [0, 1]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Apply zone (mock mode)
+        let apply_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/zone/apply-test/apply?mode=pwm&value=75")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(apply_response.status(), StatusCode::OK);
+    }
+}

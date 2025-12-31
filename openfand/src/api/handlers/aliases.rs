@@ -255,3 +255,254 @@ mod tests {
         assert!(is_valid_alias("Test-Fan_1#Main.Intake"));
     }
 }
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    struct TestApp {
+        router: Router,
+        _config_dir: TempDir,
+    }
+
+    impl TestApp {
+        async fn new() -> Self {
+            let board_info = BoardType::OpenFanStandard.to_board_info();
+            let config_dir = tempfile::tempdir().unwrap();
+
+            let data_dir = config_dir.path().join("data");
+            std::fs::create_dir_all(&data_dir).unwrap();
+
+            let data_dir_str = data_dir.to_string_lossy().replace('\\', "\\\\");
+            let config_content = format!(
+                r#"data_dir = "{}"
+
+[server]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+
+[hardware]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+"#,
+                data_dir_str
+            );
+
+            let config_path = config_dir.path().join("config.toml");
+            std::fs::write(&config_path, config_content).unwrap();
+
+            let config = RuntimeConfig::load(&config_path).await.unwrap();
+            let state = AppState::new(board_info, config, None);
+
+            TestApp {
+                router: create_router(state),
+                _config_dir: config_dir,
+            }
+        }
+
+        fn router(&self) -> Router {
+            self.router.clone()
+        }
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_get_all_aliases() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/all/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert!(data.get("aliases").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_get_alias_valid_fan() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/0/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_get_alias_invalid_fan() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/99/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_alias_valid() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/0/set?value=CPU%20Fan")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_alias_missing_value() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/0/set")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_alias_invalid_characters() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/0/set?value=Fan@Invalid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_alias_invalid_fan() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/99/set?value=Test")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_delete_alias_valid() {
+        let app = TestApp::new().await;
+
+        // First set an alias
+        let _ = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/alias/5/set?value=TestFan")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Then delete it
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/api/v0/alias/5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_delete_alias_invalid_fan() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/api/v0/alias/99")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+}
