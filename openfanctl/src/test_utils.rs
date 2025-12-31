@@ -189,9 +189,9 @@ impl MockServer {
             .route("/api/v0/info", get(info_handler))
             // Fan endpoints
             .route("/api/v0/fan/status", get(fan_status_handler))
-            .route("/api/v0/fan/:id/pwm", get(set_fan_pwm_handler))
-            .route("/api/v0/fan/:id/rpm", get(set_fan_rpm_handler))
-            .route("/api/v0/fan/:id/rpm/get", get(get_fan_rpm_handler))
+            .route("/api/v0/fan/{id}/pwm", get(set_fan_pwm_handler))
+            .route("/api/v0/fan/{id}/rpm", get(set_fan_rpm_handler))
+            .route("/api/v0/fan/{id}/rpm/get", get(get_fan_rpm_handler))
             // Profile endpoints
             .route("/api/v0/profiles/list", get(list_profiles_handler))
             .route("/api/v0/profiles/set", get(set_profile_handler))
@@ -199,8 +199,8 @@ impl MockServer {
             .route("/api/v0/profiles/remove", get(remove_profile_handler))
             // Alias endpoints
             .route("/api/v0/alias/all/get", get(get_all_aliases_handler))
-            .route("/api/v0/alias/:id/get", get(get_alias_handler))
-            .route("/api/v0/alias/:id/set", get(set_alias_handler))
+            .route("/api/v0/alias/{id}/get", get(get_alias_handler))
+            .route("/api/v0/alias/{id}/set", get(set_alias_handler))
             .with_state(self.state.clone())
     }
 }

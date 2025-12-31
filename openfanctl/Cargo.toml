@@ -41,11 +41,10 @@ tokio.workspace = true
 
 # For test utilities (mock server)
 axum.workspace = true
-rand = "0.8"
+rand = "0.9"
 
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3"
 urlencoding.workspace = true
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
 serial_test = "3.0"
