@@ -34,24 +34,9 @@ pub async fn handle_status(client: &OpenFanClient, format: &OutputFormat) -> Res
     // Try to fetch CFM mappings (optional, don't fail if unavailable)
     let cfm_mappings = client.get_cfm_mappings().await.ok();
 
-    match format {
-        OutputFormat::Json => {
-            let formatted = crate::format::format_fan_status_with_cfm(
-                &status,
-                cfm_mappings.as_ref(),
-                &format.into(),
-            )?;
-            println!("{}", formatted);
-        }
-        OutputFormat::Table => {
-            let formatted = crate::format::format_fan_status_with_cfm(
-                &status,
-                cfm_mappings.as_ref(),
-                &format.into(),
-            )?;
-            println!("{}", formatted);
-        }
-    }
+    let formatted =
+        crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
+    println!("{}", formatted);
 
     Ok(())
 }

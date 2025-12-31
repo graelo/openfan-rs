@@ -158,25 +158,25 @@ impl Default for MockServerState {
 
 /// Query parameters for fan control
 #[derive(Debug, Deserialize)]
-pub struct FanControlQuery {
+struct FanControlQuery {
     value: u32,
 }
 
 /// Query parameters for profile operations
 #[derive(Debug, Deserialize)]
-pub struct ProfileQuery {
+struct ProfileQuery {
     name: String,
 }
 
 /// Query parameters for alias operations
 #[derive(Debug, Deserialize)]
-pub struct AliasQuery {
+struct AliasQuery {
     value: String,
 }
 
 /// Request body for adding profiles
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AddProfileRequest {
+struct AddProfileRequest {
     name: String,
     profile: FanProfile,
 }
@@ -617,7 +617,7 @@ async fn delete_zone_handler(
 
 /// Query parameters for zone apply
 #[derive(Debug, Deserialize)]
-pub struct ZoneApplyQuery {
+struct ZoneApplyQuery {
     mode: String,
     value: u16,
 }
@@ -725,7 +725,7 @@ async fn delete_curve_handler(
 
 /// Query parameters for curve interpolation
 #[derive(Debug, Deserialize)]
-pub struct InterpolateQuery {
+struct InterpolateQuery {
     temp: f32,
 }
 
@@ -776,7 +776,7 @@ async fn get_cfm_handler(
 
 /// Request body for setting CFM
 #[derive(Debug, Deserialize)]
-pub struct SetCfmRequest {
+struct SetCfmRequest {
     cfm_at_100: f32,
 }
 
