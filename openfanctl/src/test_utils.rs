@@ -348,11 +348,6 @@ async fn set_fan_pwm_handler(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Simulate potential hardware communication failure (1% chance)
-    if rand::random::<f32>() < 0.01 {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
     state
         .pwms
         .lock()
@@ -374,11 +369,6 @@ async fn set_fan_rpm_handler(
     // Validate RPM range (0-10000 to match client validation)
     if params.value > 10000 {
         return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Simulate potential hardware communication failure (1% chance)
-    if rand::random::<f32>() < 0.01 {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     state
