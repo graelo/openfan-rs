@@ -7,8 +7,8 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use openfan_core::{api, OpenFanError};
 use openfan_core::config::CfmMappingData;
+use openfan_core::{api, OpenFanError};
 use tracing::{debug, info};
 
 /// List all CFM mappings.
