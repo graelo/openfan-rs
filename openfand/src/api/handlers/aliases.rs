@@ -47,7 +47,7 @@ pub(crate) async fn get_all_aliases(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/alias/:id/get`
+/// `GET /api/v0/alias/{id}/get`
 ///
 /// # Path Parameters
 ///
@@ -96,7 +96,7 @@ pub(crate) async fn get_alias(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/alias/:id/set?value=CPU Fan`
+/// `GET /api/v0/alias/{id}/set?value=CPU Fan`
 ///
 /// # Path Parameters
 ///
@@ -155,7 +155,7 @@ pub(crate) async fn set_alias(
 ///
 /// # Endpoint
 ///
-/// `DELETE /api/v0/alias/:id`
+/// `DELETE /api/v0/alias/{id}`
 ///
 /// # Path Parameters
 ///

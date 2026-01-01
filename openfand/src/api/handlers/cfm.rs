@@ -38,7 +38,7 @@ pub(crate) async fn list_cfm(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/cfm/:port`
+/// `GET /api/v0/cfm/{port}`
 ///
 /// # Path Parameters
 ///
@@ -81,7 +81,7 @@ pub(crate) async fn get_cfm(
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/cfm/:port`
+/// `POST /api/v0/cfm/{port}`
 ///
 /// # Path Parameters
 ///
@@ -141,7 +141,7 @@ pub(crate) async fn set_cfm(
 ///
 /// # Endpoint
 ///
-/// `DELETE /api/v0/cfm/:port`
+/// `DELETE /api/v0/cfm/{port}`
 ///
 /// # Path Parameters
 ///

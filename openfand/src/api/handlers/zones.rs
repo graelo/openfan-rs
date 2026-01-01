@@ -53,7 +53,7 @@ pub(crate) async fn list_zones(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/zone/:name/get`
+/// `GET /api/v0/zone/{name}/get`
 pub(crate) async fn get_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -175,7 +175,7 @@ pub(crate) async fn add_zone(
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/zone/:name/update`
+/// `POST /api/v0/zone/{name}/update`
 ///
 /// # Request Body
 ///
@@ -257,7 +257,7 @@ pub(crate) async fn update_zone(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/zone/:name/delete`
+/// `GET /api/v0/zone/{name}/delete`
 pub(crate) async fn delete_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -293,7 +293,7 @@ pub(crate) async fn delete_zone(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/zone/:name/apply?mode=pwm&value=75`
+/// `GET /api/v0/zone/{name}/apply?mode=pwm&value=75`
 ///
 /// # Query Parameters
 ///

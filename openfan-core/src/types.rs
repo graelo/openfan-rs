@@ -27,7 +27,7 @@ pub struct FanProfile {
 }
 
 impl FanProfile {
-    /// Create a new fan profile
+    /// Creates a new fan profile
     pub fn new(control_mode: ControlMode, values: Vec<u32>) -> Self {
         Self {
             control_mode,
@@ -35,7 +35,7 @@ impl FanProfile {
         }
     }
 
-    /// Validate that the profile has exactly 10 values
+    /// Validates that the profile has the correct number of values for the board
     pub fn validate(&self) -> Result<(), String> {
         if self.values.len() != MAX_FANS {
             return Err(format!(
