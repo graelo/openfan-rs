@@ -29,6 +29,18 @@ pub enum OpenFanError {
     #[error("Alias not found for fan {0}")]
     AliasNotFound(u8),
 
+    /// Zone not found
+    #[error("Zone not found: {0}")]
+    ZoneNotFound(String),
+
+    /// Thermal curve not found
+    #[error("Thermal curve not found: {0}")]
+    CurveNotFound(String),
+
+    /// CFM mapping not found
+    #[error("CFM mapping not found for port {0}")]
+    CfmMappingNotFound(u8),
+
     /// Fan ID out of range
     #[error("Fan ID out of range: {fan_id} (must be 0-{max})", max = max_fans - 1)]
     InvalidFanId { fan_id: u8, max_fans: usize },
