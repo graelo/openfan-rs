@@ -108,7 +108,8 @@ OpenFAN discovers configuration using XDG paths with system fallback:
 
 | Type | User config | System config (fallback) |
 |------|--------------|----------------|
-| Static config | `~/.config/openfan/config.toml` | `/etc/openfan/config.toml` |
+| Server config | `~/.config/openfan/config.toml` | `/etc/openfan/config.toml` |
+| CLI config | `~/.config/openfan/cli.toml` | — |
 | Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/` | `/var/lib/openfan/` |
 
 Both `openfand` and `openfanctl` accept `--config` to override the default path.
