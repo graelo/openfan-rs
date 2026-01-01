@@ -56,8 +56,12 @@ async fn main() -> Result<()> {
 
     info!("OpenFAN Server starting...");
 
-    // Determine config path
-    let config_path = args.config.unwrap_or_else(default_config_path);
+    // Determine config path: CLI flag > env var > default
+    let config_path = args.config.unwrap_or_else(|| {
+        std::env::var("OPENFAN_SERVER_CONFIG")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| default_config_path())
+    });
     info!("Configuration file: {}", config_path.display());
 
     // Step 1: Detect board type (before loading config)

@@ -89,7 +89,7 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Set environment variables
 ENV RUST_LOG=info
-ENV OPENFAN_CONFIG=/etc/openfan/config.toml
+ENV OPENFAN_SERVER_CONFIG=/etc/openfan/config.toml
 
 # Default command (mock mode with standard board for testing; override for real hardware)
 CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock", "--board", "standard"]
