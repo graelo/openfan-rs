@@ -7,8 +7,8 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use openfan_core::api;
 use openfan_core::config::CfmMappingData;
+use openfan_core::{api, OpenFanError};
 use tracing::{debug, info};
 
 /// List all CFM mappings.
@@ -68,9 +68,7 @@ pub(crate) async fn get_cfm(
             debug!("Retrieved CFM mapping for port {}: {}", port_id, cfm_at_100);
             api_ok!(response)
         }
-        None => {
-            api_fail!(format!("No CFM mapping for port {}", port_id))
-        }
+        None => Err(OpenFanError::CfmMappingNotFound(port_id).into()),
     }
 }
 
@@ -167,7 +165,7 @@ pub(crate) async fn delete_cfm(
     };
 
     if !existed {
-        return api_fail!(format!("No CFM mapping for port {}", port_id));
+        return Err(OpenFanError::CfmMappingNotFound(port_id).into());
     }
 
     // Save configuration

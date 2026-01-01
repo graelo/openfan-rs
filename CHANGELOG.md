@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Added specific error variants for better error handling: `ZoneNotFound`, `CurveNotFound`, `CfmMappingNotFound`
+
 ### Changed
-- Removed `Sync` bound from `SerialTransport` trait for better flexibility
+- Removed `Sync` bound from `SerialTransport` trait for better flexibility with async mock implementations
 
 ### Fixed
 - Integration tests now run correctly in CI environment
