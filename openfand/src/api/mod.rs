@@ -217,6 +217,15 @@ pub(crate) mod error {
                 openfan_core::OpenFanError::ProfileNotFound(name) => {
                     Self::bad_request(format!("Profile not found: {}", name))
                 }
+                openfan_core::OpenFanError::ZoneNotFound(name) => {
+                    Self::bad_request(format!("Zone not found: {}", name))
+                }
+                openfan_core::OpenFanError::CurveNotFound(name) => {
+                    Self::bad_request(format!("Thermal curve not found: {}", name))
+                }
+                openfan_core::OpenFanError::CfmMappingNotFound(port) => {
+                    Self::bad_request(format!("CFM mapping not found for port {}", port))
+                }
                 openfan_core::OpenFanError::DeviceNotFound => {
                     Self::service_unavailable("Hardware not available")
                 }

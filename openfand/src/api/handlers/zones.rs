@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::{api, ControlMode, Zone};
+use openfan_core::{api, ControlMode, OpenFanError, Zone};
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -67,10 +67,7 @@ pub(crate) async fn get_zone(
             let response = api::SingleZoneResponse { zone: zone.clone() };
             api_ok!(response)
         }
-        None => api_fail!(format!(
-            "Zone '{}' does not exist! (Names are case-sensitive!)",
-            name
-        )),
+        None => Err(OpenFanError::ZoneNotFound(name).into()),
     }
 }
 
@@ -213,10 +210,7 @@ pub(crate) async fn update_zone(
 
         // Check if zone exists
         if !zones.contains(&name) {
-            return api_fail!(format!(
-                "Zone '{}' does not exist! (Names are case-sensitive!)",
-                name
-            ));
+            return Err(OpenFanError::ZoneNotFound(name).into());
         }
 
         // Check for exclusive membership (excluding ports already in this zone)
@@ -282,10 +276,7 @@ pub(crate) async fn delete_zone(
         info!("Deleted zone: {}", name);
         api_ok!(())
     } else {
-        api_fail!(format!(
-            "Zone '{}' does not exist! (Names are case-sensitive!)",
-            name
-        ))
+        Err(OpenFanError::ZoneNotFound(name).into())
     }
 }
 
@@ -347,10 +338,7 @@ pub(crate) async fn apply_zone(
         match zones.get(&name) {
             Some(z) => z.clone(),
             None => {
-                return api_fail!(format!(
-                    "Zone '{}' does not exist! (Names are case-sensitive!)",
-                    name
-                ));
+                return Err(OpenFanError::ZoneNotFound(name).into());
             }
         }
     };

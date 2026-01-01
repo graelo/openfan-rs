@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::{api, CurvePoint, ThermalCurve};
+use openfan_core::{api, CurvePoint, OpenFanError, ThermalCurve};
 use serde::Deserialize;
 use tracing::{debug, info};
 
@@ -107,10 +107,7 @@ pub(crate) async fn get_curve(
             };
             api_ok!(response)
         }
-        None => api_fail!(format!(
-            "Thermal curve '{}' does not exist! (Names are case-sensitive!)",
-            name
-        )),
+        None => Err(OpenFanError::CurveNotFound(name).into()),
     }
 }
 
@@ -224,10 +221,7 @@ pub(crate) async fn update_curve(
 
         // Check if curve exists
         if !curves.contains(&name) {
-            return api_fail!(format!(
-                "Thermal curve '{}' does not exist! (Names are case-sensitive!)",
-                name
-            ));
+            return Err(OpenFanError::CurveNotFound(name).into());
         }
 
         let curve = match &request.description {
@@ -272,10 +266,7 @@ pub(crate) async fn delete_curve(
         let mut curves = state.config.thermal_curves_mut().await;
 
         if curves.remove(&name).is_none() {
-            return api_fail!(format!(
-                "Thermal curve '{}' does not exist! (Names are case-sensitive!)",
-                name
-            ));
+            return Err(OpenFanError::CurveNotFound(name).into());
         }
     }
 
@@ -321,10 +312,7 @@ pub(crate) async fn interpolate_curve(
             );
             api_ok!(response)
         }
-        None => api_fail!(format!(
-            "Thermal curve '{}' does not exist! (Names are case-sensitive!)",
-            name
-        )),
+        None => Err(OpenFanError::CurveNotFound(name).into()),
     }
 }
 
