@@ -51,16 +51,16 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Build workspace
-        run: cargo build --verbose --workspace
+        run: cargo build --workspace
 
       - name: Run unit tests
-        run: cargo test --lib --verbose --workspace
+        run: cargo test --lib --workspace
 
       - name: Build release binaries
         run: cargo build --release --workspace
 
       - name: Run end-to-end tests (mock mode)
-        run: cargo test --test e2e_integration_tests --verbose
+        run: cargo test --test e2e_integration_tests
 
       - name: Test CLI help output
         run: |
@@ -321,7 +321,7 @@ jobs:
     name: Build Docker Image (ARM64)
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
     needs: [test, security_audit]
-    runs-on: ubuntu-24.04-arm  # Native ARM64 runner - avoids QEMU emulation issues
+    runs-on: ubuntu-24.04-arm # Native ARM64 runner - avoids QEMU emulation issues
 
     steps:
       - name: Checkout code
