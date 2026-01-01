@@ -10,8 +10,8 @@ use super::paths::default_data_dir;
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
-    /// Server hostname
-    pub hostname: String,
+    /// Address to bind to (e.g., "127.0.0.1" or "0.0.0.0" for all interfaces)
+    pub bind_address: String,
     /// Server port
     pub port: u16,
     /// Communication timeout in seconds
@@ -21,7 +21,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            hostname: "localhost".to_string(),
+            bind_address: "127.0.0.1".to_string(),
             port: 3000,
             communication_timeout: 1,
         }
@@ -34,7 +34,7 @@ impl Default for ServerConfig {
 /// Located at `~/.config/openfan/config.toml` by default.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticConfig {
-    /// Server configuration (hostname, port, timeout)
+    /// Server configuration (bind address, port, timeout)
     #[serde(default)]
     pub server: ServerConfig,
 
@@ -82,7 +82,7 @@ mod tests {
     fn test_default_static_config() {
         let config = StaticConfig::default();
         assert_eq!(config.server.port, 3000);
-        assert_eq!(config.server.hostname, "localhost");
+        assert_eq!(config.server.bind_address, "127.0.0.1");
     }
 
     #[test]
@@ -100,13 +100,13 @@ mod tests {
             data_dir = "/custom/data"
 
             [server]
-            hostname = "0.0.0.0"
+            bind_address = "0.0.0.0"
             port = 8080
             communication_timeout = 5
         "#;
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
-        assert_eq!(config.server.hostname, "0.0.0.0");
+        assert_eq!(config.server.bind_address, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
         assert_eq!(config.data_dir, PathBuf::from("/custom/data"));
     }
@@ -116,7 +116,7 @@ mod tests {
         // When data_dir is not specified, it should use the default
         let toml_str = r#"
             [server]
-            hostname = "localhost"
+            bind_address = "127.0.0.1"
             port = 3000
             communication_timeout = 1
         "#;
@@ -133,7 +133,7 @@ mod tests {
         "#;
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
-        assert_eq!(config.server.hostname, "localhost");
+        assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.server.port, 3000);
         assert_eq!(config.data_dir, PathBuf::from("/var/lib/openfan"));
     }
@@ -144,7 +144,7 @@ mod tests {
         let toml_str = "";
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
-        assert_eq!(config.server.hostname, "localhost");
+        assert_eq!(config.server.bind_address, "127.0.0.1");
         assert_eq!(config.server.port, 3000);
         assert!(config.data_dir.ends_with("openfan"));
     }

@@ -56,16 +56,17 @@ For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 #### Example config.toml
 
 ```toml
+# Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
+# Default: ~/.local/share/openfan (XDG) or /var/lib/openfan (system)
+data_dir = "/var/lib/openfan"
+
 [server]
 bind_address = "127.0.0.1"
 port = 3000
-
-[hardware]
-connection_type = "auto"
-
-# Custom data directory (optional)
-data_dir = "/var/lib/openfan"
+communication_timeout = 1
 ```
+
+**Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT` environment variable, or common device paths. No `[hardware]` section is needed in the configuration.
 
 ## CLI Usage
 

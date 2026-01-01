@@ -78,13 +78,8 @@ impl E2ETestHarness {
             r#"data_dir = "{}"
 
 [server]
-hostname = "127.0.0.1"
+bind_address = "127.0.0.1"
 port = {}
-communication_timeout = 1
-
-[hardware]
-hostname = "127.0.0.1"
-port = 3000
 communication_timeout = 1
 "#,
             data_dir.display(),

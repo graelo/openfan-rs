@@ -165,8 +165,8 @@ install_config() {
 data_dir = "/var/lib/openfan"
 
 [server]
-# Address to bind to ("localhost" or "0.0.0.0" for all interfaces)
-hostname = "localhost"
+# Address to bind to ("127.0.0.1" for localhost, "0.0.0.0" for all interfaces)
+bind_address = "127.0.0.1"
 # Server port
 port = 3000
 # Communication timeout in seconds
