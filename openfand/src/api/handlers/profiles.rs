@@ -7,10 +7,7 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use openfan_core::{
-    api::{ApiResponse, ProfileResponse},
-    ControlMode, FanProfile,
-};
+use openfan_core::{api, ControlMode, FanProfile};
 use serde::Deserialize;
 
 use tracing::{debug, info, warn};
@@ -40,13 +37,13 @@ pub(crate) struct AddProfileRequest {
 /// `GET /api/v0/profiles/list`
 pub(crate) async fn list_profiles(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::ProfileResponse>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/list");
 
     let profiles = state.config.profiles().await;
     let fan_profiles = profiles.profiles.clone();
 
-    let response = ProfileResponse {
+    let response = api::ProfileResponse {
         profiles: fan_profiles,
     };
 
@@ -83,7 +80,7 @@ pub(crate) async fn list_profiles(
 pub(crate) async fn add_profile(
     State(state): State<AppState>,
     Json(request): Json<AddProfileRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/profiles/add");
 
     let profile_name = request.name.trim();
@@ -159,7 +156,7 @@ pub(crate) async fn add_profile(
 pub(crate) async fn remove_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/remove");
 
     let Some(profile_name) = params.name else {
@@ -212,7 +209,7 @@ pub(crate) async fn remove_profile(
 pub(crate) async fn set_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/set");
 
     let Some(profile_name) = params.name else {

@@ -7,10 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::{
-    api::{AddZoneRequest, ApiResponse, SingleZoneResponse, UpdateZoneRequest, ZoneResponse},
-    ControlMode, Zone,
-};
+use openfan_core::{api, ControlMode, Zone};
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -40,13 +37,13 @@ fn is_valid_zone_name(name: &str) -> bool {
 /// `GET /api/v0/zones/list`
 pub(crate) async fn list_zones(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<ZoneResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::ZoneResponse>>, ApiError> {
     debug!("Request: GET /api/v0/zones/list");
 
     let zones = state.config.zones().await;
     let zone_map = zones.zones.clone();
 
-    let response = ZoneResponse { zones: zone_map };
+    let response = api::ZoneResponse { zones: zone_map };
 
     info!("Listed {} zones", response.zones.len());
     api_ok!(response)
@@ -60,14 +57,14 @@ pub(crate) async fn list_zones(
 pub(crate) async fn get_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<SingleZoneResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::SingleZoneResponse>>, ApiError> {
     debug!("Request: GET /api/v0/zone/{}/get", name);
 
     let zones = state.config.zones().await;
 
     match zones.get(&name) {
         Some(zone) => {
-            let response = SingleZoneResponse { zone: zone.clone() };
+            let response = api::SingleZoneResponse { zone: zone.clone() };
             api_ok!(response)
         }
         None => api_fail!(format!(
@@ -100,8 +97,8 @@ pub(crate) async fn get_zone(
 /// ```
 pub(crate) async fn add_zone(
     State(state): State<AppState>,
-    Json(request): Json<AddZoneRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::AddZoneRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/zones/add");
 
     let zone_name = request.name.trim();
@@ -191,8 +188,8 @@ pub(crate) async fn add_zone(
 pub(crate) async fn update_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Json(request): Json<UpdateZoneRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::UpdateZoneRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/zone/{}/update", name);
 
     // Validate port IDs against board configuration
@@ -264,7 +261,7 @@ pub(crate) async fn update_zone(
 pub(crate) async fn delete_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/zone/{}/delete", name);
 
     // Remove the zone
@@ -306,7 +303,7 @@ pub(crate) async fn apply_zone(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(params): Query<ApplyZoneQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!(
         "Request: GET /api/v0/zone/{}/apply?mode={}&value={}",
         name, params.mode, params.value
@@ -535,9 +532,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "intake", "port_ids": [0, 1, 2]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "intake", "port_ids": [0, 1, 2]}"#))
                     .unwrap(),
             )
             .await
@@ -601,9 +596,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "bad-zone", "port_ids": [99]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "bad-zone", "port_ids": [99]}"#))
                     .unwrap(),
             )
             .await
@@ -623,9 +616,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "dup-zone", "port_ids": [0, 0, 1]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "dup-zone", "port_ids": [0, 0, 1]}"#))
                     .unwrap(),
             )
             .await
@@ -664,9 +655,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "test-zone", "port_ids": [5, 6]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "test-zone", "port_ids": [5, 6]}"#))
                     .unwrap(),
             )
             .await
@@ -717,9 +706,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "to-delete", "port_ids": [7]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "to-delete", "port_ids": [7]}"#))
                     .unwrap(),
             )
             .await
@@ -770,9 +757,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "mode-test", "port_ids": [8]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "mode-test", "port_ids": [8]}"#))
                     .unwrap(),
             )
             .await
@@ -804,9 +789,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "pwm-test", "port_ids": [9]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "pwm-test", "port_ids": [9]}"#))
                     .unwrap(),
             )
             .await
@@ -838,9 +821,7 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(
-                        r#"{"name": "apply-test", "port_ids": [0, 1]}"#,
-                    ))
+                    .body(Body::from(r#"{"name": "apply-test", "port_ids": [0, 1]}"#))
                     .unwrap(),
             )
             .await

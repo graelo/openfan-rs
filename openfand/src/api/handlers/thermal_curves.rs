@@ -7,13 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::{
-    api::{
-        AddCurveRequest, ApiResponse, InterpolateResponse, SingleCurveResponse,
-        ThermalCurveResponse, UpdateCurveRequest,
-    },
-    CurvePoint, ThermalCurve,
-};
+use openfan_core::{api, CurvePoint, ThermalCurve};
 use serde::Deserialize;
 use tracing::{debug, info};
 
@@ -81,13 +75,13 @@ fn validate_points(points: &[CurvePoint]) -> Result<(), String> {
 /// `GET /api/v0/curves/list`
 pub(crate) async fn list_curves(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<ThermalCurveResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::ThermalCurveResponse>>, ApiError> {
     debug!("Request: GET /api/v0/curves/list");
 
     let curves = state.config.thermal_curves().await;
     let curve_map = curves.curves.clone();
 
-    let response = ThermalCurveResponse { curves: curve_map };
+    let response = api::ThermalCurveResponse { curves: curve_map };
 
     info!("Listed {} thermal curves", response.curves.len());
     api_ok!(response)
@@ -101,14 +95,14 @@ pub(crate) async fn list_curves(
 pub(crate) async fn get_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<SingleCurveResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::SingleCurveResponse>>, ApiError> {
     debug!("Request: GET /api/v0/curve/{}/get", name);
 
     let curves = state.config.thermal_curves().await;
 
     match curves.get(&name) {
         Some(curve) => {
-            let response = SingleCurveResponse {
+            let response = api::SingleCurveResponse {
                 curve: curve.clone(),
             };
             api_ok!(response)
@@ -148,8 +142,8 @@ pub(crate) async fn get_curve(
 /// ```
 pub(crate) async fn add_curve(
     State(state): State<AppState>,
-    Json(request): Json<AddCurveRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::AddCurveRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/curves/add");
 
     let curve_name = request.name.trim();
@@ -215,8 +209,8 @@ pub(crate) async fn add_curve(
 pub(crate) async fn update_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Json(request): Json<UpdateCurveRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::UpdateCurveRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/curve/{}/update", name);
 
     // Validate points
@@ -270,7 +264,7 @@ pub(crate) async fn update_curve(
 pub(crate) async fn delete_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: DELETE /api/v0/curve/{}", name);
 
     // Remove curve
@@ -306,7 +300,7 @@ pub(crate) async fn interpolate_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(params): Query<InterpolateQuery>,
-) -> Result<Json<ApiResponse<InterpolateResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::InterpolateResponse>>, ApiError> {
     debug!(
         "Request: GET /api/v0/curve/{}/interpolate?temp={}",
         name, params.temp
@@ -317,7 +311,7 @@ pub(crate) async fn interpolate_curve(
     match curves.get(&name) {
         Some(curve) => {
             let pwm = curve.interpolate(params.temp);
-            let response = InterpolateResponse {
+            let response = api::InterpolateResponse {
                 temperature: params.temp,
                 pwm,
             };

@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::api::{ApiResponse, FanStatusResponse};
+use openfan_core::api;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -38,7 +38,7 @@ pub(crate) struct FanControlQuery {
 /// `GET /api/v0/fan/status`
 pub(crate) async fn get_status(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<FanStatusResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::FanStatusResponse>>, ApiError> {
     debug!("Request: GET /api/v0/fan/status");
 
     // Check if hardware is available
@@ -51,7 +51,7 @@ pub(crate) async fn get_status(
             mock_rpms.insert(i, 1500 + (i as u32 * 100)); // Mock RPM values
             mock_pwms.insert(i, 50 + (i as u32 * 5)); // Mock PWM values
         }
-        let mock_status = FanStatusResponse {
+        let mock_status = api::FanStatusResponse {
             rpms: mock_rpms,
             pwms: mock_pwms,
         };
@@ -69,7 +69,7 @@ pub(crate) async fn get_status(
                 "Fan status retrieved - RPM: {:?}, PWM: {:?}",
                 rpm_map, pwm_map
             );
-            let status = FanStatusResponse {
+            let status = api::FanStatusResponse {
                 rpms: rpm_map,
                 pwms: pwm_map,
             };
@@ -96,7 +96,7 @@ pub(crate) async fn get_status(
 pub(crate) async fn set_all_fans(
     State(state): State<AppState>,
     Query(params): Query<FanControlQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/fan/all/set");
 
     let Some(value) = params.value else {
@@ -148,7 +148,7 @@ pub(crate) async fn set_fan_pwm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<FanControlQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/fan/{}/pwm", fan_id);
 
     // Parse and validate fan ID
@@ -212,7 +212,7 @@ pub(crate) async fn set_fan_pwm(
 pub(crate) async fn get_fan_rpm(
     Path(fan_id): Path<String>,
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<u32>>, ApiError> {
+) -> Result<Json<api::ApiResponse<u32>>, ApiError> {
     debug!("Request: GET /api/v0/fan/{}/rpm/get", fan_id);
 
     // Parse and validate fan ID
@@ -269,7 +269,7 @@ pub(crate) async fn set_fan_rpm(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<FanControlQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/fan/{}/rpm", fan_id);
 
     // Parse and validate fan ID

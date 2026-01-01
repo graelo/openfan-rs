@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::api::{AliasResponse, ApiResponse};
+use openfan_core::api;
 use serde::Deserialize;
 use std::collections::HashMap;
 use tracing::{debug, info};
@@ -29,13 +29,13 @@ pub(crate) struct AliasQuery {
 /// `GET /api/v0/alias/all/get`
 pub(crate) async fn get_all_aliases(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
     debug!("Request: GET /api/v0/alias/all/get");
 
     let alias_data = state.config.aliases().await;
     let aliases = alias_data.aliases.clone();
 
-    let response = AliasResponse { aliases };
+    let response = api::AliasResponse { aliases };
 
     info!("Retrieved all fan aliases");
     api_ok!(response)
@@ -55,7 +55,7 @@ pub(crate) async fn get_all_aliases(
 pub(crate) async fn get_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
-) -> Result<Json<ApiResponse<AliasResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
     debug!("Request: GET /api/v0/alias/{}/get", fan_id);
 
     // Parse and validate fan ID
@@ -72,7 +72,7 @@ pub(crate) async fn get_alias(
     let mut aliases = HashMap::new();
     aliases.insert(fan_index, alias.clone());
 
-    let response = AliasResponse { aliases };
+    let response = api::AliasResponse { aliases };
 
     debug!("Retrieved alias for fan {}: {}", fan_index, alias);
     api_ok!(response)
@@ -109,7 +109,7 @@ pub(crate) async fn set_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
     Query(params): Query<AliasQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/alias/{}/set", fan_id);
 
     // Parse and validate fan ID
@@ -163,7 +163,7 @@ pub(crate) async fn set_alias(
 pub(crate) async fn delete_alias(
     State(state): State<AppState>,
     Path(fan_id): Path<String>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/alias/{}/delete", fan_id);
 
     // Parse and validate fan ID
