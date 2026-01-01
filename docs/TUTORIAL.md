@@ -53,6 +53,8 @@ OpenFAN uses XDG-compliant paths by default:
 
 For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 
+Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG default.
+
 #### Example config.toml
 
 ```toml

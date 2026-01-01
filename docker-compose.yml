@@ -27,7 +27,7 @@ services:
       - SYS_ADMIN
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.toml
+      - OPENFAN_SERVER_CONFIG=/etc/openfan/config.toml
     command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml"]
     networks:
       - openfan-network
@@ -51,7 +51,7 @@ services:
       - openfan-logs-mock:/var/log/openfan
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.toml
+      - OPENFAN_SERVER_CONFIG=/etc/openfan/config.toml
     command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock"]
     networks:
       - openfan-network

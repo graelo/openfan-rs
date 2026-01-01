@@ -45,7 +45,7 @@ DevicePolicy=closed
 
 # Environment
 Environment=RUST_LOG=info
-Environment=OPENFAN_CONFIG=/etc/openfan/config.toml
+Environment=OPENFAN_SERVER_CONFIG=/etc/openfan/config.toml
 
 [Install]
 WantedBy=multi-user.target

@@ -112,7 +112,7 @@ OpenFAN discovers configuration using XDG paths with system fallback:
 | CLI config | `~/.config/openfan/cli.toml` | — |
 | Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/` | `/var/lib/openfan/` |
 
-Both `openfand` and `openfanctl` accept `--config` to override the default path.
+Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG default.
 
 ```toml
 # Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
