@@ -255,3 +255,126 @@ macro_rules! api_fail {
         Err($crate::api::error::ApiError::bad_request($message))
     };
 }
+
+#[cfg(test)]
+mod tests {
+    use super::error::ApiError;
+    use axum::http::StatusCode;
+    use openfan_core::OpenFanError;
+
+    #[test]
+    fn test_zone_not_found_error_conversion() {
+        let error = OpenFanError::ZoneNotFound("test-zone".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Zone not found"));
+        assert!(api_error.message.contains("test-zone"));
+    }
+
+    #[test]
+    fn test_curve_not_found_error_conversion() {
+        let error = OpenFanError::CurveNotFound("test-curve".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Thermal curve not found"));
+        assert!(api_error.message.contains("test-curve"));
+    }
+
+    #[test]
+    fn test_cfm_mapping_not_found_error_conversion() {
+        let error = OpenFanError::CfmMappingNotFound(5);
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("CFM mapping not found"));
+        assert!(api_error.message.contains("5"));
+    }
+
+    #[test]
+    fn test_profile_not_found_error_conversion() {
+        let error = OpenFanError::ProfileNotFound("test-profile".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Profile not found"));
+        assert!(api_error.message.contains("test-profile"));
+    }
+
+    #[test]
+    fn test_invalid_fan_id_error_conversion() {
+        let error = OpenFanError::InvalidFanId {
+            fan_id: 15,
+            max_fans: 10,
+        };
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Invalid fan ID"));
+        assert!(api_error.message.contains("15"));
+        assert!(api_error.message.contains("0-9"));
+    }
+
+    #[test]
+    fn test_invalid_input_error_conversion() {
+        let error = OpenFanError::InvalidInput("bad input".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert_eq!(api_error.message, "bad input");
+    }
+
+    #[test]
+    fn test_device_not_found_error_conversion() {
+        let error = OpenFanError::DeviceNotFound;
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(api_error.message.contains("Hardware not available"));
+    }
+
+    #[test]
+    fn test_hardware_error_conversion() {
+        let error = OpenFanError::Hardware("connection failed".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api_error.message, "connection failed");
+    }
+
+    #[test]
+    fn test_serial_error_conversion() {
+        let error = OpenFanError::Serial("port busy".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api_error.message, "port busy");
+    }
+
+    #[test]
+    fn test_timeout_error_conversion() {
+        let error = OpenFanError::Timeout("operation timed out".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(api_error.message, "operation timed out");
+    }
+
+    #[test]
+    fn test_other_error_conversion() {
+        let error = OpenFanError::Other("unexpected error".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(api_error.message.contains("unexpected error"));
+    }
+
+    #[test]
+    fn test_config_error_falls_through_to_internal() {
+        let error = OpenFanError::Config("config issue".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}
