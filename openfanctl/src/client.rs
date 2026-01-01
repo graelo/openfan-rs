@@ -1,15 +1,7 @@
 //! HTTP client for communicating with the OpenFAN server.
 
 use anyhow::{Context, Result};
-use openfan_core::{
-    api::{
-        AliasResponse, ApiResponse, CfmGetResponse, CfmListResponse, FanRpmResponse,
-        FanStatusResponse, InfoResponse, InterpolateResponse, ProfileResponse, SetCfmRequest,
-        SingleCurveResponse, SingleZoneResponse, ThermalCurveResponse, ZoneResponse,
-    },
-    types::FanProfile,
-    BoardInfo, CurvePoint,
-};
+use openfan_core::{api, types::FanProfile, BoardInfo, CurvePoint};
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
@@ -176,12 +168,12 @@ impl OpenFanClient {
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        let api_response: ApiResponse<T> = serde_json::from_str(&text)
+        let api_response: api::ApiResponse<T> = serde_json::from_str(&text)
             .with_context(|| format!("Failed to parse JSON response from {}", endpoint))?;
 
         match api_response {
-            ApiResponse::Success { data } => Ok(data),
-            ApiResponse::Error { error } => {
+            api::ApiResponse::Success { data } => Ok(data),
+            api::ApiResponse::Error { error } => {
                 Err(anyhow::anyhow!("Server error at {}: {}", endpoint, error))
             }
         }
@@ -240,7 +232,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns server version, hardware connection status, and mock mode status.
-    pub async fn get_info(&self) -> Result<InfoResponse> {
+    pub async fn get_info(&self) -> Result<api::InfoResponse> {
         let url = format!("{}/api/v0/info", self.base_url);
         let endpoint = "info";
 
@@ -253,7 +245,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns PWM values and RPM readings for all fans in the system.
-    pub async fn get_fan_status(&self) -> Result<FanStatusResponse> {
+    pub async fn get_fan_status(&self) -> Result<api::FanStatusResponse> {
         let url = format!("{}/api/v0/fan/status", self.base_url);
         let endpoint = "fan/status";
 
@@ -269,7 +261,7 @@ impl OpenFanClient {
     /// # Arguments
     ///
     /// * `_fan_id` - Currently ignored, reserved for future use
-    pub async fn get_fan_status_by_id(&self, _fan_id: u8) -> Result<FanStatusResponse> {
+    pub async fn get_fan_status_by_id(&self, _fan_id: u8) -> Result<api::FanStatusResponse> {
         let url = format!("{}/api/v0/fan/status", self.base_url);
         let endpoint = "fan/status";
 
@@ -286,7 +278,7 @@ impl OpenFanClient {
     /// # Errors
     ///
     /// Returns an error if the fan ID is invalid for this board type.
-    pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<FanRpmResponse> {
+    pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<api::FanRpmResponse> {
         self.board_info.validate_fan_id(fan_id)?;
 
         let url = format!("{}/api/v0/fan/{}/rpm/get", self.base_url, fan_id);
@@ -296,7 +288,7 @@ impl OpenFanClient {
             .execute_with_retry(endpoint, || self.client.get(&url).send())
             .await?;
 
-        Ok(FanRpmResponse { fan_id, rpm })
+        Ok(api::FanRpmResponse { fan_id, rpm })
     }
 
     /// Set the PWM (Pulse Width Modulation) value for a specific fan.
@@ -356,7 +348,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns a list of profile names and their configurations.
-    pub async fn get_profiles(&self) -> Result<ProfileResponse> {
+    pub async fn get_profiles(&self) -> Result<api::ProfileResponse> {
         let url = format!("{}/api/v0/profiles/list", self.base_url);
         let endpoint = "profiles/list";
 
@@ -468,7 +460,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns a map of fan IDs to their human-readable alias names.
-    pub async fn get_aliases(&self) -> Result<AliasResponse> {
+    pub async fn get_aliases(&self) -> Result<api::AliasResponse> {
         let url = format!("{}/api/v0/alias/all/get", self.base_url);
         let endpoint = "alias/all/get";
 
@@ -485,7 +477,7 @@ impl OpenFanClient {
     /// # Errors
     ///
     /// Returns an error if the fan ID is invalid for this board type.
-    pub async fn get_alias(&self, fan_id: u8) -> Result<AliasResponse> {
+    pub async fn get_alias(&self, fan_id: u8) -> Result<api::AliasResponse> {
         self.board_info.validate_fan_id(fan_id)?;
 
         let url = format!("{}/api/v0/alias/{}/get", self.base_url, fan_id);
@@ -563,7 +555,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns a map of zone names to their configurations.
-    pub async fn get_zones(&self) -> Result<ZoneResponse> {
+    pub async fn get_zones(&self) -> Result<api::ZoneResponse> {
         let url = format!("{}/api/v0/zones/list", self.base_url);
         let endpoint = "zones/list";
 
@@ -580,7 +572,7 @@ impl OpenFanClient {
     /// # Errors
     ///
     /// Returns an error if the zone name is empty or whitespace.
-    pub async fn get_zone(&self, name: &str) -> Result<SingleZoneResponse> {
+    pub async fn get_zone(&self, name: &str) -> Result<api::SingleZoneResponse> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Zone name cannot be empty"));
         }
@@ -784,7 +776,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns a map of curve names to their configurations.
-    pub async fn get_curves(&self) -> Result<ThermalCurveResponse> {
+    pub async fn get_curves(&self) -> Result<api::ThermalCurveResponse> {
         let url = format!("{}/api/v0/curves/list", self.base_url);
         let endpoint = "curves/list";
 
@@ -801,7 +793,7 @@ impl OpenFanClient {
     /// # Errors
     ///
     /// Returns an error if the curve name is empty or whitespace.
-    pub async fn get_curve(&self, name: &str) -> Result<SingleCurveResponse> {
+    pub async fn get_curve(&self, name: &str) -> Result<api::SingleCurveResponse> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Curve name cannot be empty"));
         }
@@ -947,7 +939,11 @@ impl OpenFanClient {
     /// Returns an error if:
     /// - The curve name is empty or whitespace
     /// - The curve doesn't exist
-    pub async fn interpolate_curve(&self, name: &str, temp: f32) -> Result<InterpolateResponse> {
+    pub async fn interpolate_curve(
+        &self,
+        name: &str,
+        temp: f32,
+    ) -> Result<api::InterpolateResponse> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Curve name cannot be empty"));
         }
@@ -972,7 +968,7 @@ impl OpenFanClient {
     /// # Returns
     ///
     /// Returns a map of port IDs to their CFM@100% values.
-    pub async fn get_cfm_mappings(&self) -> Result<CfmListResponse> {
+    pub async fn get_cfm_mappings(&self) -> Result<api::CfmListResponse> {
         let url = format!("{}/api/v0/cfm/list", self.base_url);
         let endpoint = "cfm/list";
 
@@ -989,7 +985,7 @@ impl OpenFanClient {
     /// # Errors
     ///
     /// Returns an error if the port ID is invalid for this board type.
-    pub async fn get_cfm(&self, port: u8) -> Result<CfmGetResponse> {
+    pub async fn get_cfm(&self, port: u8) -> Result<api::CfmGetResponse> {
         self.board_info.validate_fan_id(port)?;
 
         let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
@@ -1023,7 +1019,7 @@ impl OpenFanClient {
         }
 
         let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
-        let request = SetCfmRequest { cfm_at_100 };
+        let request = api::SetCfmRequest { cfm_at_100 };
         let endpoint = &format!("cfm/{}", port);
 
         let response = self

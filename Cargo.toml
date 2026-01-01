@@ -14,25 +14,25 @@ repository = "https://github.com/graelo/openfan-rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-thiserror = "1"
+thiserror = "2"
 anyhow = "1"
 async-trait = "0.1"
 
 # Server dependencies
-axum = "0.7"
+axum = "0.8"
 tokio-serial = "5"
 serde_yaml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
-tower = "0.4"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower = "0.5"
 
 # CLI dependencies
 clap = { version = "4", features = ["derive"] }
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls"] }
-tabled = "0.15"
-colored = "2"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+tabled = "0.20"
+colored = "3"
 clap_complete = "4"
-toml = "0.8"
+toml = "0.9"
 urlencoding = "2"
-dirs = "5"
+dirs = "6"

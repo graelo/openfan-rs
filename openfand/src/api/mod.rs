@@ -81,34 +81,37 @@ pub(crate) fn create_router(state: AppState) -> Router {
         // Fan status and control endpoints
         .route("/api/v0/fan/status", get(handlers::fans::get_status))
         .route("/api/v0/fan/all/set", get(handlers::fans::set_all_fans))
-        .route("/api/v0/fan/:id/pwm", get(handlers::fans::set_fan_pwm))
-        .route("/api/v0/fan/:id/rpm", get(handlers::fans::set_fan_rpm))
-        .route("/api/v0/fan/:id/rpm/get", get(handlers::fans::get_fan_rpm))
-        .route("/api/v0/fan/:id/set", get(handlers::fans::set_fan_pwm)) // Legacy endpoint
+        .route("/api/v0/fan/{id}/pwm", get(handlers::fans::set_fan_pwm))
+        .route("/api/v0/fan/{id}/rpm", get(handlers::fans::set_fan_rpm))
+        .route("/api/v0/fan/{id}/rpm/get", get(handlers::fans::get_fan_rpm))
+        .route("/api/v0/fan/{id}/set", get(handlers::fans::set_fan_pwm)) // Legacy endpoint
         // Alias endpoints
         .route(
             "/api/v0/alias/all/get",
             get(handlers::aliases::get_all_aliases),
         )
-        .route("/api/v0/alias/:id/get", get(handlers::aliases::get_alias))
-        .route("/api/v0/alias/:id/set", get(handlers::aliases::set_alias))
+        .route("/api/v0/alias/{id}/get", get(handlers::aliases::get_alias))
+        .route("/api/v0/alias/{id}/set", get(handlers::aliases::set_alias))
         .route(
-            "/api/v0/alias/:id",
+            "/api/v0/alias/{id}",
             axum::routing::delete(handlers::aliases::delete_alias),
         )
         // Zone endpoints
         .route("/api/v0/zones/list", get(handlers::zones::list_zones))
         .route("/api/v0/zones/add", post(handlers::zones::add_zone))
-        .route("/api/v0/zone/:name/get", get(handlers::zones::get_zone))
+        .route("/api/v0/zone/{name}/get", get(handlers::zones::get_zone))
         .route(
-            "/api/v0/zone/:name/update",
+            "/api/v0/zone/{name}/update",
             post(handlers::zones::update_zone),
         )
         .route(
-            "/api/v0/zone/:name/delete",
+            "/api/v0/zone/{name}/delete",
             get(handlers::zones::delete_zone),
         )
-        .route("/api/v0/zone/:name/apply", get(handlers::zones::apply_zone))
+        .route(
+            "/api/v0/zone/{name}/apply",
+            get(handlers::zones::apply_zone),
+        )
         // Thermal curve endpoints
         .route(
             "/api/v0/curves/list",
@@ -119,27 +122,27 @@ pub(crate) fn create_router(state: AppState) -> Router {
             post(handlers::thermal_curves::add_curve),
         )
         .route(
-            "/api/v0/curve/:name/get",
+            "/api/v0/curve/{name}/get",
             get(handlers::thermal_curves::get_curve),
         )
         .route(
-            "/api/v0/curve/:name/update",
+            "/api/v0/curve/{name}/update",
             post(handlers::thermal_curves::update_curve),
         )
         .route(
-            "/api/v0/curve/:name",
+            "/api/v0/curve/{name}",
             axum::routing::delete(handlers::thermal_curves::delete_curve),
         )
         .route(
-            "/api/v0/curve/:name/interpolate",
+            "/api/v0/curve/{name}/interpolate",
             get(handlers::thermal_curves::interpolate_curve),
         )
         // CFM mapping endpoints
         .route("/api/v0/cfm/list", get(handlers::cfm::list_cfm))
-        .route("/api/v0/cfm/:port", get(handlers::cfm::get_cfm))
-        .route("/api/v0/cfm/:port", post(handlers::cfm::set_cfm))
+        .route("/api/v0/cfm/{port}", get(handlers::cfm::get_cfm))
+        .route("/api/v0/cfm/{port}", post(handlers::cfm::set_cfm))
         .route(
-            "/api/v0/cfm/:port",
+            "/api/v0/cfm/{port}",
             axum::routing::delete(handlers::cfm::delete_cfm),
         )
         // System info endpoint

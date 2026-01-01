@@ -10,11 +10,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use openfan_core::api::{
-    AliasResponse, ApiResponse, FanStatusResponse, InfoResponse, ProfileResponse,
-};
 use openfan_core::types::{ControlMode, FanProfile};
-use openfan_core::{BoardConfig, DefaultBoard};
+use openfan_core::{api, BoardConfig, CurvePoint, DefaultBoard, ThermalCurve, Zone};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -33,7 +30,13 @@ pub struct MockServerState {
     /// Fan aliases
     pub aliases: Arc<Mutex<HashMap<String, String>>>,
     /// Server info
-    pub info: Arc<Mutex<InfoResponse>>,
+    pub info: Arc<Mutex<api::InfoResponse>>,
+    /// Zones
+    pub zones: Arc<Mutex<HashMap<String, Zone>>>,
+    /// Thermal curves
+    pub curves: Arc<Mutex<HashMap<String, ThermalCurve>>>,
+    /// CFM mappings
+    pub cfm_mappings: Arc<Mutex<HashMap<u8, f32>>>,
 }
 
 impl Default for MockServerState {
@@ -73,7 +76,7 @@ impl Default for MockServerState {
         );
 
         let board_info = openfan_core::BoardType::OpenFanStandard.to_board_info();
-        let info = InfoResponse {
+        let info = api::InfoResponse {
             version: "1.0.0-test".to_string(),
             board_info,
             hardware_connected: true,
@@ -83,37 +86,92 @@ impl Default for MockServerState {
             firmware: Some("Mock Firmware v1.5.2\r\nBuild: 2024-10-01".to_string()),
         };
 
+        // Initialize zones
+        let mut zones = HashMap::new();
+        zones.insert(
+            "cpu".to_string(),
+            Zone {
+                name: "cpu".to_string(),
+                port_ids: vec![0, 1],
+                description: Some("CPU cooling zone".to_string()),
+            },
+        );
+        zones.insert(
+            "gpu".to_string(),
+            Zone {
+                name: "gpu".to_string(),
+                port_ids: vec![2, 3],
+                description: Some("GPU cooling zone".to_string()),
+            },
+        );
+
+        // Initialize thermal curves
+        let mut curves = HashMap::new();
+        curves.insert(
+            "default".to_string(),
+            ThermalCurve {
+                name: "default".to_string(),
+                points: vec![
+                    CurvePoint {
+                        temp_c: 30.0,
+                        pwm: 25,
+                    },
+                    CurvePoint {
+                        temp_c: 50.0,
+                        pwm: 50,
+                    },
+                    CurvePoint {
+                        temp_c: 70.0,
+                        pwm: 80,
+                    },
+                    CurvePoint {
+                        temp_c: 85.0,
+                        pwm: 100,
+                    },
+                ],
+                description: Some("Default thermal curve".to_string()),
+            },
+        );
+
+        // Initialize CFM mappings
+        let mut cfm_mappings = HashMap::new();
+        cfm_mappings.insert(0, 50.0);
+        cfm_mappings.insert(1, 45.0);
+
         Self {
             rpms: Arc::new(Mutex::new(rpms)),
             pwms: Arc::new(Mutex::new(pwms)),
             profiles: Arc::new(Mutex::new(profiles)),
             aliases: Arc::new(Mutex::new(aliases)),
             info: Arc::new(Mutex::new(info)),
+            zones: Arc::new(Mutex::new(zones)),
+            curves: Arc::new(Mutex::new(curves)),
+            cfm_mappings: Arc::new(Mutex::new(cfm_mappings)),
         }
     }
 }
 
 /// Query parameters for fan control
 #[derive(Debug, Deserialize)]
-pub struct FanControlQuery {
+struct FanControlQuery {
     value: u32,
 }
 
 /// Query parameters for profile operations
 #[derive(Debug, Deserialize)]
-pub struct ProfileQuery {
+struct ProfileQuery {
     name: String,
 }
 
 /// Query parameters for alias operations
 #[derive(Debug, Deserialize)]
-pub struct AliasQuery {
-    alias: String,
+struct AliasQuery {
+    value: String,
 }
 
 /// Request body for adding profiles
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AddProfileRequest {
+struct AddProfileRequest {
     name: String,
     profile: FanProfile,
 }
@@ -189,9 +247,9 @@ impl MockServer {
             .route("/api/v0/info", get(info_handler))
             // Fan endpoints
             .route("/api/v0/fan/status", get(fan_status_handler))
-            .route("/api/v0/fan/:id/pwm", get(set_fan_pwm_handler))
-            .route("/api/v0/fan/:id/rpm", get(set_fan_rpm_handler))
-            .route("/api/v0/fan/:id/rpm/get", get(get_fan_rpm_handler))
+            .route("/api/v0/fan/{id}/pwm", get(set_fan_pwm_handler))
+            .route("/api/v0/fan/{id}/rpm", get(set_fan_rpm_handler))
+            .route("/api/v0/fan/{id}/rpm/get", get(get_fan_rpm_handler))
             // Profile endpoints
             .route("/api/v0/profiles/list", get(list_profiles_handler))
             .route("/api/v0/profiles/set", get(set_profile_handler))
@@ -199,33 +257,65 @@ impl MockServer {
             .route("/api/v0/profiles/remove", get(remove_profile_handler))
             // Alias endpoints
             .route("/api/v0/alias/all/get", get(get_all_aliases_handler))
-            .route("/api/v0/alias/:id/get", get(get_alias_handler))
-            .route("/api/v0/alias/:id/set", get(set_alias_handler))
+            .route("/api/v0/alias/{id}/get", get(get_alias_handler))
+            .route("/api/v0/alias/{id}/set", get(set_alias_handler))
+            .route(
+                "/api/v0/alias/{id}",
+                axum::routing::delete(delete_alias_handler),
+            )
+            // Zone endpoints
+            .route("/api/v0/zones/list", get(list_zones_handler))
+            .route("/api/v0/zones/add", post(add_zone_handler))
+            .route("/api/v0/zone/{name}/get", get(get_zone_handler))
+            .route("/api/v0/zone/{name}/update", post(update_zone_handler))
+            .route("/api/v0/zone/{name}/delete", get(delete_zone_handler))
+            .route("/api/v0/zone/{name}/apply", get(apply_zone_handler))
+            // Curve endpoints
+            .route("/api/v0/curves/list", get(list_curves_handler))
+            .route("/api/v0/curves/add", post(add_curve_handler))
+            .route("/api/v0/curve/{name}/get", get(get_curve_handler))
+            .route("/api/v0/curve/{name}/update", post(update_curve_handler))
+            .route(
+                "/api/v0/curve/{name}",
+                axum::routing::delete(delete_curve_handler),
+            )
+            .route(
+                "/api/v0/curve/{name}/interpolate",
+                get(interpolate_curve_handler),
+            )
+            // CFM endpoints
+            .route("/api/v0/cfm/list", get(list_cfm_handler))
+            .route(
+                "/api/v0/cfm/{port}",
+                get(get_cfm_handler)
+                    .post(set_cfm_handler)
+                    .delete(delete_cfm_handler),
+            )
             .with_state(self.state.clone())
     }
 }
 
 // Handler functions
 
-async fn root_handler() -> Json<ApiResponse<serde_json::Value>> {
+async fn root_handler() -> Json<api::ApiResponse<serde_json::Value>> {
     let data = serde_json::json!({
         "service": "OpenFAN Controller API Server",
         "status": "ok",
         "version": "1.0.0-test"
     });
-    Json(ApiResponse::success(data))
+    Json(api::ApiResponse::success(data))
 }
 
 async fn info_handler(
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Json<ApiResponse<InfoResponse>> {
+) -> Json<api::ApiResponse<api::InfoResponse>> {
     let info = state.info.lock().unwrap().clone();
-    Json(ApiResponse::success(info))
+    Json(api::ApiResponse::success(info))
 }
 
 async fn fan_status_handler(
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Json<ApiResponse<FanStatusResponse>> {
+) -> Json<api::ApiResponse<api::FanStatusResponse>> {
     let rpms_str = state.rpms.lock().unwrap().clone();
     let pwms_str = state.pwms.lock().unwrap().clone();
 
@@ -239,15 +329,15 @@ async fn fan_status_handler(
         .filter_map(|(k, v)| k.parse::<u8>().ok().map(|key| (key, *v)))
         .collect();
 
-    let response = FanStatusResponse { rpms, pwms };
-    Json(ApiResponse::success(response))
+    let response = api::FanStatusResponse { rpms, pwms };
+    Json(api::ApiResponse::success(response))
 }
 
 async fn set_fan_pwm_handler(
     Path(id): Path<u8>,
     Query(params): Query<FanControlQuery>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
     // Validate fan ID
     if id > 9 {
         return Err(StatusCode::BAD_REQUEST);
@@ -268,14 +358,14 @@ async fn set_fan_pwm_handler(
         .lock()
         .unwrap()
         .insert(id.to_string(), params.value);
-    Ok(Json(ApiResponse::success(())))
+    Ok(Json(api::ApiResponse::success(())))
 }
 
 async fn set_fan_rpm_handler(
     Path(id): Path<u8>,
     Query(params): Query<FanControlQuery>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
     // Validate fan ID
     if id > 9 {
         return Err(StatusCode::BAD_REQUEST);
@@ -296,13 +386,13 @@ async fn set_fan_rpm_handler(
         .lock()
         .unwrap()
         .insert(id.to_string(), params.value);
-    Ok(Json(ApiResponse::success(())))
+    Ok(Json(api::ApiResponse::success(())))
 }
 
 async fn get_fan_rpm_handler(
     Path(id): Path<u8>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<u32>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<u32>>, StatusCode> {
     // Validate fan ID
     if id > 9 {
         return Err(StatusCode::BAD_REQUEST);
@@ -315,21 +405,21 @@ async fn get_fan_rpm_handler(
         .copied()
         .unwrap_or(1000 + (id as u32) * 100); // Default values
 
-    Ok(Json(ApiResponse::success(rpm)))
+    Ok(Json(api::ApiResponse::success(rpm)))
 }
 
 async fn list_profiles_handler(
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Json<ApiResponse<ProfileResponse>> {
+) -> Json<api::ApiResponse<api::ProfileResponse>> {
     let profiles = state.profiles.lock().unwrap().clone();
-    let response = ProfileResponse { profiles };
-    Json(ApiResponse::success(response))
+    let response = api::ProfileResponse { profiles };
+    Json(api::ApiResponse::success(response))
 }
 
 async fn set_profile_handler(
     Query(params): Query<ProfileQuery>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
     let profiles = state.profiles.lock().unwrap();
     if let Some(profile) = profiles.get(&params.name) {
         // Apply the profile
@@ -347,7 +437,7 @@ async fn set_profile_handler(
                 }
             }
         }
-        Ok(Json(ApiResponse::success(())))
+        Ok(Json(api::ApiResponse::success(())))
     } else {
         Err(StatusCode::NOT_FOUND)
     }
@@ -356,15 +446,15 @@ async fn set_profile_handler(
 async fn add_profile_handler(
     axum::extract::State(state): axum::extract::State<MockServerState>,
     Json(req): Json<AddProfileRequest>,
-) -> Json<ApiResponse<()>> {
+) -> Json<api::ApiResponse<()>> {
     state.profiles.lock().unwrap().insert(req.name, req.profile);
-    Json(ApiResponse::success(()))
+    Json(api::ApiResponse::success(()))
 }
 
 async fn remove_profile_handler(
     Query(params): Query<ProfileQuery>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
     if state
         .profiles
         .lock()
@@ -372,7 +462,7 @@ async fn remove_profile_handler(
         .remove(&params.name)
         .is_some()
     {
-        Ok(Json(ApiResponse::success(())))
+        Ok(Json(api::ApiResponse::success(())))
     } else {
         Err(StatusCode::NOT_FOUND)
     }
@@ -380,7 +470,7 @@ async fn remove_profile_handler(
 
 async fn get_all_aliases_handler(
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Json<ApiResponse<AliasResponse>> {
+) -> Json<api::ApiResponse<api::AliasResponse>> {
     let aliases_str = state.aliases.lock().unwrap().clone();
 
     // Convert string keys to u8 keys
@@ -389,14 +479,14 @@ async fn get_all_aliases_handler(
         .filter_map(|(k, v)| k.parse::<u8>().ok().map(|key| (key, v.clone())))
         .collect();
 
-    let response = AliasResponse { aliases };
-    Json(ApiResponse::success(response))
+    let response = api::AliasResponse { aliases };
+    Json(api::ApiResponse::success(response))
 }
 
 async fn get_alias_handler(
     Path(id): Path<u8>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<AliasResponse>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<api::AliasResponse>>, StatusCode> {
     if id > 9 {
         return Err(StatusCode::BAD_REQUEST);
     }
@@ -406,25 +496,25 @@ async fn get_alias_handler(
     if let Some(alias) = aliases.get(&id.to_string()) {
         result.insert(id, alias.clone());
     }
-    let response = AliasResponse { aliases: result };
-    Ok(Json(ApiResponse::success(response)))
+    let response = api::AliasResponse { aliases: result };
+    Ok(Json(api::ApiResponse::success(response)))
 }
 
 async fn set_alias_handler(
     Path(id): Path<u8>,
     Query(params): Query<AliasQuery>,
     axum::extract::State(state): axum::extract::State<MockServerState>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
     // Validate fan ID
     if id > 9 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
     // Validate alias isn't empty and isn't too long
-    if params.alias.trim().is_empty() {
+    if params.value.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    if params.alias.len() > 50 {
+    if params.value.len() > 50 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
@@ -432,8 +522,281 @@ async fn set_alias_handler(
         .aliases
         .lock()
         .unwrap()
-        .insert(id.to_string(), params.alias.trim().to_string());
-    Ok(Json(ApiResponse::success(())))
+        .insert(id.to_string(), params.value.trim().to_string());
+    Ok(Json(api::ApiResponse::success(())))
+}
+
+async fn delete_alias_handler(
+    Path(id): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    if id > 9 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Reset to default alias
+    state
+        .aliases
+        .lock()
+        .unwrap()
+        .insert(id.to_string(), format!("Fan #{}", id + 1));
+    Ok(Json(api::ApiResponse::success(())))
+}
+
+// Zone handlers
+
+async fn list_zones_handler(
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Json<api::ApiResponse<api::ZoneResponse>> {
+    let zones = state.zones.lock().unwrap().clone();
+    let response = api::ZoneResponse { zones };
+    Json(api::ApiResponse::success(response))
+}
+
+async fn get_zone_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<api::SingleZoneResponse>>, StatusCode> {
+    let zones = state.zones.lock().unwrap();
+    if let Some(zone) = zones.get(&name) {
+        let response = api::SingleZoneResponse { zone: zone.clone() };
+        Ok(Json(api::ApiResponse::success(response)))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn add_zone_handler(
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+    Json(req): Json<api::AddZoneRequest>,
+) -> Json<api::ApiResponse<()>> {
+    let zone = Zone {
+        name: req.name.clone(),
+        port_ids: req.port_ids,
+        description: req.description,
+    };
+    state.zones.lock().unwrap().insert(req.name, zone);
+    Json(api::ApiResponse::success(()))
+}
+
+async fn update_zone_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+    Json(req): Json<api::UpdateZoneRequest>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    let mut zones = state.zones.lock().unwrap();
+    match zones.entry(name.clone()) {
+        std::collections::hash_map::Entry::Occupied(mut entry) => {
+            let zone = Zone {
+                name,
+                port_ids: req.port_ids,
+                description: req.description,
+            };
+            entry.insert(zone);
+            Ok(Json(api::ApiResponse::success(())))
+        }
+        std::collections::hash_map::Entry::Vacant(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn delete_zone_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    if state.zones.lock().unwrap().remove(&name).is_some() {
+        Ok(Json(api::ApiResponse::success(())))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+/// Query parameters for zone apply
+#[derive(Debug, Deserialize)]
+struct ZoneApplyQuery {
+    mode: String,
+    value: u16,
+}
+
+async fn apply_zone_handler(
+    Path(name): Path<String>,
+    Query(params): Query<ZoneApplyQuery>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    let zone = {
+        let zones = state.zones.lock().unwrap();
+        zones.get(&name).cloned()
+    };
+
+    if let Some(zone) = zone {
+        match params.mode.as_str() {
+            "pwm" => {
+                let mut pwms = state.pwms.lock().unwrap();
+                for port_id in &zone.port_ids {
+                    pwms.insert(port_id.to_string(), params.value as u32);
+                }
+            }
+            "rpm" => {
+                let mut rpms = state.rpms.lock().unwrap();
+                for port_id in &zone.port_ids {
+                    rpms.insert(port_id.to_string(), params.value as u32);
+                }
+            }
+            _ => return Err(StatusCode::BAD_REQUEST),
+        }
+        Ok(Json(api::ApiResponse::success(())))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+// Curve handlers
+
+async fn list_curves_handler(
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Json<api::ApiResponse<api::ThermalCurveResponse>> {
+    let curves = state.curves.lock().unwrap().clone();
+    let response = api::ThermalCurveResponse { curves };
+    Json(api::ApiResponse::success(response))
+}
+
+async fn get_curve_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<api::SingleCurveResponse>>, StatusCode> {
+    let curves = state.curves.lock().unwrap();
+    if let Some(curve) = curves.get(&name) {
+        let response = api::SingleCurveResponse {
+            curve: curve.clone(),
+        };
+        Ok(Json(api::ApiResponse::success(response)))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn add_curve_handler(
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+    Json(req): Json<api::AddCurveRequest>,
+) -> Json<api::ApiResponse<()>> {
+    let curve = ThermalCurve {
+        name: req.name.clone(),
+        points: req.points,
+        description: req.description,
+    };
+    state.curves.lock().unwrap().insert(req.name, curve);
+    Json(api::ApiResponse::success(()))
+}
+
+async fn update_curve_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+    Json(req): Json<api::UpdateCurveRequest>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    let mut curves = state.curves.lock().unwrap();
+    match curves.entry(name.clone()) {
+        std::collections::hash_map::Entry::Occupied(mut entry) => {
+            let curve = ThermalCurve {
+                name,
+                points: req.points,
+                description: req.description,
+            };
+            entry.insert(curve);
+            Ok(Json(api::ApiResponse::success(())))
+        }
+        std::collections::hash_map::Entry::Vacant(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn delete_curve_handler(
+    Path(name): Path<String>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    if state.curves.lock().unwrap().remove(&name).is_some() {
+        Ok(Json(api::ApiResponse::success(())))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+/// Query parameters for curve interpolation
+#[derive(Debug, Deserialize)]
+struct InterpolateQuery {
+    temp: f32,
+}
+
+async fn interpolate_curve_handler(
+    Path(name): Path<String>,
+    Query(params): Query<InterpolateQuery>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<api::InterpolateResponse>>, StatusCode> {
+    let curves = state.curves.lock().unwrap();
+    if let Some(curve) = curves.get(&name) {
+        // Simple linear interpolation
+        let pwm = curve.interpolate(params.temp);
+        let response = api::InterpolateResponse {
+            temperature: params.temp,
+            pwm,
+        };
+        Ok(Json(api::ApiResponse::success(response)))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+// CFM handlers
+
+async fn list_cfm_handler(
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Json<api::ApiResponse<api::CfmListResponse>> {
+    let mappings = state.cfm_mappings.lock().unwrap().clone();
+    let response = api::CfmListResponse { mappings };
+    Json(api::ApiResponse::success(response))
+}
+
+async fn get_cfm_handler(
+    Path(port): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<api::CfmGetResponse>>, StatusCode> {
+    let mappings = state.cfm_mappings.lock().unwrap();
+    if let Some(&cfm) = mappings.get(&port) {
+        let response = api::CfmGetResponse {
+            port,
+            cfm_at_100: cfm,
+        };
+        Ok(Json(api::ApiResponse::success(response)))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+async fn set_cfm_handler(
+    Path(port): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+    Json(req): Json<api::SetCfmRequest>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    if port > 9 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if req.cfm_at_100 <= 0.0 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    state
+        .cfm_mappings
+        .lock()
+        .unwrap()
+        .insert(port, req.cfm_at_100);
+    Ok(Json(api::ApiResponse::success(())))
+}
+
+async fn delete_cfm_handler(
+    Path(port): Path<u8>,
+    axum::extract::State(state): axum::extract::State<MockServerState>,
+) -> Result<Json<api::ApiResponse<()>>, StatusCode> {
+    if state.cfm_mappings.lock().unwrap().remove(&port).is_some() {
+        Ok(Json(api::ApiResponse::success(())))
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
 }
 
 #[cfg(test)]
@@ -467,10 +830,10 @@ mod tests {
             .unwrap();
 
         assert!(response.status().is_success());
-        let json: ApiResponse<InfoResponse> = response.json().await.unwrap();
+        let json: api::ApiResponse<api::InfoResponse> = response.json().await.unwrap();
 
         match json {
-            ApiResponse::Success { data } => {
+            api::ApiResponse::Success { data } => {
                 assert_eq!(data.version, "1.0.0-test");
                 assert!(data.hardware_connected);
             }
@@ -491,10 +854,10 @@ mod tests {
             .unwrap();
 
         assert!(response.status().is_success());
-        let json: ApiResponse<FanStatusResponse> = response.json().await.unwrap();
+        let json: api::ApiResponse<api::FanStatusResponse> = response.json().await.unwrap();
 
         match json {
-            ApiResponse::Success { data } => {
+            api::ApiResponse::Success { data } => {
                 assert_eq!(data.rpms.len(), 10);
                 assert_eq!(data.pwms.len(), 10);
                 assert!(data.rpms.contains_key(&0));
@@ -539,9 +902,9 @@ mod tests {
             .unwrap();
         assert!(response.status().is_success());
 
-        let json: ApiResponse<ProfileResponse> = response.json().await.unwrap();
+        let json: api::ApiResponse<api::ProfileResponse> = response.json().await.unwrap();
         match json {
-            ApiResponse::Success { data } => {
+            api::ApiResponse::Success { data } => {
                 assert!(data.profiles.contains_key("50% PWM"));
                 assert!(data.profiles.contains_key("100% PWM"));
                 assert!(data.profiles.contains_key("1000 RPM"));
@@ -575,7 +938,7 @@ mod tests {
 
         // Set alias
         let response = client
-            .get(format!("{}/api/v0/alias/0/set?alias=CPU Fan", url))
+            .get(format!("{}/api/v0/alias/0/set?value=CPU Fan", url))
             .send()
             .await
             .unwrap();

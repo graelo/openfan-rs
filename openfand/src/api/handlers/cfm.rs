@@ -7,7 +7,7 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use openfan_core::api::{ApiResponse, CfmGetResponse, CfmListResponse, SetCfmRequest};
+use openfan_core::api;
 use openfan_core::config::CfmMappingData;
 use tracing::{debug, info};
 
@@ -20,13 +20,13 @@ use tracing::{debug, info};
 /// `GET /api/v0/cfm/list`
 pub(crate) async fn list_cfm(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<CfmListResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::CfmListResponse>>, ApiError> {
     debug!("Request: GET /api/v0/cfm/list");
 
     let cfm_data = state.config.cfm_mappings().await;
     let mappings = cfm_data.mappings.clone();
 
-    let response = CfmListResponse { mappings };
+    let response = api::CfmListResponse { mappings };
 
     info!("Listed {} CFM mappings", response.mappings.len());
     api_ok!(response)
@@ -46,7 +46,7 @@ pub(crate) async fn list_cfm(
 pub(crate) async fn get_cfm(
     State(state): State<AppState>,
     Path(port): Path<String>,
-) -> Result<Json<ApiResponse<CfmGetResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::CfmGetResponse>>, ApiError> {
     debug!("Request: GET /api/v0/cfm/{}", port);
 
     // Parse and validate port ID
@@ -61,7 +61,7 @@ pub(crate) async fn get_cfm(
 
     match cfm_data.get(port_id) {
         Some(cfm_at_100) => {
-            let response = CfmGetResponse {
+            let response = api::CfmGetResponse {
                 port: port_id,
                 cfm_at_100,
             };
@@ -97,8 +97,8 @@ pub(crate) async fn get_cfm(
 pub(crate) async fn set_cfm(
     State(state): State<AppState>,
     Path(port): Path<String>,
-    Json(request): Json<SetCfmRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::SetCfmRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/cfm/{}", port);
 
     // Parse and validate port ID
@@ -149,7 +149,7 @@ pub(crate) async fn set_cfm(
 pub(crate) async fn delete_cfm(
     State(state): State<AppState>,
     Path(port): Path<String>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: DELETE /api/v0/cfm/{}", port);
 
     // Parse and validate port ID
@@ -288,30 +288,30 @@ mod tests {
 
     #[test]
     fn test_set_cfm_request_deserialization() {
-        use openfan_core::api::SetCfmRequest;
+        use openfan_core::api;
 
         let json = r#"{"cfm_at_100": 45.0}"#;
-        let request: SetCfmRequest = serde_json::from_str(json).unwrap();
+        let request: api::SetCfmRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.cfm_at_100, 45.0);
     }
 
     #[test]
     fn test_set_cfm_request_with_integer() {
-        use openfan_core::api::SetCfmRequest;
+        use openfan_core::api;
 
         // Integer should parse as f64
         let json = r#"{"cfm_at_100": 100}"#;
-        let request: SetCfmRequest = serde_json::from_str(json).unwrap();
+        let request: api::SetCfmRequest = serde_json::from_str(json).unwrap();
         assert_eq!(request.cfm_at_100, 100.0);
     }
 
     #[test]
     fn test_cfm_response_structures() {
-        use openfan_core::api::{CfmGetResponse, CfmListResponse};
+        use openfan_core::api;
         use std::collections::HashMap;
 
         // CfmGetResponse
-        let get_response = CfmGetResponse {
+        let get_response = api::CfmGetResponse {
             port: 5,
             cfm_at_100: 45.0,
         };
@@ -322,7 +322,7 @@ mod tests {
         let mut mappings = HashMap::new();
         mappings.insert(0, 30.0);
         mappings.insert(5, 45.0);
-        let list_response = CfmListResponse { mappings };
+        let list_response = api::CfmListResponse { mappings };
         assert_eq!(list_response.mappings.len(), 2);
         assert_eq!(list_response.mappings.get(&0), Some(&30.0));
         assert_eq!(list_response.mappings.get(&5), Some(&45.0));

@@ -4,7 +4,7 @@ use crate::api::error::ApiError;
 use crate::api::AppState;
 
 use axum::{extract::State, Json};
-use openfan_core::api::{ApiResponse, InfoResponse};
+use openfan_core::api;
 use serde_json::{json, Value};
 use tracing::{debug, warn};
 
@@ -20,7 +20,7 @@ use tracing::{debug, warn};
 /// # Returns
 ///
 /// Return service name, version, and status.
-pub(crate) async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
+pub(crate) async fn root() -> Result<Json<api::ApiResponse<Value>>, ApiError> {
     debug!("Request: GET /");
 
     let data = json!({
@@ -29,7 +29,7 @@ pub(crate) async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
         "status": "ok"
     });
 
-    Ok(Json(ApiResponse::success(data)))
+    Ok(Json(api::ApiResponse::success(data)))
 }
 
 /// Retrieve comprehensive system information.
@@ -56,7 +56,7 @@ pub(crate) async fn root() -> Result<Json<ApiResponse<Value>>, ApiError> {
 /// - Hardware/firmware queries are logged but failures don't cause errors
 pub(crate) async fn get_info(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<InfoResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::InfoResponse>>, ApiError> {
     debug!("Request: GET /api/v0/info");
 
     let hardware_connected = state.fan_controller.is_some();
@@ -98,7 +98,7 @@ pub(crate) async fn get_info(
         (None, None)
     };
 
-    let info_response = InfoResponse {
+    let info_response = api::InfoResponse {
         version: "1.0.0".to_string(),
         board_info: (*state.board_info).clone(),
         hardware_connected,
@@ -108,32 +108,33 @@ pub(crate) async fn get_info(
         firmware: firmware_info,
     };
 
-    Ok(Json(ApiResponse::success(info_response)))
+    Ok(Json(api::ApiResponse::success(info_response)))
 }
 
 #[cfg(test)]
 mod tests {
-    use openfan_core::api::{ApiResponse, InfoResponse};
+    use openfan_core::api;
     use openfan_core::board::BoardType;
     use serde_json::Value;
 
     #[test]
     fn test_api_response_success() {
-        let response: ApiResponse<Value> = ApiResponse::success(serde_json::json!({"test": 1}));
+        let response: api::ApiResponse<Value> =
+            api::ApiResponse::success(serde_json::json!({"test": 1}));
         match response {
-            ApiResponse::Success { data } => {
+            api::ApiResponse::Success { data } => {
                 assert_eq!(data["test"], 1);
             }
-            ApiResponse::Error { .. } => panic!("Expected success response"),
+            api::ApiResponse::Error { .. } => panic!("Expected success response"),
         }
     }
 
     #[test]
     fn test_api_response_error() {
-        let response: ApiResponse<()> = ApiResponse::error("test error".to_string());
+        let response: api::ApiResponse<()> = api::ApiResponse::error("test error".to_string());
         match response {
-            ApiResponse::Success { .. } => panic!("Expected error response"),
-            ApiResponse::Error { error } => {
+            api::ApiResponse::Success { .. } => panic!("Expected error response"),
+            api::ApiResponse::Error { error } => {
                 assert_eq!(error, "test error");
             }
         }
@@ -143,7 +144,7 @@ mod tests {
     fn test_info_response_structure() {
         let board_info = BoardType::OpenFanStandard.to_board_info();
 
-        let info = InfoResponse {
+        let info = api::InfoResponse {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: true,
@@ -164,7 +165,7 @@ mod tests {
     fn test_info_response_without_hardware() {
         let board_info = BoardType::OpenFanStandard.to_board_info();
 
-        let info = InfoResponse {
+        let info = api::InfoResponse {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: false,
@@ -183,7 +184,7 @@ mod tests {
     fn test_info_response_serialization() {
         let board_info = BoardType::OpenFanStandard.to_board_info();
 
-        let info = InfoResponse {
+        let info = api::InfoResponse {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: true,

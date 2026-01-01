@@ -34,24 +34,9 @@ pub async fn handle_status(client: &OpenFanClient, format: &OutputFormat) -> Res
     // Try to fetch CFM mappings (optional, don't fail if unavailable)
     let cfm_mappings = client.get_cfm_mappings().await.ok();
 
-    match format {
-        OutputFormat::Json => {
-            let formatted = crate::format::format_fan_status_with_cfm(
-                &status,
-                cfm_mappings.as_ref(),
-                &format.into(),
-            )?;
-            println!("{}", formatted);
-        }
-        OutputFormat::Table => {
-            let formatted = crate::format::format_fan_status_with_cfm(
-                &status,
-                cfm_mappings.as_ref(),
-                &format.into(),
-            )?;
-            println!("{}", formatted);
-        }
-    }
+    let formatted =
+        crate::format::format_fan_status_with_cfm(&status, cfm_mappings.as_ref(), &format.into())?;
+    println!("{}", formatted);
 
     Ok(())
 }
@@ -613,4 +598,605 @@ pub fn generate_completion(shell: clap_complete::Shell) {
     let mut cmd = Cli::command();
     let bin_name = cmd.get_name().to_string();
     generate(shell, &mut cmd, bin_name, &mut io::stdout());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::client::OpenFanClient;
+    use crate::test_utils::MockServer;
+    use std::time::Duration;
+
+    /// Create a test client connected to a mock server
+    async fn create_test_client() -> (MockServer, OpenFanClient) {
+        let mock = MockServer::new();
+        let (mock, url) = mock.start().await.unwrap();
+        let client = OpenFanClient::with_config(url, 10, 3, Duration::from_millis(500))
+            .await
+            .unwrap();
+        (mock, client)
+    }
+
+    // ==================== handle_info tests ====================
+
+    #[tokio::test]
+    async fn test_handle_info_json() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_info(&client, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_info_table() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_info(&client, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_status tests ====================
+
+    #[tokio::test]
+    async fn test_handle_status_json() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_status(&client, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_status_table() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_status(&client, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_fan tests ====================
+
+    #[tokio::test]
+    async fn test_handle_fan_set_pwm() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Set {
+            fan_id: 0,
+            pwm: Some(75),
+            rpm: None,
+        };
+        let result = handle_fan(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_set_rpm() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Set {
+            fan_id: 0,
+            pwm: None,
+            rpm: Some(1500),
+        };
+        let result = handle_fan(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_set_neither_pwm_nor_rpm() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Set {
+            fan_id: 0,
+            pwm: None,
+            rpm: None,
+        };
+        let result = handle_fan(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Must specify either --pwm or --rpm"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_get_rpm_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Rpm { fan_id: 0 };
+        let result = handle_fan(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_get_rpm_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Rpm { fan_id: 0 };
+        let result = handle_fan(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_get_pwm_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Pwm { fan_id: 0 };
+        let result = handle_fan(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_fan_get_pwm_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = FanCommands::Pwm { fan_id: 0 };
+        let result = handle_fan(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_profile tests ====================
+
+    #[tokio::test]
+    async fn test_handle_profile_list_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::List;
+        let result = handle_profile(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_list_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::List;
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_apply() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::Apply {
+            name: "50% PWM".to_string(),
+        };
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_add_pwm() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::Add {
+            name: "test_profile".to_string(),
+            mode: ProfileMode::Pwm,
+            values: "50,50,50,50,50,50,50,50,50,50".to_string(),
+        };
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_add_rpm() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::Add {
+            name: "test_rpm_profile".to_string(),
+            mode: ProfileMode::Rpm,
+            values: "1000,1000,1000,1000,1000,1000,1000,1000,1000,1000".to_string(),
+        };
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_add_invalid_values() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::Add {
+            name: "bad_profile".to_string(),
+            mode: ProfileMode::Pwm,
+            values: "not,valid,numbers".to_string(),
+        };
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_handle_profile_remove() {
+        let (_mock, client) = create_test_client().await;
+        let command = ProfileCommands::Remove {
+            name: "50% PWM".to_string(),
+        };
+        let result = handle_profile(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_alias tests ====================
+
+    #[tokio::test]
+    async fn test_handle_alias_list_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::List;
+        let result = handle_alias(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_alias_list_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::List;
+        let result = handle_alias(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_alias_get_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::Get { fan_id: 0 };
+        let result = handle_alias(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_alias_get_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::Get { fan_id: 0 };
+        let result = handle_alias(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_alias_set() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::Set {
+            fan_id: 0,
+            name: "CPU Fan".to_string(),
+        };
+        let result = handle_alias(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_zone tests ====================
+
+    #[tokio::test]
+    async fn test_handle_zone_list_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::List;
+        let result = handle_zone(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_list_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::List;
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_get_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Get {
+            name: "cpu".to_string(),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_get_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Get {
+            name: "cpu".to_string(),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_add() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Add {
+            name: "new_zone".to_string(),
+            ports: "4,5,6".to_string(),
+            description: Some("New zone for testing".to_string()),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_update() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Update {
+            name: "cpu".to_string(),
+            ports: "0,1,2".to_string(),
+            description: Some("Updated CPU zone".to_string()),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Delete {
+            name: "cpu".to_string(),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_apply_pwm() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Apply {
+            name: "cpu".to_string(),
+            pwm: Some(75),
+            rpm: None,
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_apply_rpm() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Apply {
+            name: "cpu".to_string(),
+            pwm: None,
+            rpm: Some(1500),
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_zone_apply_neither() {
+        let (_mock, client) = create_test_client().await;
+        let command = ZoneCommands::Apply {
+            name: "cpu".to_string(),
+            pwm: None,
+            rpm: None,
+        };
+        let result = handle_zone(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Must specify either --pwm or --rpm"));
+    }
+
+    // ==================== handle_curve tests ====================
+
+    #[tokio::test]
+    async fn test_handle_curve_list_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::List;
+        let result = handle_curve(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_list_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::List;
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_get_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Get {
+            name: "default".to_string(),
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_get_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Get {
+            name: "default".to_string(),
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_add() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Add {
+            name: "aggressive".to_string(),
+            points: "20:30,40:50,60:80,80:100".to_string(),
+            description: Some("Aggressive cooling curve".to_string()),
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_add_invalid_points() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Add {
+            name: "bad_curve".to_string(),
+            points: "invalid:points".to_string(),
+            description: None,
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_update() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Update {
+            name: "default".to_string(),
+            points: "25:20,50:50,75:80,90:100".to_string(),
+            description: Some("Updated default curve".to_string()),
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Delete {
+            name: "default".to_string(),
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_interpolate_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Interpolate {
+            name: "default".to_string(),
+            temp: 45.0,
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_curve_interpolate_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = CurveCommands::Interpolate {
+            name: "default".to_string(),
+            temp: 60.0,
+        };
+        let result = handle_curve(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_cfm tests ====================
+
+    #[tokio::test]
+    async fn test_handle_cfm_list_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::List;
+        let result = handle_cfm(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_cfm_list_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::List;
+        let result = handle_cfm(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_cfm_get_json() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::Get { port: 0 };
+        let result = handle_cfm(&client, command, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_cfm_get_table() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::Get { port: 0 };
+        let result = handle_cfm(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_cfm_set() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::Set {
+            port: 2,
+            cfm_at_100: 55.0,
+        };
+        let result = handle_cfm(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_cfm_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = CfmCommands::Delete { port: 0 };
+        let result = handle_cfm(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_alias delete test ====================
+
+    #[tokio::test]
+    async fn test_handle_alias_delete() {
+        let (_mock, client) = create_test_client().await;
+        let command = AliasCommands::Delete { fan_id: 0 };
+        let result = handle_alias(&client, command, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_health tests ====================
+
+    #[tokio::test]
+    async fn test_handle_health_json() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_health(&client, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_health_table() {
+        let (_mock, client) = create_test_client().await;
+        let result = handle_health(&client, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    // ==================== handle_config tests ====================
+
+    #[tokio::test]
+    async fn test_handle_config_show_json() {
+        let config = CliConfig::default();
+        let result = handle_config(ConfigCommands::Show, &config, &OutputFormat::Json).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_show_table() {
+        let config = CliConfig::default();
+        let result = handle_config(ConfigCommands::Show, &config, &OutputFormat::Table).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_key() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "invalid_key".to_string(),
+            value: "some_value".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Unknown config key"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_output_format() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "output_format".to_string(),
+            value: "invalid".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid output format"));
+    }
+
+    #[tokio::test]
+    async fn test_handle_config_set_invalid_timeout() {
+        let config = CliConfig::default();
+        let command = ConfigCommands::Set {
+            key: "timeout".to_string(),
+            value: "not_a_number".to_string(),
+        };
+        let result = handle_config(command, &config, &OutputFormat::Table).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid timeout value"));
+    }
 }

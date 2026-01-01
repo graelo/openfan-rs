@@ -7,13 +7,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
-use openfan_core::{
-    api::{
-        AddCurveRequest, ApiResponse, InterpolateResponse, SingleCurveResponse,
-        ThermalCurveResponse, UpdateCurveRequest,
-    },
-    CurvePoint, ThermalCurve,
-};
+use openfan_core::{api, CurvePoint, ThermalCurve};
 use serde::Deserialize;
 use tracing::{debug, info};
 
@@ -81,13 +75,13 @@ fn validate_points(points: &[CurvePoint]) -> Result<(), String> {
 /// `GET /api/v0/curves/list`
 pub(crate) async fn list_curves(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<ThermalCurveResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::ThermalCurveResponse>>, ApiError> {
     debug!("Request: GET /api/v0/curves/list");
 
     let curves = state.config.thermal_curves().await;
     let curve_map = curves.curves.clone();
 
-    let response = ThermalCurveResponse { curves: curve_map };
+    let response = api::ThermalCurveResponse { curves: curve_map };
 
     info!("Listed {} thermal curves", response.curves.len());
     api_ok!(response)
@@ -101,14 +95,14 @@ pub(crate) async fn list_curves(
 pub(crate) async fn get_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<SingleCurveResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::SingleCurveResponse>>, ApiError> {
     debug!("Request: GET /api/v0/curve/{}/get", name);
 
     let curves = state.config.thermal_curves().await;
 
     match curves.get(&name) {
         Some(curve) => {
-            let response = SingleCurveResponse {
+            let response = api::SingleCurveResponse {
                 curve: curve.clone(),
             };
             api_ok!(response)
@@ -148,8 +142,8 @@ pub(crate) async fn get_curve(
 /// ```
 pub(crate) async fn add_curve(
     State(state): State<AppState>,
-    Json(request): Json<AddCurveRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::AddCurveRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/curves/add");
 
     let curve_name = request.name.trim();
@@ -215,8 +209,8 @@ pub(crate) async fn add_curve(
 pub(crate) async fn update_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-    Json(request): Json<UpdateCurveRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+    Json(request): Json<api::UpdateCurveRequest>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/curve/{}/update", name);
 
     // Validate points
@@ -270,7 +264,7 @@ pub(crate) async fn update_curve(
 pub(crate) async fn delete_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: DELETE /api/v0/curve/{}", name);
 
     // Remove curve
@@ -306,7 +300,7 @@ pub(crate) async fn interpolate_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(params): Query<InterpolateQuery>,
-) -> Result<Json<ApiResponse<InterpolateResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::InterpolateResponse>>, ApiError> {
     debug!(
         "Request: GET /api/v0/curve/{}/interpolate?temp={}",
         name, params.temp
@@ -317,7 +311,7 @@ pub(crate) async fn interpolate_curve(
     match curves.get(&name) {
         Some(curve) => {
             let pwm = curve.interpolate(params.temp);
-            let response = InterpolateResponse {
+            let response = api::InterpolateResponse {
                 temperature: params.temp,
                 pwm,
             };
@@ -392,5 +386,396 @@ mod tests {
         let result = validate_points(&points);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("outside valid range"));
+    }
+}
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    struct TestApp {
+        router: Router,
+        _config_dir: TempDir,
+    }
+
+    impl TestApp {
+        async fn new() -> Self {
+            let board_info = BoardType::OpenFanStandard.to_board_info();
+            let config_dir = tempfile::tempdir().unwrap();
+
+            let data_dir = config_dir.path().join("data");
+            std::fs::create_dir_all(&data_dir).unwrap();
+
+            let data_dir_str = data_dir.to_string_lossy().replace('\\', "\\\\");
+            let config_content = format!(
+                r#"data_dir = "{}"
+
+[server]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+
+[hardware]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+"#,
+                data_dir_str
+            );
+
+            let config_path = config_dir.path().join("config.toml");
+            std::fs::write(&config_path, config_content).unwrap();
+
+            let config = RuntimeConfig::load(&config_path).await.unwrap();
+            let state = AppState::new(board_info, config, None);
+
+            TestApp {
+                router: create_router(state),
+                _config_dir: config_dir,
+            }
+        }
+
+        fn router(&self) -> Router {
+            self.router.clone()
+        }
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_curves() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/curves/list")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert!(data.get("curves").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_valid() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "test-curve", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_with_description() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "described-curve", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}], "description": "A test curve"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_invalid_name() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "invalid name", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_too_few_points() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "one-point", "points": [{"temp_c": 50.0, "pwm": 50}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_wrong_temp_order() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "wrong-order", "points": [{"temp_c": 80.0, "pwm": 100}, {"temp_c": 30.0, "pwm": 25}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_curve_pwm_too_high() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "high-pwm", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 150}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_get_curve_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/curve/nonexistent/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_get_curve() {
+        let app = TestApp::new().await;
+
+        // Add curve
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "to-get", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Get curve
+        let get_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/curve/to-get/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_delete_curve_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/api/v0/curve/nonexistent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_delete_curve() {
+        let app = TestApp::new().await;
+
+        // Add curve
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "to-delete", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Delete curve
+        let delete_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::DELETE)
+                    .uri("/api/v0/curve/to-delete")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_interpolate_curve_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/curve/nonexistent/interpolate?temp=50.0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_interpolate_curve() {
+        let app = TestApp::new().await;
+
+        // Add curve
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/curves/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "interp-test", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Interpolate
+        let interp_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/curve/interp-test/interpolate?temp=55.0")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(interp_response.status(), StatusCode::OK);
+
+        let body = body_string(interp_response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert!(data.get("temperature").is_some());
+        assert!(data.get("pwm").is_some());
     }
 }

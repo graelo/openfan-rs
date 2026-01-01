@@ -7,10 +7,7 @@ use axum::{
     extract::{Query, State},
     Json,
 };
-use openfan_core::{
-    api::{ApiResponse, ProfileResponse},
-    ControlMode, FanProfile,
-};
+use openfan_core::{api, ControlMode, FanProfile};
 use serde::Deserialize;
 
 use tracing::{debug, info, warn};
@@ -40,13 +37,13 @@ pub(crate) struct AddProfileRequest {
 /// `GET /api/v0/profiles/list`
 pub(crate) async fn list_profiles(
     State(state): State<AppState>,
-) -> Result<Json<ApiResponse<ProfileResponse>>, ApiError> {
+) -> Result<Json<api::ApiResponse<api::ProfileResponse>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/list");
 
     let profiles = state.config.profiles().await;
     let fan_profiles = profiles.profiles.clone();
 
-    let response = ProfileResponse {
+    let response = api::ProfileResponse {
         profiles: fan_profiles,
     };
 
@@ -83,7 +80,7 @@ pub(crate) async fn list_profiles(
 pub(crate) async fn add_profile(
     State(state): State<AppState>,
     Json(request): Json<AddProfileRequest>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/profiles/add");
 
     let profile_name = request.name.trim();
@@ -159,7 +156,7 @@ pub(crate) async fn add_profile(
 pub(crate) async fn remove_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/remove");
 
     let Some(profile_name) = params.name else {
@@ -212,7 +209,7 @@ pub(crate) async fn remove_profile(
 pub(crate) async fn set_profile(
     State(state): State<AppState>,
     Query(params): Query<ProfileQuery>,
-) -> Result<Json<ApiResponse<()>>, ApiError> {
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: GET /api/v0/profiles/set");
 
     let Some(profile_name) = params.name else {
@@ -382,5 +379,371 @@ mod tests {
             rpm_boundary.values.iter().all(|&v| v <= 16000),
             "All RPM values should be valid"
         );
+    }
+}
+
+/// Integration tests that exercise actual HTTP handlers
+#[cfg(test)]
+mod integration_tests {
+    use axum::{
+        body::Body,
+        http::{Method, Request, StatusCode},
+        Router,
+    };
+    use http_body_util::BodyExt;
+    use openfan_core::BoardType;
+    use tempfile::TempDir;
+    use tower::ServiceExt;
+
+    use crate::api::{create_router, AppState};
+    use crate::config::RuntimeConfig;
+
+    struct TestApp {
+        router: Router,
+        _config_dir: TempDir,
+    }
+
+    impl TestApp {
+        async fn new() -> Self {
+            let board_info = BoardType::OpenFanStandard.to_board_info();
+            let config_dir = tempfile::tempdir().unwrap();
+
+            let data_dir = config_dir.path().join("data");
+            std::fs::create_dir_all(&data_dir).unwrap();
+
+            let data_dir_str = data_dir.to_string_lossy().replace('\\', "\\\\");
+            let config_content = format!(
+                r#"data_dir = "{}"
+
+[server]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+
+[hardware]
+hostname = "localhost"
+port = 3000
+communication_timeout = 1
+"#,
+                data_dir_str
+            );
+
+            let config_path = config_dir.path().join("config.toml");
+            std::fs::write(&config_path, config_content).unwrap();
+
+            let config = RuntimeConfig::load(&config_path).await.unwrap();
+            let state = AppState::new(board_info, config, None);
+
+            TestApp {
+                router: create_router(state),
+                _config_dir: config_dir,
+            }
+        }
+
+        fn router(&self) -> Router {
+            self.router.clone()
+        }
+    }
+
+    async fn body_string(body: Body) -> String {
+        let bytes = body.collect().await.unwrap().to_bytes();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_list_profiles() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/list")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = body_string(response.into_body()).await;
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let data = json.get("data").unwrap();
+        assert!(data.get("profiles").is_some());
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_valid_pwm() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "test_pwm", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_valid_rpm() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "test_rpm", "profile": {"type": "rpm", "values": [1000,1000,1000,1000,1000,1000,1000,1000,1000,1000]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_empty_name() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "  ", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_wrong_value_count() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "wrong_count", "profile": {"type": "pwm", "values": [50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_pwm_exceeds_limit() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "bad_pwm", "profile": {"type": "pwm", "values": [50,50,50,101,50,50,50,50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_profile_rpm_exceeds_limit() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "bad_rpm", "profile": {"type": "rpm", "values": [1000,1000,1000,16001,1000,1000,1000,1000,1000,1000]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_remove_profile_missing_name() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/remove")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_remove_profile_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/remove?name=nonexistent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_remove_profile() {
+        let app = TestApp::new().await;
+
+        // Add profile
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "to_remove", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Remove profile
+        let remove_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/remove?name=to_remove")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(remove_response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_profile_missing_name() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/set")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_set_profile_not_found() {
+        let app = TestApp::new().await;
+
+        let response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/set?name=nonexistent")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_add_then_set_profile_mock_mode() {
+        let app = TestApp::new().await;
+
+        // Add profile
+        let add_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/api/v0/profiles/add")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"name": "to_apply", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(add_response.status(), StatusCode::OK);
+
+        // Set/apply profile (mock mode - no hardware)
+        let set_response = app
+            .router()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/profiles/set?name=to_apply")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(set_response.status(), StatusCode::OK);
     }
 }
