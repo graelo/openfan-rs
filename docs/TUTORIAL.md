@@ -413,27 +413,27 @@ The server exposes a REST API on port 3000 (default).
 |----------|--------|-------------|
 | `/api/v0/info` | GET | Server info |
 | `/api/v0/fan/status` | GET | All fan status |
-| `/api/v0/fan/:id/pwm?value=N` | GET | Set fan PWM (0-100) |
-| `/api/v0/fan/:id/rpm?value=N` | GET | Set fan RPM target (500-9000) |
+| `/api/v0/fan/{id}/pwm?value=N` | GET | Set fan PWM (0-100) |
+| `/api/v0/fan/{id}/rpm?value=N` | GET | Set fan RPM target (500-9000) |
 | `/api/v0/profiles/list` | GET | List profiles |
 | `/api/v0/profiles/set?name=X` | GET | Apply profile |
 | `/api/v0/profiles/add` | POST | Add profile |
 | `/api/v0/alias/all/get` | GET | Get all aliases |
-| `/api/v0/alias/:id/set?value=X` | GET | Set alias |
-| `/api/v0/alias/:id` | DELETE | Delete alias (revert to default) |
+| `/api/v0/alias/{id}/set?value=X` | GET | Set alias |
+| `/api/v0/alias/{id}` | DELETE | Delete alias (revert to default) |
 | `/api/v0/zones/list` | GET | List zones |
 | `/api/v0/zones/add` | POST | Add zone |
-| `/api/v0/zone/:name/apply?mode=pwm&value=N` | GET | Apply to zone |
+| `/api/v0/zone/{name}/apply?mode=pwm&value=N` | GET | Apply to zone |
 | `/api/v0/curves/list` | GET | List thermal curves |
 | `/api/v0/curves/add` | POST | Add thermal curve |
-| `/api/v0/curve/:name/get` | GET | Get curve details |
-| `/api/v0/curve/:name/update` | POST | Update curve |
-| `/api/v0/curve/:name` | DELETE | Delete curve |
-| `/api/v0/curve/:name/interpolate?temp=N` | GET | Interpolate PWM for temperature |
+| `/api/v0/curve/{name}/get` | GET | Get curve details |
+| `/api/v0/curve/{name}/update` | POST | Update curve |
+| `/api/v0/curve/{name}` | DELETE | Delete curve |
+| `/api/v0/curve/{name}/interpolate?temp=N` | GET | Interpolate PWM for temperature |
 | `/api/v0/cfm/list` | GET | List CFM mappings |
-| `/api/v0/cfm/:port` | GET | Get CFM mapping for port |
-| `/api/v0/cfm/:port` | POST | Set CFM mapping `{"cfm_at_100": 45.0}` |
-| `/api/v0/cfm/:port` | DELETE | Delete CFM mapping |
+| `/api/v0/cfm/{port}` | GET | Get CFM mapping for port |
+| `/api/v0/cfm/{port}` | POST | Set CFM mapping `{"cfm_at_100": 45.0}` |
+| `/api/v0/cfm/{port}` | DELETE | Delete CFM mapping |
 
 ### Example API Calls
 

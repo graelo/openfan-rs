@@ -134,8 +134,8 @@ pub(crate) async fn set_all_fans(
 ///
 /// # Endpoints
 ///
-/// - `GET /api/v0/fan/:id/pwm?value=50` (current)
-/// - `GET /api/v0/fan/:id/set?value=50` (legacy)
+/// - `GET /api/v0/fan/{id}/pwm?value=50` (current)
+/// - `GET /api/v0/fan/{id}/set?value=50` (legacy)
 ///
 /// # Path Parameters
 ///
@@ -204,7 +204,7 @@ pub(crate) async fn set_fan_pwm(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/:id/rpm/get`
+/// `GET /api/v0/fan/{id}/rpm/get`
 ///
 /// # Path Parameters
 ///
@@ -256,7 +256,7 @@ pub(crate) async fn get_fan_rpm(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/:id/rpm?value=1000`
+/// `GET /api/v0/fan/{id}/rpm?value=1000`
 ///
 /// # Path Parameters
 ///

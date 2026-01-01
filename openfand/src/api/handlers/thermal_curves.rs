@@ -91,7 +91,7 @@ pub(crate) async fn list_curves(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/curve/:name/get`
+/// `GET /api/v0/curve/{name}/get`
 pub(crate) async fn get_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -192,7 +192,7 @@ pub(crate) async fn add_curve(
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/curve/:name/update`
+/// `POST /api/v0/curve/{name}/update`
 ///
 /// # Request Body
 ///
@@ -260,7 +260,7 @@ pub(crate) async fn update_curve(
 ///
 /// # Endpoint
 ///
-/// `DELETE /api/v0/curve/:name`
+/// `DELETE /api/v0/curve/{name}`
 pub(crate) async fn delete_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,
@@ -295,7 +295,7 @@ pub(crate) async fn delete_curve(
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/curve/:name/interpolate?temp=X`
+/// `GET /api/v0/curve/{name}/interpolate?temp=X`
 pub(crate) async fn interpolate_curve(
     State(state): State<AppState>,
     Path(name): Path<String>,

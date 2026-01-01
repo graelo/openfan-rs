@@ -1,8 +1,7 @@
 //! CLI command definitions and handlers
 //!
-//! This module organizes the CLI into logical submodules:
-//! - [`commands`] - Command and subcommand enum definitions
-//! - [`handlers`] - Command execution handlers
+//! This module organizes the CLI into logical submodules for command
+//! definitions and execution handlers.
 
 mod commands;
 mod handlers;
