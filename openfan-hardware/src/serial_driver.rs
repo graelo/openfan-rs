@@ -15,7 +15,7 @@ use tracing::{debug, error, warn};
 /// This trait enables testing of `FanController` without real hardware
 /// by allowing mock implementations.
 #[async_trait]
-pub trait SerialTransport: Send + Sync {
+pub trait SerialTransport: Send {
     /// Send a command and wait for response lines
     async fn transaction(&mut self, command: &str) -> Result<Vec<String>>;
 
