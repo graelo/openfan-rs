@@ -1,6 +1,7 @@
 //! Test utilities for CLI testing
 //!
-//! Provides mock server implementation and test helpers for integration testing.
+//! Provides a deterministic mock server implementation and test helpers for integration testing.
+//! The mock server simulates the OpenFAN REST API without random failures to ensure reliable CI/CD testing.
 
 use anyhow::Result;
 use axum::{
@@ -348,11 +349,6 @@ async fn set_fan_pwm_handler(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    // Simulate potential hardware communication failure (1% chance)
-    if rand::random::<f32>() < 0.01 {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
     state
         .pwms
         .lock()
@@ -374,11 +370,6 @@ async fn set_fan_rpm_handler(
     // Validate RPM range (0-10000 to match client validation)
     if params.value > 10000 {
         return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // Simulate potential hardware communication failure (1% chance)
-    if rand::random::<f32>() < 0.01 {
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     state

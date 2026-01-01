@@ -10,7 +10,7 @@ services:
     container_name: openfand
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "3000:3000"
     volumes:
       - openfan-config:/etc/openfan
       - openfan-data:/var/lib/openfan
@@ -27,12 +27,12 @@ services:
       - SYS_ADMIN
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml"]
+      - OPENFAN_CONFIG=/etc/openfan/config.toml
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml"]
     networks:
       - openfan-network
     healthcheck:
-      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:8080", "health"]
+      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:3000", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -44,19 +44,19 @@ services:
     container_name: openfand-mock
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "3001:3000"
     volumes:
       - openfan-config-mock:/etc/openfan
       - openfan-data-mock:/var/lib/openfan
       - openfan-logs-mock:/var/log/openfan
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
+      - OPENFAN_CONFIG=/etc/openfan/config.toml
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock"]
     networks:
       - openfan-network
     healthcheck:
-      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:8080", "health"]
+      test: ["/usr/local/bin/openfanctl", "--server", "http://localhost:3000", "health"]
       interval: 30s
       timeout: 10s
       retries: 3

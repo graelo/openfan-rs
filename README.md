@@ -114,13 +114,16 @@ OpenFAN discovers configuration using XDG paths with system fallback:
 Both `openfand` and `openfanctl` accept `--config` to override the default path.
 
 ```toml
+# Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
+data_dir = "/var/lib/openfan"
+
 [server]
 bind_address = "127.0.0.1"
 port = 3000
-
-[hardware]
-connection_type = "auto"        # Auto-detects USB device
+communication_timeout = 1
 ```
+
+Hardware detection is automatic via USB VID/PID. No hardware configuration needed.
 
 Data files (aliases, profiles, zones, thermal curves) are managed via CLI
 commands rather than edited directly. See the [Tutorial](docs/TUTORIAL.md) for

@@ -11,10 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added specific error variants for better error handling: `ZoneNotFound`, `CurveNotFound`, `CfmMappingNotFound`
 
 ### Changed
+- **Configuration format**: Replaced `config.yaml` with `config.toml` for all deployments
+- **Simplified configuration**: Removed `[hardware]` section from static config - hardware is now auto-detected via USB VID/PID
+- **Config structure**: Static config now only contains `server` settings and `data_dir` path
 - Removed `Sync` bound from `SerialTransport` trait for better flexibility with async mock implementations
+- Updated all deployment files (Dockerfile, docker-compose.yml, systemd service, install scripts) to use `config.toml`
 
 ### Fixed
 - Integration tests now run correctly in CI environment
+- Removed random failure simulation from test utilities that was causing flaky CI tests
 
 ## [0.1.0] - 2024-12-31
 

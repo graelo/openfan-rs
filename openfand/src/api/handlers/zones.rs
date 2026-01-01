@@ -452,12 +452,7 @@ mod integration_tests {
                 r#"data_dir = "{}"
 
 [server]
-hostname = "localhost"
-port = 3000
-communication_timeout = 1
-
-[hardware]
-hostname = "localhost"
+bind_address = "127.0.0.1"
 port = 3000
 communication_timeout = 1
 "#,

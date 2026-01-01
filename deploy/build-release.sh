@@ -147,10 +147,10 @@ cp "$TARGET_DIR/openfand" "$BUILD_DIR/"
     cp "$TARGET_DIR/openfanctl" "$BUILD_DIR/"
 
     # Copy configuration files
-    if [[ -f config.yaml ]]; then
-        cp config.yaml "$BUILD_DIR/"
+    if [[ -f config.toml ]]; then
+        cp config.toml "$BUILD_DIR/"
     else
-        print_warning "config.yaml not found, skipping."
+        print_warning "config.toml not found, skipping."
     fi
     if [[ -f README.md ]]; then
         cp README.md "$BUILD_DIR/"
@@ -256,7 +256,7 @@ echo "  3. Start service: sudo systemctl enable --now openfand"
     echo
     echo "Manual installation:"
     echo "  1. Copy binaries to desired location"
-    echo "  2. Copy config.yaml to /etc/openfan/"
+    echo "  2. Copy config.toml to /etc/openfan/"
 echo "  3. Set up systemd service using deploy/openfand.service"
     echo
     print_warning "Note: This build is optimized for $(uname -m) architecture"
