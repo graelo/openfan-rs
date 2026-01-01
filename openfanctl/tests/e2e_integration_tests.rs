@@ -3,15 +3,76 @@
 //! These tests spawn an actual server process and run CLI commands against it,
 //! testing the complete integration from CLI commands through the REST API
 //! to the server responses.
+//!
+//! **Important**: These tests require pre-built binaries. Run `cargo build` before
+//! running these tests. The tests use the pre-built binaries directly to avoid
+//! cargo lock contention when running tests in parallel.
 
 use anyhow::Result;
 use serde_json::Value;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
+
+/// Get the workspace root directory
+fn workspace_root() -> PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("Failed to get workspace root")
+        .to_path_buf()
+}
+
+/// Get the path to the openfand binary, ensuring it exists
+fn get_server_binary() -> PathBuf {
+    let binary = std::env::var("OPENFAND_BINARY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| workspace_root().join("target/debug/openfand"));
+
+    if !binary.exists() {
+        panic!(
+            "\n\n\
+            ╔═══════════════════════════════════════════════════════════════════╗\n\
+            ║  E2E Test Error: Server binary not found                          ║\n\
+            ║                                                                   ║\n\
+            ║  Expected binary at: {:<43} ║\n\
+            ║                                                                   ║\n\
+            ║  Please run 'cargo build' before running e2e tests.               ║\n\
+            ║  Or set OPENFAND_BINARY environment variable.                     ║\n\
+            ╚═══════════════════════════════════════════════════════════════════╝\n\n",
+            binary.display()
+        );
+    }
+
+    binary
+}
+
+/// Get the path to the openfanctl binary, ensuring it exists
+fn get_cli_binary() -> PathBuf {
+    let binary = std::env::var("OPENFANCTL_BINARY")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| workspace_root().join("target/debug/openfanctl"));
+
+    if !binary.exists() {
+        panic!(
+            "\n\n\
+            ╔═══════════════════════════════════════════════════════════════════╗\n\
+            ║  E2E Test Error: CLI binary not found                             ║\n\
+            ║                                                                   ║\n\
+            ║  Expected binary at: {:<43} ║\n\
+            ║                                                                   ║\n\
+            ║  Please run 'cargo build' before running e2e tests.               ║\n\
+            ║  Or set OPENFANCTL_BINARY environment variable.                   ║\n\
+            ╚═══════════════════════════════════════════════════════════════════╝\n\n",
+            binary.display()
+        );
+    }
+
+    binary
+}
 
 /// Test configuration
 const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -92,14 +153,11 @@ communication_timeout = 1
         std::fs::write(&config_path, config_content)?;
 
         // Start the server process in mock mode
-        let child = Command::new("cargo")
+        // Use pre-built binary to avoid cargo lock contention in parallel tests
+        let server_binary = get_server_binary();
+
+        let child = Command::new(&server_binary)
             .args([
-                "run",
-                "-p",
-                "openfand",
-                "--bin",
-                "openfand",
-                "--",
                 "--mock",
                 "--config",
                 &config_path.to_string_lossy(),
@@ -108,11 +166,10 @@ communication_timeout = 1
                 "--bind",
                 "127.0.0.1",
             ])
-            .current_dir(".")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
-            .expect("Failed to start server process");
+            .expect("Failed to spawn server process");
 
         // Assign child to process guard immediately
         *process_guard = Some(child);
@@ -216,28 +273,22 @@ communication_timeout = 1
 
     /// Run a CLI command and return the output
     pub async fn run_cli_command(&self, args: &[&str]) -> Result<std::process::Output> {
-        let mut cmd_args = vec![
-            "run",
-            "-p",
-            "openfanctl",
-            "--bin",
-            "openfanctl",
-            "--",
-            "--server",
-            &self.server_url,
-            "--no-config",
-        ];
+        // Use pre-built binary to avoid cargo lock contention in parallel tests
+        let cli_binary = get_cli_binary();
+
+        let mut cmd_args = vec!["--server", &self.server_url, "--no-config"];
         cmd_args.extend(args);
 
         let output = timeout(COMMAND_TIMEOUT, async {
-            Command::new("cargo")
+            Command::new(&cli_binary)
                 .args(&cmd_args)
-                .current_dir(".")
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
         })
-        .await??;
+        .await
+        .map_err(|_| anyhow::anyhow!("CLI command timed out after {:?}", COMMAND_TIMEOUT))?
+        .map_err(|e| anyhow::anyhow!("Failed to run CLI: {}", e))?;
 
         Ok(output)
     }
@@ -572,21 +623,13 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
 
     let server_port = 18500 + (std::process::id() % 100) as u16;
 
+    // Use pre-built binary to avoid cargo lock contention
+    let server_binary = get_server_binary();
+
     // Try to start server without --mock flag
     let output = timeout(Duration::from_secs(15), async {
-        Command::new("cargo")
-            .args([
-                "run",
-                "-p",
-                "openfand",
-                "--bin",
-                "openfand",
-                "--",
-                "--port",
-                &server_port.to_string(),
-                "--bind",
-                "127.0.0.1",
-            ])
+        Command::new(&server_binary)
+            .args(["--port", &server_port.to_string(), "--bind", "127.0.0.1"])
             .output()
     })
     .await??;
