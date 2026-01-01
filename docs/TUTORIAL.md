@@ -113,6 +113,19 @@ openfanctl config set server_url http://192.168.1.100:3000
 openfanctl config reset
 ```
 
+#### Environment Variables
+
+CLI settings can also be configured via environment variables (override config file):
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `OPENFAN_SERVER` | Server URL | `http://192.168.1.100:3000` |
+| `OPENFAN_FORMAT` | Output format | `json` or `table` |
+| `OPENFAN_TIMEOUT` | Request timeout (seconds) | `30` |
+| `OPENFAN_VERBOSE` | Verbose output | `true` or `false` |
+
+Priority: CLI flags > env vars > config file > defaults.
+
 ## Fan Control
 
 ### Individual Fan Control
