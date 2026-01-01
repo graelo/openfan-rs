@@ -1,6 +1,7 @@
 //! Test utilities for CLI testing
 //!
-//! Provides mock server implementation and test helpers for integration testing.
+//! Provides a deterministic mock server implementation and test helpers for integration testing.
+//! The mock server simulates the OpenFAN REST API without random failures to ensure reliable CI/CD testing.
 
 use anyhow::Result;
 use axum::{

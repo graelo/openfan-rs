@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Integration tests now run correctly in CI environment
+- Removed random failure simulation from test utilities that was causing flaky CI tests
 
 ## [0.1.0] - 2024-12-31
 
