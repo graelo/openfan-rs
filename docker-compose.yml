@@ -27,8 +27,8 @@ services:
       - SYS_ADMIN
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml"]
+      - OPENFAN_CONFIG=/etc/openfan/config.toml
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml"]
     networks:
       - openfan-network
     healthcheck:
@@ -51,8 +51,8 @@ services:
       - openfan-logs-mock:/var/log/openfan
     environment:
       - RUST_LOG=info
-      - OPENFAN_CONFIG=/etc/openfan/config.yaml
-    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock"]
+      - OPENFAN_CONFIG=/etc/openfan/config.toml
+    command: ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock"]
     networks:
       - openfan-network
     healthcheck:

@@ -66,13 +66,13 @@ COPY --from=builder /usr/src/openfan/target/*/release/openfand /opt/openfan/bin/
 COPY --from=builder /usr/src/openfan/target/*/release/openfanctl /usr/local/bin/
 
 # Copy configuration
-COPY config.yaml /etc/openfan/
+COPY config.toml /etc/openfan/
 
 # Set permissions
 RUN chmod 755 /opt/openfan/bin/openfand \
     /usr/local/bin/openfanctl && \
-    chmod 640 /etc/openfan/config.yaml && \
-    chown openfan:openfan /etc/openfan/config.yaml
+    chmod 640 /etc/openfan/config.toml && \
+    chown openfan:openfan /etc/openfan/config.toml
 
 # Switch to non-root user
 USER openfan
@@ -89,10 +89,10 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Set environment variables
 ENV RUST_LOG=info
-ENV OPENFAN_CONFIG=/etc/openfan/config.yaml
+ENV OPENFAN_CONFIG=/etc/openfan/config.toml
 
 # Default command (mock mode with standard board for testing; override for real hardware)
-CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.yaml", "--mock", "--board", "standard"]
+CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock", "--board", "standard"]
 
 # Labels
 ARG VERSION

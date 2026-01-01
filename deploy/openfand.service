@@ -9,7 +9,7 @@ Type=simple
 User=openfan
 Group=openfan
 WorkingDirectory=/opt/openfan
-ExecStart=/opt/openfan/bin/openfand --config /etc/openfan/config.yaml
+ExecStart=/opt/openfan/bin/openfand --config /etc/openfan/config.toml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
@@ -45,7 +45,7 @@ DevicePolicy=closed
 
 # Environment
 Environment=RUST_LOG=info
-Environment=OPENFAN_CONFIG=/etc/openfan/config.yaml
+Environment=OPENFAN_CONFIG=/etc/openfan/config.toml
 
 [Install]
 WantedBy=multi-user.target

@@ -146,51 +146,36 @@ install_binaries() {
 install_config() {
     print_status "Installing configuration..."
 
-    if [[ ! -f "$CONFIG_DIR/config.yaml" ]]; then
-        if [[ -f "./config.yaml" ]]; then
-            cp "./config.yaml" "$CONFIG_DIR/"
+    if [[ ! -f "$CONFIG_DIR/config.toml" ]]; then
+        if [[ -f "./config.toml" ]]; then
+            cp "./config.toml" "$CONFIG_DIR/"
         else
             # Create default config
-            cat > "$CONFIG_DIR/config.yaml" << 'EOF'
-server:
-  port: 8080
-  bind: "127.0.0.1"
+            cat > "$CONFIG_DIR/config.toml" << 'EOF'
+# OpenFAN Controller Configuration
+#
+# This file configures the OpenFAN daemon (openfand).
+#
+# For mutable data (profiles, aliases, zones, thermal curves, CFM mappings),
+# see the data_dir location. Hardware detection is automatic via USB VID/PID,
+# OPENFAN_COMPORT environment variable, or common device paths.
 
-hardware:
-  device_path: "/dev/ttyUSB0"
-  baud_rate: 115200
-  timeout_ms: 2000
+# Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
+# Default: ~/.local/share/openfan (XDG) or /var/lib/openfan (system)
+data_dir = "/var/lib/openfan"
 
-fans:
-  count: 10
-
-fan_profiles:
-  "50% PWM":
-    control_mode: "Pwm"
-    values: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50]
-  "100% PWM":
-    control_mode: "Pwm"
-    values: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
-  "1000 RPM":
-    control_mode: "Rpm"
-    values: [1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
-
-fan_aliases:
-  0: "Fan #1"
-  1: "Fan #2"
-  2: "Fan #3"
-  3: "Fan #4"
-  4: "Fan #5"
-  5: "Fan #6"
-  6: "Fan #7"
-  7: "Fan #8"
-  8: "Fan #9"
-  9: "Fan #10"
+[server]
+# Address to bind to ("localhost" or "0.0.0.0" for all interfaces)
+hostname = "localhost"
+# Server port
+port = 3000
+# Communication timeout in seconds
+communication_timeout = 1
 EOF
         fi
 
-        chown "$USER:$GROUP" "$CONFIG_DIR/config.yaml"
-        chmod 640 "$CONFIG_DIR/config.yaml"
+        chown "$USER:$GROUP" "$CONFIG_DIR/config.toml"
+        chmod 640 "$CONFIG_DIR/config.toml"
         print_success "Installed default configuration"
     else
         print_warning "Configuration file already exists, skipping"
@@ -296,7 +281,7 @@ print_instructions() {
     print_success "OpenFAN Controller installed successfully!"
     echo "============================================"
     echo
-    echo "Configuration file: $CONFIG_DIR/config.yaml"
+    echo "Configuration file: $CONFIG_DIR/config.toml"
     echo "Data directory:     $DATA_DIR"
     echo "Log directory:      $LOG_DIR"
     echo
@@ -318,7 +303,7 @@ print_instructions() {
     echo "  openfanctl --help                  # Show all commands"
     echo
     echo "Configuration:"
-    echo "  Edit $CONFIG_DIR/config.yaml to customize settings"
+    echo "  Edit $CONFIG_DIR/config.toml to customize settings"
     echo "  Restart service after configuration changes:"
     echo "  sudo systemctl restart $SERVICE_NAME"
     echo

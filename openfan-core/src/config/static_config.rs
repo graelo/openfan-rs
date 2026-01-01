@@ -28,27 +28,6 @@ impl Default for ServerConfig {
     }
 }
 
-/// Hardware configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HardwareConfig {
-    /// Hardware hostname (for network-based hardware)
-    pub hostname: String,
-    /// Hardware port
-    pub port: u16,
-    /// Communication timeout in seconds
-    pub communication_timeout: u64,
-}
-
-impl Default for HardwareConfig {
-    fn default() -> Self {
-        Self {
-            hostname: "localhost".to_string(),
-            port: 3000,
-            communication_timeout: 1,
-        }
-    }
-}
-
 /// Static configuration for the OpenFAN daemon.
 ///
 /// This is loaded once at startup and remains immutable during runtime.
@@ -56,10 +35,8 @@ impl Default for HardwareConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticConfig {
     /// Server configuration (hostname, port, timeout)
+    #[serde(default)]
     pub server: ServerConfig,
-
-    /// Hardware configuration (hostname, port, timeout)
-    pub hardware: HardwareConfig,
 
     /// Directory for mutable data files (aliases, profiles, etc.)
     ///
@@ -72,7 +49,6 @@ impl Default for StaticConfig {
     fn default() -> Self {
         Self {
             server: ServerConfig::default(),
-            hardware: HardwareConfig::default(),
             data_dir: default_data_dir(),
         }
     }
@@ -115,7 +91,6 @@ mod tests {
         let toml_str = config.to_toml().unwrap();
 
         assert!(toml_str.contains("[server]"));
-        assert!(toml_str.contains("[hardware]"));
         assert!(toml_str.contains("data_dir"));
     }
 
@@ -128,17 +103,11 @@ mod tests {
             hostname = "0.0.0.0"
             port = 8080
             communication_timeout = 5
-
-            [hardware]
-            hostname = "192.168.1.100"
-            port = 3001
-            communication_timeout = 2
         "#;
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert_eq!(config.server.hostname, "0.0.0.0");
         assert_eq!(config.server.port, 8080);
-        assert_eq!(config.hardware.hostname, "192.168.1.100");
         assert_eq!(config.data_dir, PathBuf::from("/custom/data"));
     }
 
@@ -150,14 +119,33 @@ mod tests {
             hostname = "localhost"
             port = 3000
             communication_timeout = 1
-
-            [hardware]
-            hostname = "localhost"
-            port = 3000
-            communication_timeout = 1
         "#;
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(config.data_dir.ends_with("openfan"));
+    }
+
+    #[test]
+    fn test_static_config_minimal() {
+        // Minimal config - only data_dir, server uses defaults
+        let toml_str = r#"
+            data_dir = "/var/lib/openfan"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert_eq!(config.server.hostname, "localhost");
+        assert_eq!(config.server.port, 3000);
+        assert_eq!(config.data_dir, PathBuf::from("/var/lib/openfan"));
+    }
+
+    #[test]
+    fn test_static_config_empty() {
+        // Empty config - all defaults
+        let toml_str = "";
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert_eq!(config.server.hostname, "localhost");
+        assert_eq!(config.server.port, 3000);
         assert!(config.data_dir.ends_with("openfan"));
     }
 }

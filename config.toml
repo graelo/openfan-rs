@@ -1,0 +1,19 @@
+# OpenFAN Controller Configuration
+#
+# This file configures the OpenFAN daemon (openfand).
+#
+# For mutable data (profiles, aliases, zones, thermal curves, CFM mappings),
+# see the data_dir location. Hardware detection is automatic via USB VID/PID,
+# OPENFAN_COMPORT environment variable, or common device paths.
+
+# Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
+# Default: ~/.local/share/openfan (XDG) or /var/lib/openfan (system)
+data_dir = "/var/lib/openfan"
+
+[server]
+# Address to bind to ("localhost" or "0.0.0.0" for all interfaces)
+hostname = "localhost"
+# Server port
+port = 3000
+# Communication timeout in seconds
+communication_timeout = 1

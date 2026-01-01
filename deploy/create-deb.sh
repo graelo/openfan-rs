@@ -95,7 +95,7 @@ copy_files() {
   cp target/release/openfanctl "$PACKAGE_DIR/usr/local/bin/"
 
   # Copy configuration
-  cp config.yaml "$PACKAGE_DIR/etc/openfan/"
+  cp config.toml "$PACKAGE_DIR/etc/openfan/"
 
   # Copy systemd service
   cp deploy/openfand.service "$PACKAGE_DIR/etc/systemd/system/"
@@ -183,7 +183,7 @@ chmod 755 /opt/openfan
 chmod 755 /etc/openfan
 chmod 750 /var/lib/openfan
 chmod 750 /var/log/openfan
-chmod 640 /etc/openfan/config.yaml
+chmod 640 /etc/openfan/config.toml
 
 # Set binary permissions
 chmod 755 /opt/openfan/bin/openfand
@@ -200,7 +200,7 @@ else
 fi
 
 echo "OpenFAN Controller installed successfully!"
-echo "Configuration: /etc/openfan/config.yaml"
+echo "Configuration: /etc/openfan/config.toml"
 echo "To start: sudo systemctl start openfand"
 echo "CLI usage: openfanctl --help"
 EOF
@@ -278,7 +278,7 @@ set_permissions() {
   chmod 755 "$PACKAGE_DIR/usr/local/bin/openfanctl"
 
   # Set config permissions
-  chmod 644 "$PACKAGE_DIR/etc/openfan/config.yaml"
+  chmod 644 "$PACKAGE_DIR/etc/openfan/config.toml"
   chmod 644 "$PACKAGE_DIR/etc/systemd/system/openfand.service"
 
   # Set documentation permissions
@@ -335,7 +335,7 @@ print_instructions() {
   echo "  openfan status"
   echo
   echo "Configuration:"
-  echo "  /etc/openfan/config.yaml"
+  echo "  /etc/openfan/config.toml"
   echo
   echo "Logs:"
   echo "  sudo journalctl -u openfand"
