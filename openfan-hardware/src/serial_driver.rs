@@ -348,4 +348,25 @@ mod tests {
         let err = OpenFanError::Serial("Write failed: some other error".to_string());
         assert!(!is_disconnect_error(&err));
     }
+
+    #[test]
+    fn test_detect_board_from_usb_returns_valid_result() {
+        // This test exercises the detect_board_from_usb function.
+        // In CI (no hardware): returns DeviceNotFound
+        // With hardware: returns Ok(BoardType::OpenFanStandard)
+        let result = detect_board_from_usb();
+
+        match result {
+            Ok(board_type) => {
+                // Hardware is present - verify it's a valid board type
+                assert_eq!(board_type.name(), "OpenFAN Standard");
+            }
+            Err(OpenFanError::DeviceNotFound) => {
+                // No hardware present - this is expected in CI
+            }
+            Err(other) => {
+                panic!("Unexpected error from detect_board_from_usb: {:?}", other);
+            }
+        }
+    }
 }

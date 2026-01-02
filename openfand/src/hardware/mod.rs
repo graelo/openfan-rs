@@ -126,4 +126,27 @@ pub(crate) mod connection {
             }
         }
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_connect_to_device_invalid_path() {
+            // Test that connecting to a non-existent device returns an error
+            let result = connect_to_device("/dev/nonexistent_device_12345", 1000, false).await;
+
+            match result {
+                Err(OpenFanError::Serial(msg)) => {
+                    assert!(
+                        msg.contains("/dev/nonexistent_device_12345"),
+                        "Error message should contain device path: {}",
+                        msg
+                    );
+                }
+                Err(other) => panic!("Expected Serial error, got {:?}", other),
+                Ok(_) => panic!("Expected error for non-existent device"),
+            }
+        }
+    }
 }
