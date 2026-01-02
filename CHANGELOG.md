@@ -1,6 +1,7 @@
 # Changelog
 
-All notable changes to the OpenFAN Controller project will be documented in this file.
+All notable changes to the OpenFAN Controller project will be documented in
+this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -8,37 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Added specific error variants for better error handling: `ZoneNotFound`, `CurveNotFound`, `CfmMappingNotFound`
-- **Device reconnection support**: Automatic reconnection when hardware disconnects (USB unplug, power cycle)
-  - Configurable exponential backoff retry strategy via `[reconnect]` section in config.toml
+
+- **CONTRIBUTING.md**: Developer onboarding documentation with development setup,
+  testing guide, commit conventions, and PR process
+- Added specific error variants for better error handling: `ZoneNotFound`,
+  `CurveNotFound`, `CfmMappingNotFound`
+- **Device reconnection support**: Automatic reconnection when hardware
+  disconnects (USB unplug, power cycle)
+  - Configurable exponential backoff retry strategy via `[reconnect]` section
+    in config.toml
   - Automatic PWM state restoration after successful reconnection
   - Background heartbeat monitoring for connection health
-  - New error variants: `DeviceDisconnected`, `Reconnecting`, `ReconnectionFailed`
+  - New error variants: `DeviceDisconnected`, `Reconnecting`,
+    `ReconnectionFailed`
   - Enhanced `/api/v0/info` endpoint with connection status fields
   - New `POST /api/v0/reconnect` endpoint for manual reconnection
   - HTTP 503 status for operations during disconnect/reconnection
-- **Custom board support**: Added `Custom` board type for DIY/modified USB boards
+- **Custom board support**: Added `Custom` board type for DIY/modified USB
+  boards
   - Use `--board custom:N` where N is fan count (1-16)
   - Use `--device /dev/ttyACM0` to specify the serial device directly
   - Enables extensibility for community-built hardware
 
 ### Changed
-- **Configuration format**: Replaced `config.yaml` with `config.toml` for all deployments
-- **Simplified configuration**: Removed `[hardware]` section from static config - hardware is now auto-detected via USB VID/PID
-- **Config structure**: Static config now only contains `server` settings and `data_dir` path
-- Removed `Sync` bound from `SerialTransport` trait for better flexibility with async mock implementations
-- Updated all deployment files (Dockerfile, docker-compose.yml, systemd service, install scripts) to use `config.toml`
+
+- **Configuration format**: Replaced `config.yaml` with `config.toml` for all
+  deployments
+- **Simplified configuration**: Removed `[hardware]` section from static config
+  - hardware is now auto-detected via USB VID/PID
+- **Config structure**: Static config now only contains `server` settings and
+  `data_dir` path
+- Removed `Sync` bound from `SerialTransport` trait for better flexibility with
+  async mock implementations
+- Updated all deployment files (Dockerfile, docker-compose.yml, systemd
+  service, install scripts) to use `config.toml`
 
 ### Removed
-- **OpenFAN Micro placeholder**: Removed incorrect USB serial assumptions for OpenFAN Micro board (it uses WiFi, not USB serial)
+
+- **OpenFAN Micro placeholder**: Removed incorrect USB serial assumptions for
+  OpenFAN Micro board (it uses WiFi, not USB serial)
 
 ### Fixed
+
 - Integration tests now run correctly in CI environment
-- Removed random failure simulation from test utilities that was causing flaky CI tests
+- Removed random failure simulation from test utilities that was causing flaky
+  CI tests
 
 ## [0.1.0] - 2024-12-31
 
 ### Added
+
 - Initial release of OpenFAN Controller
 - REST API server (`openfand`) with 16 endpoints
 - CLI tool (`openfanctl`) with comprehensive subcommands
@@ -59,10 +79,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive documentation (README, TUTORIAL, architecture docs)
 
 ### Board Support
+
 - OpenFAN Standard: 10 fans, USB VID 0x2E8A, PID 0x000A
-- Custom boards: 1-16 fans, user-defined USB identifiers (use `--board custom:N`)
+- Custom boards: 1-16 fans, user-defined USB identifiers (use `--board
+  custom:N`)
 
 ### API Endpoints
+
 - `/api/v0/info` - Server and board information
 - `/api/v0/fan/status` - Fan status (RPM and PWM)
 - `/api/v0/fan/{id}/pwm` - Set fan PWM
@@ -74,13 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `/api/v0/cfm/*` - CFM mapping CRUD operations
 
 ### Configuration
-- Static config: `~/.config/openfan/config.toml` (XDG) or `/etc/openfan/config.toml` (system)
+
+- Static config: `~/.config/openfan/config.toml` (XDG) or
+  `/etc/openfan/config.toml` (system)
 - Mutable data: `~/.local/share/openfan/` (XDG) or `/var/lib/openfan/` (system)
 - Separate files for aliases, profiles, zones, thermal curves, and CFM mappings
 
 ## [0.0.1] - 2024-10-08
 
 ### Added
+
 - Initial project setup with workspace structure
 - Basic serial communication with hardware
 - Simple fan control (PWM only)

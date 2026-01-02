@@ -506,7 +506,8 @@ Use the CFM@100% value from your fan's specifications.
 
 - CFM values must be positive (> 0)
 - Maximum allowed value is 500 CFM
-- Port IDs must be valid for your board (0-9 for Standard, 0-(N-1) for custom boards)
+- Port IDs must be valid for your board (0-9 for Standard, 0-(N-1) for custom
+  boards)
 
 ## REST API
 

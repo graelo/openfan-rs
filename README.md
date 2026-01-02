@@ -279,6 +279,11 @@ openfan-rs/
 └── openfanctl/        # CLI client (clap + reqwest)
 ```
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and
+contribution guidelines.
+
 ## License
 
 MIT
