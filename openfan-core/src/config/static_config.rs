@@ -3,9 +3,15 @@
 //! This configuration is read-only after the daemon starts.
 
 use serde::{Deserialize, Serialize};
+use std::borrow::Borrow;
+use std::fmt;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 use super::paths::default_data_dir;
+
+/// Default profile name applied during shutdown for thermal safety
+pub const DEFAULT_SAFE_BOOT_PROFILE: &str = "100% PWM";
 
 // Default value helpers for serde
 fn default_true() -> bool {
@@ -23,12 +29,67 @@ fn default_two() -> f64 {
 fn default_ten() -> u64 {
     10
 }
-fn default_shutdown_profile() -> String {
-    "100% PWM".to_string()
+fn default_shutdown_profile() -> ProfileName {
+    ProfileName::new(DEFAULT_SAFE_BOOT_PROFILE)
 }
 
 /// Profile name identifier for referencing saved profiles
-pub type ProfileName = String;
+///
+/// Provides type safety for profile name strings, preventing accidental
+/// use of arbitrary strings where profile names are expected.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProfileName(String);
+
+impl ProfileName {
+    /// Create a new profile name
+    pub fn new(name: impl Into<String>) -> Self {
+        Self(name.into())
+    }
+
+    /// Get the underlying string slice
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for ProfileName {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<str> for ProfileName {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for ProfileName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ProfileName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for ProfileName {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for ProfileName {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
 
 /// Reconnection configuration for device disconnect handling
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -333,7 +394,7 @@ mod tests {
     fn test_shutdown_config_defaults() {
         let config = ShutdownConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.profile, "100% PWM");
+        assert_eq!(config.profile.as_str(), DEFAULT_SAFE_BOOT_PROFILE);
     }
 
     #[test]
@@ -353,7 +414,7 @@ mod tests {
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert!(config.shutdown.enabled);
-        assert_eq!(config.shutdown.profile, "Silent Mode");
+        assert_eq!(config.shutdown.profile.as_str(), "Silent Mode");
     }
 
     #[test]
@@ -365,7 +426,7 @@ mod tests {
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert!(config.shutdown.enabled);
-        assert_eq!(config.shutdown.profile, "100% PWM");
+        assert_eq!(config.shutdown.profile.as_str(), DEFAULT_SAFE_BOOT_PROFILE);
     }
 
     #[test]
@@ -378,7 +439,7 @@ mod tests {
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert!(config.shutdown.enabled); // default
-        assert_eq!(config.shutdown.profile, "Custom Profile");
+        assert_eq!(config.shutdown.profile.as_str(), "Custom Profile");
     }
 
     #[test]
@@ -390,6 +451,6 @@ mod tests {
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert!(!config.shutdown.enabled);
-        assert_eq!(config.shutdown.profile, "100% PWM"); // default
+        assert_eq!(config.shutdown.profile.as_str(), DEFAULT_SAFE_BOOT_PROFILE);
     }
 }

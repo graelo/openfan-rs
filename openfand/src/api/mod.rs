@@ -34,6 +34,14 @@ pub(crate) struct AppState {
 
 impl AppState {
     /// Create new application state
+    ///
+    /// # Arguments
+    ///
+    /// * `board_info` - Hardware board information (wrapped in Arc internally)
+    /// * `config` - Runtime configuration wrapped in Arc for sharing with the
+    ///   shutdown handler, which needs access to shutdown settings
+    /// * `connection_manager` - Hardware connection manager wrapped in Arc for
+    ///   thread-safe access across request handlers (None in mock mode)
     pub fn new(
         board_info: BoardInfo,
         config: Arc<RuntimeConfig>,

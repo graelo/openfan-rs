@@ -14,7 +14,7 @@ pub use board::*;
 pub use config::{
     default_config_path, default_data_dir, parse_points, AliasData, CurvePoint, ProfileData,
     ProfileName, ReconnectConfig, ShutdownConfig, StaticConfig, ThermalCurve, ThermalCurveData,
-    Zone, ZoneData,
+    Zone, ZoneData, DEFAULT_SAFE_BOOT_PROFILE,
 };
 pub use error::*;
 pub use types::*;
