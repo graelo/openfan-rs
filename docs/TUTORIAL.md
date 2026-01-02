@@ -53,7 +53,8 @@ OpenFAN uses XDG-compliant paths by default:
 
 For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 
-Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG default.
+Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG
+default.
 
 #### Example config.toml
 
@@ -81,23 +82,55 @@ enabled = true                    # Enable safe boot profile on shutdown (defaul
 profile = "100% PWM"              # Profile to apply before daemon terminates (default: "100% PWM")
 ```
 
-**Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT` environment variable, or common device paths. No `[hardware]` section is needed in the configuration.
+**Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT`
+environment variable, or common device paths. No `[hardware]` section is needed
+in the configuration.
 
 #### Device Reconnection
 
-The server automatically handles hardware disconnections (USB unplug, power cycle):
+The server automatically handles hardware disconnections (USB unplug, power
+cycle):
 
-- **Automatic reconnection**: Exponential backoff retry strategy when device disconnects
-- **State restoration**: PWM values are cached and restored after successful reconnection
-- **Heartbeat monitoring**: Background task periodically checks connection health
-- **API behavior**: During disconnect, API returns HTTP 503 with descriptive error messages
-- **Manual reconnection**: Use `POST /api/v0/reconnect` to trigger immediate reconnection attempt
+- **Automatic reconnection**: Exponential backoff retry strategy when device
+  disconnects
+- **State restoration**: PWM values are cached and restored after successful
+  reconnection
+- **Heartbeat monitoring**: Background task periodically checks connection
+  health
+- **API behavior**: During disconnect, API returns HTTP 503 with descriptive
+  error messages
+- **Manual reconnection**: Use `POST /api/v0/reconnect` to trigger immediate
+  reconnection attempt
 
-The `[reconnect]` section is optional. If omitted, reconnection is enabled with default values.
+The `[reconnect]` section is optional. If omitted, reconnection is enabled with
+default values.
 
 #### Safe Boot Profile
 
-The server applies a configured fan profile before shutdown (Ctrl+C, SIGTERM) to ensure fans run at a safe speed during system shutdown/reboot. This prevents thermal issues when the daemon terminates.
+The server applies a configured fan profile before shutdown (Ctrl+C, SIGTERM)
+to ensure fans run at a safe speed during system shutdown/reboot.
+
+**Why is this needed?**
+
+The [OpenFAN firmware](https://github.com/SasaKaranovic/OpenFanController) sets
+all fans to 1000 RPM on controller power-up (`fan_control_init()`). However,
+many motherboards keep USB powered via 5V standby during reboot. In this
+scenario:
+
+1. The controller does **not** reset during reboot
+2. It retains the last applied fan speeds
+3. A "silent" profile (e.g., 30% PWM) could cause thermal issues during boot
+
+This is particularly critical for scenarios with high thermal load before the
+OS takes control:
+
+- **memtest86** - Extended memory testing generates significant heat
+- **BIOS/UEFI** - Firmware updates, stress tests, or prolonged configuration
+- **Boot failures** - System stuck at boot with minimal cooling
+
+The safe boot profile ensures fans run at maximum speed before the daemon
+terminates, providing adequate cooling regardless of the motherboard's USB
+power behavior.
 
 ```toml
 [shutdown]
@@ -106,16 +139,21 @@ profile = "100% PWM"  # Profile to apply before shutdown (default: "100% PWM")
 ```
 
 **Behavior:**
+
 - On graceful shutdown, the specified profile is applied to all fans
-- The profile must exist in `profiles.toml` (the default "100% PWM" profile is created automatically)
-- If the profile is not found or hardware is unavailable, a warning is logged and shutdown continues
+- The profile must exist in `profiles.toml` (the default "100% PWM" profile is
+  created automatically)
+- If the profile is not found or hardware is unavailable, a warning is logged
+  and shutdown continues
 - In mock mode, the safe boot profile is skipped with an info message
 
 **Configuration:**
+
 - `enabled`: Set to `false` to disable the safe boot profile entirely
 - `profile`: Name of the profile to apply (must exist in your profiles)
 
-The `[shutdown]` section is optional. If omitted, safe boot profile is enabled with "100% PWM".
+The `[shutdown]` section is optional. If omitted, safe boot profile is enabled
+with "100% PWM".
 
 ## CLI Usage
 
@@ -162,7 +200,8 @@ openfanctl config reset
 
 #### Environment Variables
 
-CLI settings can also be configured via environment variables (override config file):
+CLI settings can also be configured via environment variables (override config
+file):
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
@@ -584,19 +623,23 @@ The `/api/v0/info` endpoint includes connection status fields:
 ```
 
 **Connection status values:**
+
 - `"connected"` - Device is connected and operational
 - `"disconnected"` - Device is disconnected
 - `"reconnecting"` - Reconnection attempt in progress
 - `"mock"` - Running in mock mode (no hardware)
 
 **Reconnection fields:**
+
 - `reconnect_count`: Number of successful reconnections since server start
 - `reconnection_enabled`: Whether automatic reconnection is enabled
-- `time_since_disconnect_secs`: Seconds since last disconnect (null if never disconnected)
+- `time_since_disconnect_secs`: Seconds since last disconnect (null if never
+  disconnected)
 
 ### Error Handling During Disconnection
 
-When the device is disconnected or reconnecting, API endpoints return HTTP 503 (Service Unavailable):
+When the device is disconnected or reconnecting, API endpoints return HTTP 503
+(Service Unavailable):
 
 ```json
 {
@@ -612,7 +655,8 @@ or
 }
 ```
 
-Once reconnection succeeds, the cached PWM state is automatically restored and normal operation resumes.
+Once reconnection succeeds, the cached PWM state is automatically restored and
+normal operation resumes.
 
 ## Shell Completion
 
