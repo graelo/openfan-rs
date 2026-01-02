@@ -75,6 +75,10 @@ max_delay_secs = 30               # Maximum retry delay in seconds (default: 30)
 backoff_multiplier = 2.0          # Exponential backoff multiplier (default: 2.0)
 enable_heartbeat = true           # Enable background health monitoring (default: true)
 heartbeat_interval_secs = 10      # Heartbeat check interval in seconds (default: 10)
+
+[shutdown]
+enabled = true                    # Enable safe boot profile on shutdown (default: true)
+profile = "100% PWM"              # Profile to apply before daemon terminates (default: "100% PWM")
 ```
 
 **Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT` environment variable, or common device paths. No `[hardware]` section is needed in the configuration.
@@ -90,6 +94,28 @@ The server automatically handles hardware disconnections (USB unplug, power cycl
 - **Manual reconnection**: Use `POST /api/v0/reconnect` to trigger immediate reconnection attempt
 
 The `[reconnect]` section is optional. If omitted, reconnection is enabled with default values.
+
+#### Safe Boot Profile
+
+The server applies a configured fan profile before shutdown (Ctrl+C, SIGTERM) to ensure fans run at a safe speed during system shutdown/reboot. This prevents thermal issues when the daemon terminates.
+
+```toml
+[shutdown]
+enabled = true        # Enable safe boot profile (default: true)
+profile = "100% PWM"  # Profile to apply before shutdown (default: "100% PWM")
+```
+
+**Behavior:**
+- On graceful shutdown, the specified profile is applied to all fans
+- The profile must exist in `profiles.toml` (the default "100% PWM" profile is created automatically)
+- If the profile is not found or hardware is unavailable, a warning is logged and shutdown continues
+- In mock mode, the safe boot profile is skipped with an info message
+
+**Configuration:**
+- `enabled`: Set to `false` to disable the safe boot profile entirely
+- `profile`: Name of the profile to apply (must exist in your profiles)
+
+The `[shutdown]` section is optional. If omitted, safe boot profile is enabled with "100% PWM".
 
 ## CLI Usage
 

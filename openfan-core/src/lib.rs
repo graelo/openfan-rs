@@ -13,7 +13,8 @@ pub mod types;
 pub use board::*;
 pub use config::{
     default_config_path, default_data_dir, parse_points, AliasData, CurvePoint, ProfileData,
-    ReconnectConfig, StaticConfig, ThermalCurve, ThermalCurveData, Zone, ZoneData,
+    ProfileName, ReconnectConfig, ShutdownConfig, StaticConfig, ThermalCurve, ThermalCurveData,
+    Zone, ZoneData,
 };
 pub use error::*;
 pub use types::*;

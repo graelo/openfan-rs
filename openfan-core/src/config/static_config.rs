@@ -23,6 +23,12 @@ fn default_two() -> f64 {
 fn default_ten() -> u64 {
     10
 }
+fn default_shutdown_profile() -> String {
+    "100% PWM".to_string()
+}
+
+/// Profile name identifier for referencing saved profiles
+pub type ProfileName = String;
 
 /// Reconnection configuration for device disconnect handling
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,6 +76,27 @@ impl Default for ReconnectConfig {
     }
 }
 
+/// Shutdown configuration for safe boot profile
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShutdownConfig {
+    /// Enable safe boot profile on shutdown (default: true)
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Name of the profile to apply on shutdown (default: "100% PWM")
+    #[serde(default = "default_shutdown_profile")]
+    pub profile: ProfileName,
+}
+
+impl Default for ShutdownConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            profile: default_shutdown_profile(),
+        }
+    }
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -110,6 +137,10 @@ pub struct StaticConfig {
     /// Reconnection configuration for device disconnect handling
     #[serde(default)]
     pub reconnect: ReconnectConfig,
+
+    /// Shutdown configuration for safe boot profile
+    #[serde(default)]
+    pub shutdown: ShutdownConfig,
 }
 
 impl Default for StaticConfig {
@@ -118,6 +149,7 @@ impl Default for StaticConfig {
             server: ServerConfig::default(),
             data_dir: default_data_dir(),
             reconnect: ReconnectConfig::default(),
+            shutdown: ShutdownConfig::default(),
         }
     }
 }
@@ -295,5 +327,69 @@ mod tests {
 
         let config = StaticConfig::from_toml(toml_str).unwrap();
         assert!(!config.reconnect.enabled);
+    }
+
+    #[test]
+    fn test_shutdown_config_defaults() {
+        let config = ShutdownConfig::default();
+        assert!(config.enabled);
+        assert_eq!(config.profile, "100% PWM");
+    }
+
+    #[test]
+    fn test_static_config_with_shutdown_section() {
+        let toml_str = r#"
+            data_dir = "/var/lib/openfan"
+
+            [server]
+            bind_address = "127.0.0.1"
+            port = 3000
+            communication_timeout = 1
+
+            [shutdown]
+            enabled = true
+            profile = "Silent Mode"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(config.shutdown.enabled);
+        assert_eq!(config.shutdown.profile, "Silent Mode");
+    }
+
+    #[test]
+    fn test_static_config_shutdown_defaults_when_missing() {
+        // When shutdown section is missing, use defaults
+        let toml_str = r#"
+            data_dir = "/var/lib/openfan"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(config.shutdown.enabled);
+        assert_eq!(config.shutdown.profile, "100% PWM");
+    }
+
+    #[test]
+    fn test_static_config_shutdown_partial() {
+        // Partial shutdown section - missing fields use defaults
+        let toml_str = r#"
+            [shutdown]
+            profile = "Custom Profile"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(config.shutdown.enabled); // default
+        assert_eq!(config.shutdown.profile, "Custom Profile");
+    }
+
+    #[test]
+    fn test_static_config_shutdown_disabled() {
+        let toml_str = r#"
+            [shutdown]
+            enabled = false
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(!config.shutdown.enabled);
+        assert_eq!(config.shutdown.profile, "100% PWM"); // default
     }
 }

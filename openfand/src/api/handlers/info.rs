@@ -352,7 +352,7 @@ mod integration_tests {
             .await
             .unwrap();
         let config = RuntimeConfig::load(&config_path).await.unwrap();
-        let state = AppState::new(board_info, config, None);
+        let state = AppState::new(board_info, std::sync::Arc::new(config), None);
         create_router(state)
     }
 

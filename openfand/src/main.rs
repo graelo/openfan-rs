@@ -11,7 +11,7 @@ use api::AppState;
 use clap::Parser;
 use config::RuntimeConfig;
 use hardware::{connection, ConnectionManager};
-use openfan_core::{default_config_path, BoardType};
+use openfan_core::{default_config_path, BoardType, ControlMode};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -175,6 +175,14 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Wrap runtime_config in Arc for sharing between AppState and shutdown handler
+    let runtime_config = Arc::new(runtime_config);
+
+    // Clone for shutdown handler (before moving into AppState)
+    let runtime_config_for_shutdown = runtime_config.clone();
+    let cm_for_shutdown = connection_manager.clone();
+    let is_mock = args.mock;
+
     // Step 5: Create application state with board info
     let app_state = AppState::new(board_info, runtime_config, connection_manager);
 
@@ -190,7 +198,15 @@ async fn main() -> Result<()> {
 
     // Run server with graceful shutdown
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            apply_safe_boot_profile(
+                &runtime_config_for_shutdown,
+                cm_for_shutdown.as_ref(),
+                is_mock,
+            )
+            .await;
+        })
         .await?;
 
     info!("Server shutdown complete");
@@ -240,4 +256,73 @@ fn init_tracing(verbose: bool) {
         .with(filter)
         .with(tracing_subscriber::fmt::layer())
         .init();
+}
+
+/// Apply safe boot profile before shutdown
+///
+/// Applies a configured fan profile (default: "100% PWM") before the daemon
+/// terminates, ensuring fans run at a safe speed during system shutdown/reboot.
+///
+/// This prevents a thermal safety issue where fans would stop when the daemon
+/// terminates but before the system completes shutdown. The profile is applied
+/// only if enabled in config and hardware is available.
+async fn apply_safe_boot_profile(
+    runtime_config: &Arc<RuntimeConfig>,
+    connection_manager: Option<&Arc<ConnectionManager>>,
+    is_mock: bool,
+) {
+    let shutdown_config = &runtime_config.static_config().shutdown;
+
+    if !shutdown_config.enabled {
+        info!("Safe boot profile disabled in config");
+        return;
+    }
+
+    if is_mock {
+        info!("Mock mode - skipping safe boot profile");
+        return;
+    }
+
+    let Some(cm) = connection_manager else {
+        warn!("No hardware connection - cannot apply safe boot profile");
+        return;
+    };
+
+    let profile_name = &shutdown_config.profile;
+    let profile = {
+        let profiles = runtime_config.profiles().await;
+        profiles.get(profile_name).cloned()
+    };
+
+    let Some(profile) = profile else {
+        warn!("Safe boot profile '{}' not found", profile_name);
+        return;
+    };
+
+    info!("Applying safe boot profile '{}'...", profile_name);
+
+    let result = cm
+        .with_controller(|controller| {
+            let values = profile.values.clone();
+            let mode = profile.control_mode;
+            Box::pin(async move {
+                for (fan_id, &value) in values.iter().enumerate() {
+                    let fan_id = fan_id as u8;
+                    let res = match mode {
+                        ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                        ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+                    };
+                    if let Err(e) = res {
+                        warn!("Failed to set fan {} during shutdown: {}", fan_id, e);
+                    }
+                }
+                Ok(())
+            })
+        })
+        .await;
+
+    match result {
+        Ok(_) => info!("Safe boot profile applied successfully"),
+        Err(e) => warn!("Failed to apply safe boot profile: {}", e),
+    }
 }

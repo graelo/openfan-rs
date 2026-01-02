@@ -36,12 +36,12 @@ impl AppState {
     /// Create new application state
     pub fn new(
         board_info: BoardInfo,
-        config: RuntimeConfig,
+        config: Arc<RuntimeConfig>,
         connection_manager: Option<Arc<ConnectionManager>>,
     ) -> Self {
         Self {
             board_info: Arc::new(board_info),
-            config: Arc::new(config),
+            config,
             connection_manager,
             start_time: Instant::now(),
         }
