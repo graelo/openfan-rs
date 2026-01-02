@@ -21,6 +21,26 @@ pub(crate) mod connection {
     use std::env;
     use tracing::{debug, info, warn};
 
+    /// Connect to a specific serial device
+    ///
+    /// Use this when the device path is known (e.g., from --device flag).
+    /// Bypasses USB VID/PID detection.
+    pub async fn connect_to_device(
+        device_path: &str,
+        timeout_ms: u64,
+        debug_uart: bool,
+    ) -> Result<DefaultFanController> {
+        info!("Connecting to device: {}", device_path);
+
+        let driver = SerialDriver::<DefaultBoard>::new(device_path, timeout_ms, debug_uart)
+            .map_err(|e| {
+                OpenFanError::Serial(format!("Failed to connect to {}: {}", device_path, e))
+            })?;
+
+        info!("Successfully connected to {}", device_path);
+        Ok(FanController::new(driver))
+    }
+
     /// Initialize hardware connection with automatic device detection
     ///
     /// Tries multiple methods to find and connect to the fan controller:
@@ -103,6 +123,29 @@ pub(crate) mod connection {
             Err(e) => {
                 warn!("Hardware test failed: {}", e);
                 Err(e)
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_connect_to_device_invalid_path() {
+            // Test that connecting to a non-existent device returns an error
+            let result = connect_to_device("/dev/nonexistent_device_12345", 1000, false).await;
+
+            match result {
+                Err(OpenFanError::Serial(msg)) => {
+                    assert!(
+                        msg.contains("/dev/nonexistent_device_12345"),
+                        "Error message should contain device path: {}",
+                        msg
+                    );
+                }
+                Err(other) => panic!("Expected Serial error, got {:?}", other),
+                Ok(_) => panic!("Expected error for non-existent device"),
             }
         }
     }

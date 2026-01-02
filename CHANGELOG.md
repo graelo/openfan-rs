@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced `/api/v0/info` endpoint with connection status fields
   - New `POST /api/v0/reconnect` endpoint for manual reconnection
   - HTTP 503 status for operations during disconnect/reconnection
+- **Custom board support**: Added `Custom` board type for DIY/modified USB boards
+  - Use `--board custom:N` where N is fan count (1-16)
+  - Use `--device /dev/ttyACM0` to specify the serial device directly
+  - Enables extensibility for community-built hardware
 
 ### Changed
 - **Configuration format**: Replaced `config.yaml` with `config.toml` for all deployments
@@ -24,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config structure**: Static config now only contains `server` settings and `data_dir` path
 - Removed `Sync` bound from `SerialTransport` trait for better flexibility with async mock implementations
 - Updated all deployment files (Dockerfile, docker-compose.yml, systemd service, install scripts) to use `config.toml`
+
+### Removed
+- **OpenFAN Micro placeholder**: Removed incorrect USB serial assumptions for OpenFAN Micro board (it uses WiFi, not USB serial)
 
 ### Fixed
 - Integration tests now run correctly in CI environment
@@ -53,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Board Support
 - OpenFAN Standard: 10 fans, USB VID 0x2E8A, PID 0x000A
-- OpenFAN Micro: Planned (1 fan, USB VID 0x2E8A, PID 0x000B)
+- Custom boards: 1-16 fans, user-defined USB identifiers (use `--board custom:N`)
 
 ### API Endpoints
 - `/api/v0/info` - Server and board information

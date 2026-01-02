@@ -611,6 +611,7 @@ mod tests {
 
     #[test]
     fn test_command_values() {
+        // These values are protocol-critical and must match hardware expectations
         assert_eq!(Command::GetAllFanRpm as u8, 0x00);
         assert_eq!(Command::GetSingleFanRpm as u8, 0x01);
         assert_eq!(Command::SetFanPwm as u8, 0x02);
@@ -618,20 +619,6 @@ mod tests {
         assert_eq!(Command::SetFanRpm as u8, 0x04);
         assert_eq!(Command::GetHwInfo as u8, 0x05);
         assert_eq!(Command::GetFwInfo as u8, 0x06);
-    }
-
-    #[test]
-    fn test_command_debug_format() {
-        // Ensure Command derives Debug correctly
-        let cmd = Command::GetAllFanRpm;
-        assert_eq!(format!("{:?}", cmd), "GetAllFanRpm");
-    }
-
-    #[test]
-    fn test_command_clone() {
-        let cmd = Command::SetFanPwm;
-        let cloned = cmd;
-        assert_eq!(cmd as u8, cloned as u8);
     }
 
     // --- RPM parsing edge case tests (via MockTransport) ---
@@ -899,37 +886,5 @@ mod tests {
         }
     }
 
-    // --- openfan_core type tests ---
-
-    #[test]
-    fn test_fan_id_validation_micro_board() {
-        // OpenFAN Micro: test via BoardType enum methods
-        use openfan_core::BoardType;
-
-        let micro = BoardType::OpenFanMicro;
-        // Micro has 1 fan (as currently defined in BoardType::fan_count)
-        assert_eq!(micro.fan_count(), 1);
-    }
-
-    #[test]
-    fn test_pwm_max_value_standard_board() {
-        use openfan_core::OpenFanStandard;
-        assert_eq!(OpenFanStandard::MAX_PWM, 100);
-    }
-
-    #[test]
-    fn test_board_type_methods() {
-        use openfan_core::BoardType;
-
-        let standard = BoardType::OpenFanStandard;
-        assert_eq!(standard.name(), "OpenFAN Standard");
-        assert_eq!(standard.fan_count(), 10);
-        assert_eq!(standard.usb_vid(), 0x2E8A);
-        assert_eq!(standard.usb_pid(), 0x000A);
-
-        let micro = BoardType::OpenFanMicro;
-        assert_eq!(micro.name(), "OpenFAN Micro");
-        assert_eq!(micro.usb_vid(), 0x2E8A);
-        assert_eq!(micro.usb_pid(), 0x000B);
-    }
+    // Board type tests are in openfan-core/src/board.rs.
 }

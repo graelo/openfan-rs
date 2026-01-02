@@ -44,9 +44,18 @@ struct Args {
     #[arg(long)]
     mock: bool,
 
-    /// Board type to emulate in mock mode (standard, micro)
-    #[arg(long, default_value = "standard", requires = "mock")]
+    /// Board type (standard, custom:N where N is fan count 1-16)
+    ///
+    /// Required with --mock or --device. For auto-detection, omit this flag.
+    #[arg(long, default_value = "standard")]
     board: String,
+
+    /// Serial device path for custom boards (e.g., /dev/ttyACM0, /dev/ttyUSB0)
+    ///
+    /// Use this with --board to connect to custom/DIY hardware.
+    /// Bypasses USB VID/PID auto-detection.
+    #[arg(long, conflicts_with = "mock")]
+    device: Option<String>,
 }
 
 #[tokio::main]
@@ -66,23 +75,34 @@ async fn main() -> Result<()> {
     });
     info!("Configuration file: {}", config_path.display());
 
-    // Step 1: Detect board type (before loading config)
-    let board_type = if args.mock {
+    // Step 1: Determine board type and connection mode
+    let (board_type, device_path) = if args.mock {
+        // Mock mode - no hardware
         info!("Mock mode enabled - running without hardware");
-        BoardType::from_str(&args.board).unwrap_or_else(|e| {
+        let board = BoardType::from_str(&args.board).unwrap_or_else(|e| {
             error!("Invalid board type '{}': {}", args.board, e);
             std::process::exit(1);
-        })
+        });
+        (board, None)
+    } else if let Some(ref device) = args.device {
+        // Direct device connection - use specified board type
+        info!("Using specified device: {}", device);
+        let board = BoardType::from_str(&args.board).unwrap_or_else(|e| {
+            error!("Invalid board type '{}': {}", args.board, e);
+            std::process::exit(1);
+        });
+        (board, Some(device.clone()))
     } else {
+        // Auto-detect via USB VID/PID
         info!("Detecting hardware board type...");
         match hardware::detect_board_from_usb() {
             Ok(board) => {
                 info!("Detected board: {}", board.name());
-                board
+                (board, None)
             }
             Err(e) => {
                 error!(
-                    "Failed to detect hardware board: {}. Use --mock flag to run in mock mode.",
+                    "Failed to detect hardware board: {}. Use --mock flag for testing, or --device to specify the serial device.",
                     e
                 );
                 std::process::exit(1);
@@ -127,7 +147,14 @@ async fn main() -> Result<()> {
         info!("Initializing hardware connection...");
         let timeout_ms = server_config.communication_timeout * 1000;
 
-        match connection::auto_connect(timeout_ms, args.verbose).await {
+        // Use specified device path or auto-detect
+        let connect_result = if let Some(ref device) = device_path {
+            connection::connect_to_device(device, timeout_ms, args.verbose).await
+        } else {
+            connection::auto_connect(timeout_ms, args.verbose).await
+        };
+
+        match connect_result {
             Ok(mut controller) => {
                 info!("Hardware connected successfully");
 

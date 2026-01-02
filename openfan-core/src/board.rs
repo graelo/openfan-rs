@@ -1,7 +1,7 @@
 //! Board definitions and configuration
 //!
 //! This module provides trait-based abstractions for different hardware board configurations.
-//! Each board type (OpenFAN Standard, OpenFAN Micro, etc.) implements the `BoardConfig` trait
+//! Each board type (OpenFAN Standard, Custom, etc.) implements the `BoardConfig` trait
 //! with its specific characteristics.
 //!
 //! The abstraction uses const generics and traits to provide:
@@ -84,18 +84,34 @@ impl BoardConfig for OpenFanStandard {
 ///
 /// Unlike the compile-time `BoardConfig` trait, this enum represents
 /// board types that can be detected and used at runtime.
+///
+/// # Adding New Board Types
+///
+/// To add support for a new USB-based board:
+/// 1. Add a new variant to this enum with the fan count
+/// 2. Implement the `BoardConfig` trait for compile-time constants (optional)
+/// 3. Update `FromStr`, `name()`, `fan_count()`, `usb_vid()`, `usb_pid()`, and `to_board_info()`
+/// 4. Add USB VID/PID detection in `openfan-hardware/src/serial_driver.rs`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum BoardType {
-    /// OpenFAN Standard - Standard 10-fan controller
+    /// OpenFAN Standard - 10-fan controller (USB VID:0x2E8A, PID:0x000A)
     OpenFanStandard,
-    /// OpenFAN Micro - Compact 4-fan controller (future support)
-    OpenFanMicro,
+    /// Custom/DIY USB board with configurable fan count
+    ///
+    /// Use this for custom or modified boards that use USB serial communication.
+    /// The fan count must be specified when creating a Custom board.
+    Custom {
+        /// Number of fan channels on this custom board (1-16)
+        fan_count: usize,
+    },
 }
 
 impl std::str::FromStr for BoardType {
     type Err = crate::OpenFanError;
 
     /// Parse board type from string (for CLI --board flag)
+    ///
+    /// For custom boards, use "custom:N" where N is the fan count (1-16).
     ///
     /// # Examples
     ///
@@ -104,15 +120,38 @@ impl std::str::FromStr for BoardType {
     /// use openfan_core::board::BoardType;
     ///
     /// assert!(BoardType::from_str("standard").is_ok());
-    /// assert!(BoardType::from_str("micro").is_ok());
+    /// assert!(BoardType::from_str("custom:4").is_ok());
     /// assert!(BoardType::from_str("unknown").is_err());
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        let s_lower = s.to_lowercase();
+
+        // Check for custom:N format
+        if let Some(count_str) = s_lower.strip_prefix("custom:") {
+            let fan_count: usize = count_str.parse().map_err(|_| {
+                crate::OpenFanError::InvalidInput(format!(
+                    "Invalid fan count in '{}'. Use 'custom:N' where N is 1-16",
+                    s
+                ))
+            })?;
+
+            if fan_count == 0 || fan_count > 16 {
+                return Err(crate::OpenFanError::InvalidInput(format!(
+                    "Fan count must be 1-16, got {}",
+                    fan_count
+                )));
+            }
+
+            return Ok(BoardType::Custom { fan_count });
+        }
+
+        match s_lower.as_str() {
             "standard" | "openfan-standard" => Ok(BoardType::OpenFanStandard),
-            "micro" | "openfan-micro" => Ok(BoardType::OpenFanMicro),
+            "custom" => Err(crate::OpenFanError::InvalidInput(
+                "Custom board requires fan count. Use 'custom:N' where N is 1-16".to_string(),
+            )),
             _ => Err(crate::OpenFanError::InvalidInput(format!(
-                "Unknown board type: '{}'. Valid options: standard, micro",
+                "Unknown board type: '{}'. Valid options: standard, custom:N (where N is fan count 1-16)",
                 s
             ))),
         }
@@ -124,7 +163,7 @@ impl BoardType {
     pub fn name(&self) -> &'static str {
         match self {
             BoardType::OpenFanStandard => OpenFanStandard::NAME,
-            BoardType::OpenFanMicro => "OpenFAN Micro", // TODO: Add OpenFanMicro BoardConfig
+            BoardType::Custom { .. } => "Custom Board",
         }
     }
 
@@ -132,23 +171,27 @@ impl BoardType {
     pub fn fan_count(&self) -> usize {
         match self {
             BoardType::OpenFanStandard => OpenFanStandard::FAN_COUNT,
-            BoardType::OpenFanMicro => 1, // TODO: Use OpenFanMicro::FAN_COUNT
+            BoardType::Custom { fan_count } => *fan_count,
         }
     }
 
     /// Get USB VID for this board type
+    ///
+    /// Note: Custom boards return 0x0000 as they may use various USB identifiers.
     pub fn usb_vid(&self) -> u16 {
         match self {
             BoardType::OpenFanStandard => OpenFanStandard::USB_VID,
-            BoardType::OpenFanMicro => 0x2E8A,
+            BoardType::Custom { .. } => 0x0000, // Custom boards have no fixed VID
         }
     }
 
     /// Get USB PID for this board type
+    ///
+    /// Note: Custom boards return 0x0000 as they may use various USB identifiers.
     pub fn usb_pid(&self) -> u16 {
         match self {
             BoardType::OpenFanStandard => OpenFanStandard::USB_PID,
-            BoardType::OpenFanMicro => 0x000B,
+            BoardType::Custom { .. } => 0x0000, // Custom boards have no fixed PID
         }
     }
 
@@ -166,12 +209,12 @@ impl BoardType {
                 max_target_rpm: OpenFanStandard::MAX_TARGET_RPM,
                 baud_rate: OpenFanStandard::BAUD_RATE,
             },
-            BoardType::OpenFanMicro => BoardInfo {
-                board_type: BoardType::OpenFanMicro,
-                name: "OpenFAN Micro".to_string(),
-                fan_count: 1,
-                usb_vid: 0x2E8A,
-                usb_pid: 0x000B,
+            BoardType::Custom { fan_count } => BoardInfo {
+                board_type: BoardType::Custom { fan_count },
+                name: format!("Custom Board ({} fans)", fan_count),
+                fan_count,
+                usb_vid: 0x0000,
+                usb_pid: 0x0000,
                 max_pwm: 100,
                 min_target_rpm: 500,
                 max_target_rpm: 9000,
@@ -341,6 +384,7 @@ impl<B: BoardConfig> Default for Board<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_openfan_standard_config() {
@@ -389,5 +433,128 @@ mod tests {
 
         assert_eq!(board1.name(), board2.name());
         assert_eq!(board1.fan_count(), board2.fan_count());
+    }
+
+    #[test]
+    fn test_board_type_from_str_standard() {
+        assert!(matches!(
+            BoardType::from_str("standard"),
+            Ok(BoardType::OpenFanStandard)
+        ));
+        assert!(matches!(
+            BoardType::from_str("openfan-standard"),
+            Ok(BoardType::OpenFanStandard)
+        ));
+        assert!(matches!(
+            BoardType::from_str("STANDARD"),
+            Ok(BoardType::OpenFanStandard)
+        ));
+    }
+
+    #[test]
+    fn test_board_type_from_str_custom() {
+        let custom = BoardType::from_str("custom:4").unwrap();
+        assert!(matches!(custom, BoardType::Custom { fan_count: 4 }));
+        assert_eq!(custom.fan_count(), 4);
+
+        let custom_1 = BoardType::from_str("custom:1").unwrap();
+        assert_eq!(custom_1.fan_count(), 1);
+
+        let custom_16 = BoardType::from_str("custom:16").unwrap();
+        assert_eq!(custom_16.fan_count(), 16);
+    }
+
+    #[test]
+    fn test_board_type_from_str_custom_invalid() {
+        // Missing fan count
+        assert!(BoardType::from_str("custom").is_err());
+
+        // Zero fans
+        assert!(BoardType::from_str("custom:0").is_err());
+
+        // Too many fans
+        assert!(BoardType::from_str("custom:17").is_err());
+
+        // Invalid number
+        assert!(BoardType::from_str("custom:abc").is_err());
+    }
+
+    #[test]
+    fn test_board_type_from_str_unknown() {
+        assert!(BoardType::from_str("unknown").is_err());
+        assert!(BoardType::from_str("micro").is_err()); // Micro is no longer supported
+    }
+
+    #[test]
+    fn test_board_type_methods() {
+        let standard = BoardType::OpenFanStandard;
+        assert_eq!(standard.name(), "OpenFAN Standard");
+        assert_eq!(standard.fan_count(), 10);
+        assert_eq!(standard.usb_vid(), 0x2E8A);
+        assert_eq!(standard.usb_pid(), 0x000A);
+
+        let custom = BoardType::Custom { fan_count: 4 };
+        assert_eq!(custom.name(), "Custom Board");
+        assert_eq!(custom.fan_count(), 4);
+        assert_eq!(custom.usb_vid(), 0x0000); // Custom boards have no fixed VID
+        assert_eq!(custom.usb_pid(), 0x0000); // Custom boards have no fixed PID
+    }
+
+    #[test]
+    fn test_board_type_to_board_info() {
+        let standard_info = BoardType::OpenFanStandard.to_board_info();
+        assert_eq!(standard_info.name, "OpenFAN Standard");
+        assert_eq!(standard_info.fan_count, 10);
+        assert_eq!(standard_info.usb_vid, 0x2E8A);
+        assert_eq!(standard_info.usb_pid, 0x000A);
+        assert_eq!(standard_info.max_pwm, 100);
+        assert_eq!(standard_info.baud_rate, 115200);
+
+        let custom_info = BoardType::Custom { fan_count: 4 }.to_board_info();
+        assert_eq!(custom_info.name, "Custom Board (4 fans)");
+        assert_eq!(custom_info.fan_count, 4);
+        assert_eq!(custom_info.usb_vid, 0x0000);
+        assert_eq!(custom_info.usb_pid, 0x0000);
+        assert_eq!(custom_info.max_pwm, 100);
+        assert_eq!(custom_info.baud_rate, 115200);
+    }
+
+    #[test]
+    fn test_custom_board_info_validation() {
+        let info = BoardType::Custom { fan_count: 4 }.to_board_info();
+
+        // Valid fan IDs for 4-fan board
+        assert!(info.validate_fan_id(0).is_ok());
+        assert!(info.validate_fan_id(3).is_ok());
+
+        // Invalid fan ID
+        assert!(info.validate_fan_id(4).is_err());
+    }
+
+    #[test]
+    fn test_board_info_validate_pwm() {
+        let info = BoardType::OpenFanStandard.to_board_info();
+
+        // Valid PWM values
+        assert!(info.validate_pwm(0).is_ok());
+        assert!(info.validate_pwm(50).is_ok());
+        assert!(info.validate_pwm(100).is_ok());
+
+        // Invalid PWM value
+        assert!(info.validate_pwm(101).is_err());
+    }
+
+    #[test]
+    fn test_board_info_validate_target_rpm() {
+        let info = BoardType::OpenFanStandard.to_board_info();
+
+        // Valid RPM values
+        assert!(info.validate_target_rpm(500).is_ok());
+        assert!(info.validate_target_rpm(5000).is_ok());
+        assert!(info.validate_target_rpm(9000).is_ok());
+
+        // Invalid RPM values (too low / too high)
+        assert!(info.validate_target_rpm(499).is_err());
+        assert!(info.validate_target_rpm(9001).is_err());
     }
 }
