@@ -34,8 +34,11 @@ openfand
 openfand --config /etc/openfan/config.toml
 
 # Mock mode (no hardware required)
-openfand --mock --board standard
-openfand --mock --board micro
+openfand --mock --board standard    # 10-fan Standard board
+openfand --mock --board custom:4    # 4-fan custom board
+
+# Custom hardware with specific device
+openfand --device /dev/ttyACM0 --board custom:4
 ```
 
 ### Configuration Files
@@ -235,7 +238,7 @@ openfanctl fan pwm 0
 Fan IDs are 0-indexed:
 
 - OpenFAN Standard: fans 0-9 (10 fans)
-- OpenFAN Micro: fan 0 (1 fan)
+- Custom boards: fans 0-(N-1) where N is the configured fan count (1-16)
 
 ### Control Modes
 
@@ -503,7 +506,7 @@ Use the CFM@100% value from your fan's specifications.
 
 - CFM values must be positive (> 0)
 - Maximum allowed value is 500 CFM
-- Port IDs must be valid for your board (0-9 for OpenFAN Standard, 0 for Micro)
+- Port IDs must be valid for your board (0-9 for Standard, 0-(N-1) for custom boards)
 
 ## REST API
 
@@ -770,7 +773,7 @@ openfanctl --verbose status
 Profiles must have exactly as many values as the board has fans:
 
 - OpenFAN Standard: 10 values
-- OpenFAN Micro: 1 value
+- Custom boards: N values (where N is the configured fan count)
 
 ```bash
 # Check board info

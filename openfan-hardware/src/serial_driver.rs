@@ -266,6 +266,10 @@ pub fn find_fan_controller<B: BoardConfig>() -> Result<String> {
 /// Detect board type from USB VID/PID
 ///
 /// Scans available serial ports and matches against known board USB identifiers.
+/// Currently only detects OpenFAN Standard boards via USB serial.
+///
+/// Note: Custom boards cannot be auto-detected and must be specified manually
+/// with the `--board custom:N` flag.
 ///
 /// # Errors
 ///
@@ -283,16 +287,10 @@ pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
 
     for port in ports {
         if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
-            match (info.vid, info.pid) {
-                (0x2E8A, 0x000A) => {
-                    debug!("Detected OpenFAN Standard at: {}", port.port_name);
-                    return Ok(BoardType::OpenFanStandard);
-                }
-                (0x2E8A, 0x000B) => {
-                    debug!("Detected OpenFAN Micro at: {}", port.port_name);
-                    return Ok(BoardType::OpenFanMicro);
-                }
-                _ => continue,
+            // OpenFAN Standard: VID=0x2E8A (Raspberry Pi), PID=0x000A
+            if info.vid == 0x2E8A && info.pid == 0x000A {
+                debug!("Detected OpenFAN Standard at: {}", port.port_name);
+                return Ok(BoardType::OpenFanStandard);
             }
         }
     }
@@ -307,126 +305,7 @@ mod tests {
 
     // Hardware-dependent tests (find_ports, find_fan_controller, detect_board_from_usb)
     // are tested via integration tests with actual hardware or mocks.
-
-    #[test]
-    fn test_board_usb_identifiers_standard() {
-        use openfan_core::OpenFanStandard;
-
-        // OpenFAN Standard: VID=0x2E8A, PID=0x000A
-        assert_eq!(OpenFanStandard::USB_VID, 0x2E8A);
-        assert_eq!(OpenFanStandard::USB_PID, 0x000A);
-    }
-
-    #[test]
-    fn test_board_usb_identifiers_micro() {
-        use openfan_core::BoardType;
-
-        // OpenFAN Micro: VID=0x2E8A, PID=0x000B (via BoardType methods)
-        let micro = BoardType::OpenFanMicro;
-        assert_eq!(micro.usb_vid(), 0x2E8A);
-        assert_eq!(micro.usb_pid(), 0x000B);
-    }
-
-    #[test]
-    fn test_board_baud_rate_standard() {
-        use openfan_core::OpenFanStandard;
-
-        assert_eq!(OpenFanStandard::BAUD_RATE, 115200);
-    }
-
-    #[test]
-    fn test_board_timeout_default_standard() {
-        use openfan_core::OpenFanStandard;
-
-        assert_eq!(OpenFanStandard::DEFAULT_TIMEOUT_MS, 1000);
-    }
-
-    #[test]
-    fn test_board_type_enum_values() {
-        use openfan_core::BoardType;
-
-        // Ensure BoardType enum variants exist
-        let standard = BoardType::OpenFanStandard;
-        let micro = BoardType::OpenFanMicro;
-
-        // They should be distinct
-        assert!(matches!(standard, BoardType::OpenFanStandard));
-        assert!(matches!(micro, BoardType::OpenFanMicro));
-    }
-
-    #[test]
-    fn test_board_fan_counts() {
-        use openfan_core::{BoardType, OpenFanStandard};
-
-        assert_eq!(OpenFanStandard::FAN_COUNT, 10);
-        // Micro uses BoardType method (not implemented as BoardConfig trait)
-        assert_eq!(BoardType::OpenFanMicro.fan_count(), 1);
-    }
-
-    #[test]
-    fn test_board_name_standard() {
-        use openfan_core::OpenFanStandard;
-
-        assert_eq!(OpenFanStandard::NAME, "OpenFAN Standard");
-    }
-
-    #[test]
-    fn test_board_name_micro() {
-        use openfan_core::BoardType;
-
-        assert_eq!(BoardType::OpenFanMicro.name(), "OpenFAN Micro");
-    }
-
-    #[test]
-    fn test_default_board_is_standard() {
-        use openfan_core::{DefaultBoard, OpenFanStandard};
-
-        assert_eq!(DefaultBoard::FAN_COUNT, OpenFanStandard::FAN_COUNT);
-        assert_eq!(DefaultBoard::USB_VID, OpenFanStandard::USB_VID);
-        assert_eq!(DefaultBoard::USB_PID, OpenFanStandard::USB_PID);
-    }
-
-    #[test]
-    fn test_board_rpm_limits_standard() {
-        use openfan_core::OpenFanStandard;
-
-        assert_eq!(OpenFanStandard::MIN_TARGET_RPM, 500);
-        assert_eq!(OpenFanStandard::MAX_TARGET_RPM, 9000);
-    }
-
-    #[test]
-    fn test_board_info_from_type() {
-        use openfan_core::BoardType;
-
-        let info = BoardType::OpenFanStandard.to_board_info();
-        assert_eq!(info.name, "OpenFAN Standard");
-        assert_eq!(info.fan_count, 10);
-        assert_eq!(info.usb_vid, 0x2E8A);
-        assert_eq!(info.usb_pid, 0x000A);
-        assert_eq!(info.max_pwm, 100);
-        assert_eq!(info.baud_rate, 115200);
-    }
-
-    #[test]
-    fn test_board_info_validation() {
-        use openfan_core::BoardType;
-
-        let info = BoardType::OpenFanStandard.to_board_info();
-
-        // Valid fan IDs
-        assert!(info.validate_fan_id(0).is_ok());
-        assert!(info.validate_fan_id(9).is_ok());
-
-        // Invalid fan ID
-        assert!(info.validate_fan_id(10).is_err());
-
-        // Valid PWM
-        assert!(info.validate_pwm(0).is_ok());
-        assert!(info.validate_pwm(100).is_ok());
-
-        // Invalid PWM
-        assert!(info.validate_pwm(101).is_err());
-    }
+    // Board type tests are in openfan-core/src/board.rs.
 
     #[test]
     fn test_is_disconnect_error_device_disconnected() {

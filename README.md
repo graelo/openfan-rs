@@ -29,10 +29,10 @@ OpenFAN is a fan controller system consisting of:
 | Board | Fans | USB VID:PID | Status |
 |-------|------|-------------|--------|
 | OpenFAN Standard | 10 | 2E8A:000A | Supported |
-| OpenFAN Micro | 1 | 2E8A:000B | Planned |
+| Custom | 1-16 | User-defined | Supported |
 
-The server auto-detects which board is connected via USB. In mock mode, you
-must specify the board type explicitly.
+The server auto-detects OpenFAN Standard boards via USB. For custom/DIY boards,
+use `--board custom:N` where N is the fan count (1-16).
 
 ## Quick Start
 
@@ -71,7 +71,10 @@ openfand
 
 # In mock mode (for testing without hardware)
 openfand --mock --board standard   # Simulate OpenFAN Standard (10 fans)
-openfand --mock --board micro      # Simulate OpenFAN Micro (1 fan)
+openfand --mock --board custom:4   # Simulate custom board with 4 fans
+
+# With custom/DIY hardware (specify device path)
+openfand --device /dev/ttyACM0 --board custom:4
 
 # With custom config
 openfand --config /path/to/config.toml

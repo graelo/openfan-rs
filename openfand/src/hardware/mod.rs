@@ -21,6 +21,26 @@ pub(crate) mod connection {
     use std::env;
     use tracing::{debug, info, warn};
 
+    /// Connect to a specific serial device
+    ///
+    /// Use this when the device path is known (e.g., from --device flag).
+    /// Bypasses USB VID/PID detection.
+    pub async fn connect_to_device(
+        device_path: &str,
+        timeout_ms: u64,
+        debug_uart: bool,
+    ) -> Result<DefaultFanController> {
+        info!("Connecting to device: {}", device_path);
+
+        let driver = SerialDriver::<DefaultBoard>::new(device_path, timeout_ms, debug_uart)
+            .map_err(|e| {
+                OpenFanError::Serial(format!("Failed to connect to {}: {}", device_path, e))
+            })?;
+
+        info!("Successfully connected to {}", device_path);
+        Ok(FanController::new(driver))
+    }
+
     /// Initialize hardware connection with automatic device detection
     ///
     /// Tries multiple methods to find and connect to the fan controller:
