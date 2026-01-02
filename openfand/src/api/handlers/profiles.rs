@@ -231,44 +231,38 @@ pub(crate) async fn set_profile(
     };
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!("Hardware not available - simulating profile application for testing");
         info!("Applied profile '{}' (mock mode)", profile_name);
         return api_ok!(());
     };
 
-    let mut controller = fan_controller.lock().await;
-    let mut results = Vec::new();
+    let profile_values = profile.values.clone();
+    let control_mode = profile.control_mode;
+    let pname = profile_name.clone();
 
-    // Apply profile values to each fan
-    for (fan_id, &value) in profile.values.iter().enumerate() {
-        let fan_id = fan_id as u8;
+    // Apply profile values to each fan via connection manager
+    cm.with_controller(|controller| {
+        Box::pin(async move {
+            for (fan_id, &value) in profile_values.iter().enumerate() {
+                let fan_id = fan_id as u8;
 
-        let result = match profile.control_mode {
-            ControlMode::Pwm => match controller.set_fan_pwm(fan_id, value).await {
-                Ok(_) => format!("Fan {} set to {}% PWM", fan_id, value),
-                Err(e) => {
+                let result = match control_mode {
+                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+                };
+
+                if let Err(e) = result {
                     warn!(
-                        "Failed to set fan {} PWM while applying profile '{}': {}",
-                        fan_id, profile_name, e
+                        "Failed to set fan {} while applying profile '{}': {}",
+                        fan_id, pname, e
                     );
-                    format!("Fan {} failed: {}", fan_id, e)
                 }
-            },
-            ControlMode::Rpm => match controller.set_fan_rpm(fan_id, value).await {
-                Ok(_) => format!("Fan {} set to {} RPM", fan_id, value),
-                Err(e) => {
-                    warn!(
-                        "Failed to set fan {} RPM while applying profile '{}': {}",
-                        fan_id, profile_name, e
-                    );
-                    format!("Fan {} failed: {}", fan_id, e)
-                }
-            },
-        };
-
-        results.push(result);
-    }
+            }
+            Ok(())
+        })
+    })
+    .await?;
 
     info!("Applied profile '{}' to all fans", profile_name);
     api_ok!(())

@@ -20,7 +20,9 @@ pub type DefaultFanController = fan_controller::FanController<openfan_core::Defa
 pub type DefaultSerialDriver = serial_driver::SerialDriver<openfan_core::DefaultBoard>;
 
 pub use fan_controller::FanController;
-pub use serial_driver::{detect_board_from_usb, find_fan_controller, SerialDriver};
+pub use serial_driver::{
+    detect_board_from_usb, find_fan_controller, is_disconnect_error, SerialDriver, SerialTransport,
+};
 
 #[cfg(test)]
 mod tests {

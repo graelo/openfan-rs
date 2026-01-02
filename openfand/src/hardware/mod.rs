@@ -4,9 +4,10 @@
 //! consumers of `openfand` can access the hardware APIs without
 //! depending on the internal module layout.
 
-pub use openfan_hardware::{
-    detect_board_from_usb, find_fan_controller, FanController, SerialDriver,
-};
+mod connection_manager;
+
+pub use connection_manager::{ConnectionManager, ConnectionState};
+pub use openfan_hardware::{detect_board_from_usb, find_fan_controller, FanController, SerialDriver};
 
 /// Type alias for the standard fan controller with default board
 pub type DefaultFanController = FanController<SerialDriver<openfan_core::DefaultBoard>>;

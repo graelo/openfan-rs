@@ -65,6 +65,18 @@ pub enum OpenFanError {
     #[error("Device not found")]
     DeviceNotFound,
 
+    /// Device disconnected (USB unplugged, power cycle)
+    #[error("Device disconnected: {0}")]
+    DeviceDisconnected(String),
+
+    /// Reconnection in progress
+    #[error("Reconnection in progress")]
+    Reconnecting,
+
+    /// Reconnection failed after max retries
+    #[error("Reconnection failed after {attempts} attempts: {reason}")]
+    ReconnectionFailed { attempts: u32, reason: String },
+
     /// Generic error
     #[error("{0}")]
     Other(String),

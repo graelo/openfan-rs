@@ -17,3 +17,19 @@ bind_address = "127.0.0.1"
 port = 3000
 # Communication timeout in seconds
 communication_timeout = 1
+
+[reconnect]
+# Enable automatic reconnection when hardware disconnects (default: true)
+enabled = true
+# Maximum reconnection attempts (0 = unlimited, default: 0)
+max_attempts = 0
+# Initial delay in seconds before first reconnection attempt (default: 1)
+initial_delay_secs = 1
+# Maximum delay in seconds between reconnection attempts (default: 30)
+max_delay_secs = 30
+# Backoff multiplier for exponential backoff (default: 2.0)
+backoff_multiplier = 2.0
+# Enable background heartbeat for connection monitoring (default: true)
+enable_heartbeat = true
+# Heartbeat interval in seconds (default: 10)
+heartbeat_interval_secs = 10

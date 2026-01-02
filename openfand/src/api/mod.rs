@@ -5,7 +5,7 @@
 pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
-use crate::hardware::DefaultFanController;
+use crate::hardware::ConnectionManager;
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -15,7 +15,6 @@ use axum::{
 use openfan_core::BoardInfo;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
@@ -27,8 +26,8 @@ pub(crate) struct AppState {
     pub board_info: Arc<BoardInfo>,
     /// Runtime configuration (static config + mutable data)
     pub config: Arc<RuntimeConfig>,
-    /// Hardware controller
-    pub fan_controller: Option<Arc<Mutex<DefaultFanController>>>,
+    /// Connection manager for hardware (None in mock mode)
+    pub connection_manager: Option<Arc<ConnectionManager>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
 }
@@ -38,12 +37,12 @@ impl AppState {
     pub fn new(
         board_info: BoardInfo,
         config: RuntimeConfig,
-        fan_controller: Option<DefaultFanController>,
+        connection_manager: Option<Arc<ConnectionManager>>,
     ) -> Self {
         Self {
             board_info: Arc::new(board_info),
             config: Arc::new(config),
-            fan_controller: fan_controller.map(|fc| Arc::new(tokio::sync::Mutex::new(fc))),
+            connection_manager,
             start_time: Instant::now(),
         }
     }
@@ -147,6 +146,8 @@ pub(crate) fn create_router(state: AppState) -> Router {
         )
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
+        // Manual reconnection endpoint
+        .route("/api/v0/reconnect", post(handlers::info::reconnect))
         // Root endpoint
         .route("/", get(handlers::info::root))
         .layer(middleware_stack)
@@ -228,6 +229,18 @@ pub(crate) mod error {
                 }
                 openfan_core::OpenFanError::DeviceNotFound => {
                     Self::service_unavailable("Hardware not available")
+                }
+                openfan_core::OpenFanError::DeviceDisconnected(msg) => {
+                    Self::service_unavailable(format!("Device disconnected: {}", msg))
+                }
+                openfan_core::OpenFanError::Reconnecting => {
+                    Self::service_unavailable("Reconnection in progress, please retry shortly")
+                }
+                openfan_core::OpenFanError::ReconnectionFailed { attempts, reason } => {
+                    Self::service_unavailable(format!(
+                        "Reconnection failed after {} attempts: {}",
+                        attempts, reason
+                    ))
                 }
                 openfan_core::OpenFanError::Hardware(msg) => Self::service_unavailable(msg),
                 openfan_core::OpenFanError::Serial(msg) => Self::service_unavailable(msg),
@@ -376,5 +389,38 @@ mod tests {
         let api_error: ApiError = error.into();
 
         assert_eq!(api_error.status_code, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_device_disconnected_error_conversion() {
+        let error = OpenFanError::DeviceDisconnected("USB unplugged".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(api_error.message.contains("Device disconnected"));
+        assert!(api_error.message.contains("USB unplugged"));
+    }
+
+    #[test]
+    fn test_reconnecting_error_conversion() {
+        let error = OpenFanError::Reconnecting;
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(api_error.message.contains("Reconnection in progress"));
+    }
+
+    #[test]
+    fn test_reconnection_failed_error_conversion() {
+        let error = OpenFanError::ReconnectionFailed {
+            attempts: 5,
+            reason: "Device not found".to_string(),
+        };
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::SERVICE_UNAVAILABLE);
+        assert!(api_error.message.contains("Reconnection failed"));
+        assert!(api_error.message.contains("5 attempts"));
+        assert!(api_error.message.contains("Device not found"));
     }
 }

@@ -6,7 +6,7 @@ use crate::api::AppState;
 use axum::{extract::State, Json};
 use openfan_core::api;
 use serde_json::{json, Value};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 /// Handle the root endpoint.
 ///
@@ -57,9 +57,9 @@ pub(crate) async fn root() -> Result<Json<api::ApiResponse<Value>>, ApiError> {
 pub(crate) async fn get_info(
     State(state): State<AppState>,
 ) -> Result<Json<api::ApiResponse<api::InfoResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/info");
+    use crate::hardware::ConnectionState;
 
-    let hardware_connected = state.fan_controller.is_some();
+    debug!("Request: GET /api/v0/info");
 
     // Calculate actual uptime
     let uptime = state.start_time.elapsed().as_secs();
@@ -67,41 +67,83 @@ pub(crate) async fn get_info(
     // Software information
     let software = "OpenFAN Server v1.0.0\r\nBuild: 2024-10-08".to_string();
 
-    // Try to get hardware and firmware information if hardware is connected
-    let (hardware_info, firmware_info) = if let Some(fan_controller) = &state.fan_controller {
-        let mut controller = fan_controller.lock().await;
+    // Get connection state and hardware info via connection manager
+    let (
+        hardware_connected,
+        connection_status,
+        reconnect_count,
+        reconnection_enabled,
+        time_since_disconnect_secs,
+        hardware_info,
+        firmware_info,
+    ) = if let Some(cm) = &state.connection_manager {
+        let conn_state = cm.connection_state().await;
+        let is_connected = conn_state == ConnectionState::Connected;
+        let status = conn_state.as_str().to_string();
+        let count = cm.reconnect_count();
+        let recon_enabled = cm.reconnection_enabled();
+        let time_since = cm
+            .time_since_disconnect()
+            .await
+            .map(|d| d.as_secs());
 
-        let hardware = match controller.get_hw_info().await {
-            Ok(hw_info) => {
-                debug!("Retrieved hardware info: {}", hw_info);
-                Some(hw_info)
+        // Try to get hardware and firmware info if connected
+        let (hw, fw) = if is_connected {
+            let result = cm
+                .with_controller(|controller| {
+                    Box::pin(async move {
+                        let hw = match controller.get_hw_info().await {
+                            Ok(info) => {
+                                debug!("Retrieved hardware info: {}", info);
+                                Some(info)
+                            }
+                            Err(e) => {
+                                warn!("Failed to retrieve hardware info: {}", e);
+                                None
+                            }
+                        };
+
+                        let fw = match controller.get_fw_info().await {
+                            Ok(info) => {
+                                debug!("Retrieved firmware info: {}", info);
+                                Some(info)
+                            }
+                            Err(e) => {
+                                warn!("Failed to retrieve firmware info: {}", e);
+                                None
+                            }
+                        };
+
+                        Ok((hw, fw))
+                    })
+                })
+                .await;
+
+            match result {
+                Ok((hw, fw)) => (hw, fw),
+                Err(e) => {
+                    warn!("Failed to get hardware info: {}", e);
+                    (None, None)
+                }
             }
-            Err(e) => {
-                warn!("Failed to retrieve hardware info: {}", e);
-                None
-            }
+        } else {
+            (None, None)
         };
 
-        let firmware = match controller.get_fw_info().await {
-            Ok(fw_info) => {
-                debug!("Retrieved firmware info: {}", fw_info);
-                Some(fw_info)
-            }
-            Err(e) => {
-                warn!("Failed to retrieve firmware info: {}", e);
-                None
-            }
-        };
-
-        (hardware, firmware)
+        (is_connected, status, count, recon_enabled, time_since, hw, fw)
     } else {
-        (None, None)
+        // Mock mode
+        (false, "mock".to_string(), 0, false, None, None, None)
     };
 
     let info_response = api::InfoResponse {
         version: "1.0.0".to_string(),
         board_info: (*state.board_info).clone(),
         hardware_connected,
+        connection_status,
+        reconnect_count,
+        reconnection_enabled,
+        time_since_disconnect_secs,
         uptime,
         software,
         hardware: hardware_info,
@@ -109,6 +151,45 @@ pub(crate) async fn get_info(
     };
 
     Ok(Json(api::ApiResponse::success(info_response)))
+}
+
+/// Trigger a manual reconnection attempt.
+///
+/// Forces the server to attempt reconnecting to the hardware device.
+/// Useful when hardware has been physically reconnected and immediate
+/// reconnection is desired without waiting for heartbeat detection.
+///
+/// # Endpoint
+///
+/// `POST /api/v0/reconnect`
+///
+/// # Returns
+///
+/// - Success: Empty response on successful reconnection
+/// - Error: 503 if reconnection fails or is in progress
+/// - Error: 400 if in mock mode (no hardware to reconnect)
+///
+/// # Behavior
+///
+/// - In mock mode, returns an error since there's no hardware to reconnect
+/// - Triggers immediate reconnection attempt with exponential backoff
+/// - Returns success only after connection is verified
+pub(crate) async fn reconnect(
+    State(state): State<AppState>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
+    debug!("Request: POST /api/v0/reconnect");
+
+    let Some(cm) = &state.connection_manager else {
+        return Err(ApiError::bad_request(
+            "Cannot reconnect in mock mode - no hardware configured".to_string(),
+        ));
+    };
+
+    info!("Manual reconnection requested");
+    cm.force_reconnect().await?;
+    info!("Manual reconnection successful");
+
+    Ok(Json(api::ApiResponse::success(())))
 }
 
 #[cfg(test)]
@@ -148,6 +229,10 @@ mod tests {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: true,
+            connection_status: "connected".to_string(),
+            reconnect_count: 0,
+            reconnection_enabled: true,
+            time_since_disconnect_secs: None,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0".to_string(),
             hardware: Some("<HW|Model:Standard;Rev:1.0>".to_string()),
@@ -156,6 +241,7 @@ mod tests {
 
         assert_eq!(info.version, "1.0.0");
         assert!(info.hardware_connected);
+        assert_eq!(info.connection_status, "connected");
         assert_eq!(info.uptime, 3600);
         assert!(info.hardware.is_some());
         assert!(info.firmware.is_some());
@@ -169,6 +255,10 @@ mod tests {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: false,
+            connection_status: "mock".to_string(),
+            reconnect_count: 0,
+            reconnection_enabled: false,
+            time_since_disconnect_secs: None,
             uptime: 120,
             software: "OpenFAN Server v1.0.0".to_string(),
             hardware: None,
@@ -176,6 +266,7 @@ mod tests {
         };
 
         assert!(!info.hardware_connected);
+        assert_eq!(info.connection_status, "mock");
         assert!(info.hardware.is_none());
         assert!(info.firmware.is_none());
     }
@@ -188,6 +279,10 @@ mod tests {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: true,
+            connection_status: "connected".to_string(),
+            reconnect_count: 2,
+            reconnection_enabled: true,
+            time_since_disconnect_secs: Some(30),
             uptime: 60,
             software: "Test".to_string(),
             hardware: None,
@@ -198,6 +293,8 @@ mod tests {
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"version\":\"1.0.0\""));
         assert!(json.contains("\"hardware_connected\":true"));
+        assert!(json.contains("\"connection_status\":\"connected\""));
+        assert!(json.contains("\"reconnect_count\":2"));
         assert!(json.contains("\"uptime\":60"));
     }
 

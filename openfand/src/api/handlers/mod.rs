@@ -22,8 +22,15 @@
 //!
 //! # Mock Mode
 //!
-//! When hardware is not available (`state.fan_controller` is `None`),
+//! When hardware is not available (`state.connection_manager` is `None`),
 //! handlers return simulated data for testing and development purposes.
+//!
+//! # Connection Management
+//!
+//! When hardware is available, the `ConnectionManager` handles automatic
+//! reconnection after device disconnects. Handlers use `with_controller()`
+//! to execute operations, which automatically detects disconnections and
+//! triggers reconnection attempts.
 
 pub(crate) mod aliases;
 pub(crate) mod cfm;

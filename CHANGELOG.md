@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added specific error variants for better error handling: `ZoneNotFound`, `CurveNotFound`, `CfmMappingNotFound`
+- **Device reconnection support**: Automatic reconnection when hardware disconnects (USB unplug, power cycle)
+  - Configurable exponential backoff retry strategy via `[reconnect]` section in config.toml
+  - Automatic PWM state restoration after successful reconnection
+  - Background heartbeat monitoring for connection health
+  - New error variants: `DeviceDisconnected`, `Reconnecting`, `ReconnectionFailed`
+  - Enhanced `/api/v0/info` endpoint with connection status fields
+  - New `POST /api/v0/reconnect` endpoint for manual reconnection
+  - HTTP 503 status for operations during disconnect/reconnection
 
 ### Changed
 - **Configuration format**: Replaced `config.yaml` with `config.toml` for all deployments

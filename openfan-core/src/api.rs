@@ -37,6 +37,18 @@ pub struct InfoResponse {
     pub board_info: crate::BoardInfo,
     /// Whether hardware is connected
     pub hardware_connected: bool,
+    /// Connection status: "connected", "disconnected", "reconnecting", or "mock"
+    #[serde(default)]
+    pub connection_status: String,
+    /// Number of successful reconnections since server start
+    #[serde(default)]
+    pub reconnect_count: u32,
+    /// Whether automatic reconnection is enabled
+    #[serde(default)]
+    pub reconnection_enabled: bool,
+    /// Seconds since last disconnection (None if never disconnected or currently connected)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_since_disconnect_secs: Option<u64>,
     /// Server uptime in seconds
     pub uptime: u64,
     /// Software information
@@ -461,6 +473,10 @@ mod tests {
             version: "1.0.0".to_string(),
             board_info,
             hardware_connected: true,
+            connection_status: "connected".to_string(),
+            reconnect_count: 0,
+            reconnection_enabled: true,
+            time_since_disconnect_secs: None,
             uptime: 3600,
             software: "OpenFAN Server v1.0.0".to_string(),
             hardware: Some("Hardware v1.0".to_string()),
@@ -471,6 +487,8 @@ mod tests {
         assert!(json.contains("1.0.0"));
         assert!(json.contains("true"));
         assert!(json.contains("3600"));
+        assert!(json.contains("connected"));
+        assert!(json.contains("reconnection_enabled"));
     }
 
     #[test]
