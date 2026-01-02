@@ -453,4 +453,79 @@ mod tests {
         assert!(!config.shutdown.enabled);
         assert_eq!(config.shutdown.profile.as_str(), DEFAULT_SAFE_BOOT_PROFILE);
     }
+
+    // ProfileName tests - all test actual implementations we wrote
+    #[test]
+    fn test_profile_name_new() {
+        let name = ProfileName::new("Test Profile");
+        assert_eq!(name.as_str(), "Test Profile");
+    }
+
+    #[test]
+    fn test_profile_name_from_string() {
+        let name: ProfileName = String::from("From String").into();
+        assert_eq!(name.as_str(), "From String");
+    }
+
+    #[test]
+    fn test_profile_name_from_str() {
+        let name: ProfileName = "From &str".into();
+        assert_eq!(name.as_str(), "From &str");
+    }
+
+    #[test]
+    fn test_profile_name_deref() {
+        let name = ProfileName::new("Deref Test");
+        // Deref allows using str methods directly on ProfileName
+        assert!(name.starts_with("Deref"));
+        assert!(name.ends_with("Test"));
+        assert_eq!(name.len(), 10);
+    }
+
+    #[test]
+    fn test_profile_name_display() {
+        let name = ProfileName::new("Display Test");
+        assert_eq!(format!("{}", name), "Display Test");
+    }
+
+    #[test]
+    fn test_profile_name_clone_and_eq() {
+        let name = ProfileName::new("Clone Test");
+        let cloned = name.clone();
+        assert_eq!(name, cloned);
+        assert_ne!(name, ProfileName::new("Different"));
+    }
+
+    #[test]
+    fn test_profile_name_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(ProfileName::new("Profile 1"));
+        set.insert(ProfileName::new("Profile 2"));
+        set.insert(ProfileName::new("Profile 1")); // duplicate should not increase size
+        assert_eq!(set.len(), 2);
+        assert!(set.contains(&ProfileName::new("Profile 1")));
+    }
+
+    #[test]
+    fn test_profile_name_serde_roundtrip() {
+        let name = ProfileName::new("Serde Test");
+        // Serialize with serde_json (transparent means just the string)
+        let serialized = serde_json::to_string(&name).unwrap();
+        assert_eq!(serialized, "\"Serde Test\"");
+        // Deserialize back
+        let deserialized: ProfileName = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(name, deserialized);
+    }
+
+    #[test]
+    fn test_profile_name_hashmap_lookup() {
+        use std::collections::HashMap;
+        let mut map: HashMap<String, i32> = HashMap::new();
+        map.insert("Test Profile".to_string(), 42);
+
+        let name = ProfileName::new("Test Profile");
+        // Borrow<str> allows ProfileName to be used for HashMap<String, _> lookups
+        assert_eq!(map.get(name.as_str()), Some(&42));
+    }
 }
