@@ -357,12 +357,5 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_reconnect_config_defaults() {
-        let config = ReconnectConfig::default();
-        assert!(config.enabled);
-        assert_eq!(config.max_attempts, 0);
-        assert_eq!(config.initial_delay_secs, 1);
-        assert_eq!(config.max_delay_secs, 30);
-    }
+    // Note: ReconnectConfig defaults are tested in openfan-core/src/config/static_config.rs
 }

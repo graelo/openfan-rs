@@ -305,29 +305,8 @@ pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_find_ports() {
-        // This test will only work if ports are available
-        // Just check that the function doesn't panic
-        let _ = tokio_serial::available_ports();
-    }
-
-    #[test]
-    fn test_find_fan_controller() {
-        // This will fail if hardware isn't connected, which is expected
-        let result = find_fan_controller::<openfan_core::DefaultBoard>();
-        // Just verify the function runs without panicking
-        let _ = result;
-    }
-
-    #[test]
-    fn test_detect_board_from_usb_no_device() {
-        // Without hardware connected, should return DeviceNotFound
-        let result = detect_board_from_usb();
-        // We can't guarantee the error type without mocking USB,
-        // but verify the function runs without panicking
-        let _ = result;
-    }
+    // Hardware-dependent tests (find_ports, find_fan_controller, detect_board_from_usb)
+    // are tested via integration tests with actual hardware or mocks.
 
     #[test]
     fn test_board_usb_identifiers_standard() {
