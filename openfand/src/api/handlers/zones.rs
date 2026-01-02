@@ -373,7 +373,10 @@ pub(crate) async fn apply_zone(
                 };
 
                 if let Err(e) = result {
-                    warn!("Failed to set fan {} in zone '{}': {}", fan_id, zone_name, e);
+                    warn!(
+                        "Failed to set fan {} in zone '{}': {}",
+                        fan_id, zone_name, e
+                    );
                 }
             }
             Ok(())

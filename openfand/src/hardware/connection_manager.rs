@@ -106,8 +106,7 @@ impl ConnectionManager {
     where
         F: for<'a> FnOnce(
             &'a mut DefaultFanController,
-        )
-            -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
+        ) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
     {
         // Check current state
         let state = *self.state.read().await;
@@ -212,7 +211,10 @@ impl ConnectionManager {
             match connection::auto_connect(self.timeout_ms, self.debug_uart).await {
                 Ok(mut new_controller) => {
                     // Verify connection works
-                    if connection::test_connection(&mut new_controller).await.is_ok() {
+                    if connection::test_connection(&mut new_controller)
+                        .await
+                        .is_ok()
+                    {
                         info!("Reconnection successful after {} attempts", attempt);
 
                         // Restore PWM cache
@@ -242,10 +244,7 @@ impl ConnectionManager {
 
             // Check max attempts
             if self.config.max_attempts > 0 && attempt >= self.config.max_attempts {
-                error!(
-                    "Reconnection failed after {} attempts, giving up",
-                    attempt
-                );
+                error!("Reconnection failed after {} attempts, giving up", attempt);
                 *self.state.write().await = ConnectionState::Disconnected;
                 return Err(OpenFanError::ReconnectionFailed {
                     attempts: attempt,
@@ -309,9 +308,7 @@ impl ConnectionManager {
                 // Perform health check
                 debug!("Performing heartbeat check");
                 let result = self
-                    .with_controller(|ctrl| {
-                        Box::pin(async move { ctrl.get_fw_info().await })
-                    })
+                    .with_controller(|ctrl| Box::pin(async move { ctrl.get_fw_info().await }))
                     .await;
 
                 match result {

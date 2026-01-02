@@ -82,10 +82,7 @@ pub(crate) async fn get_info(
         let status = conn_state.as_str().to_string();
         let count = cm.reconnect_count();
         let recon_enabled = cm.reconnection_enabled();
-        let time_since = cm
-            .time_since_disconnect()
-            .await
-            .map(|d| d.as_secs());
+        let time_since = cm.time_since_disconnect().await.map(|d| d.as_secs());
 
         // Try to get hardware and firmware info if connected
         let (hw, fw) = if is_connected {
@@ -130,7 +127,15 @@ pub(crate) async fn get_info(
             (None, None)
         };
 
-        (is_connected, status, count, recon_enabled, time_since, hw, fw)
+        (
+            is_connected,
+            status,
+            count,
+            recon_enabled,
+            time_since,
+            hw,
+            fw,
+        )
     } else {
         // Mock mode
         (false, "mock".to_string(), 0, false, None, None, None)
