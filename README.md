@@ -112,7 +112,8 @@ OpenFAN discovers configuration using XDG paths with system fallback:
 | CLI config | `~/.config/openfan/cli.toml` | — |
 | Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/` | `/var/lib/openfan/` |
 
-Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG default.
+Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG
+default.
 
 ```toml
 # Directory for mutable data files (profiles, aliases, zones, thermal curves, CFM mappings)
@@ -131,11 +132,27 @@ max_delay_secs = 30               # Maximum retry delay
 backoff_multiplier = 2.0          # Exponential backoff multiplier
 enable_heartbeat = true           # Background connection monitoring
 heartbeat_interval_secs = 10      # Heartbeat check interval
+
+[shutdown]
+enabled = true                    # Apply safe profile before shutdown
+profile = "100% PWM"              # Profile to apply (must exist)
 ```
 
-Hardware detection is automatic via USB VID/PID. No hardware configuration needed.
+Hardware detection is automatic via USB VID/PID. No hardware configuration
+needed.
 
-When the hardware disconnects (USB unplug, power cycle), the server automatically attempts reconnection with exponential backoff and restores the previous PWM state.
+When the hardware disconnects (USB unplug, power cycle), the server
+automatically attempts reconnection with exponential backoff and restores the
+previous PWM state.
+
+**Safe boot profile:** On graceful shutdown (Ctrl+C, SIGTERM), a safe boot
+profile is applied to ensure fans run at maximum speed. While the [OpenFAN
+firmware](https://github.com/SasaKaranovic/OpenFanController) defaults to 1000
+RPM on power cycle, many motherboards keep USB powered via 5V standby during
+reboot—meaning the controller doesn't reset and retains the last applied
+values. This could be dangerous if a "silent" profile was active during boot
+scenarios with high thermal load (e.g., memtest86, BIOS stress tests). Also see
+[OpenFan API docs](https://docs.sasakaranovic.com/openfan/api/) for details.
 
 Data files (aliases, profiles, zones, thermal curves) are managed via CLI
 commands rather than edited directly. See the [Tutorial](docs/TUTORIAL.md) for

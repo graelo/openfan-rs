@@ -5,6 +5,7 @@
 mod api;
 mod config;
 mod hardware;
+mod shutdown;
 
 use anyhow::Result;
 use api::AppState;
@@ -175,6 +176,14 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Wrap runtime_config in Arc for sharing between AppState and shutdown handler
+    let runtime_config = Arc::new(runtime_config);
+
+    // Clone for shutdown handler (before moving into AppState)
+    let runtime_config_for_shutdown = runtime_config.clone();
+    let cm_for_shutdown = connection_manager.clone();
+    let is_mock = args.mock;
+
     // Step 5: Create application state with board info
     let app_state = AppState::new(board_info, runtime_config, connection_manager);
 
@@ -190,7 +199,15 @@ async fn main() -> Result<()> {
 
     // Run server with graceful shutdown
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            shutdown::apply_safe_boot_profile(
+                &runtime_config_for_shutdown,
+                cm_for_shutdown.as_ref(),
+                is_mock,
+            )
+            .await;
+        })
         .await?;
 
     info!("Server shutdown complete");

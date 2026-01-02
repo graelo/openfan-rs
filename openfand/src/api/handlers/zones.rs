@@ -473,7 +473,7 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::new(board_info, config, None);
+            let state = AppState::new(board_info, std::sync::Arc::new(config), None);
 
             TestApp {
                 router: create_router(state),

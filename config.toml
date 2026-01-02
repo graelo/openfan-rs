@@ -33,3 +33,12 @@ backoff_multiplier = 2.0
 enable_heartbeat = true
 # Heartbeat interval in seconds (default: 10)
 heartbeat_interval_secs = 10
+
+[shutdown]
+# Enable safe boot profile on shutdown (default: true)
+# When enabled, applies a profile before daemon termination to ensure fans
+# run at a safe speed during system shutdown/reboot.
+enabled = true
+# Profile to apply before shutdown (must exist in profiles.toml)
+# Default: "100% PWM" (created automatically if not present)
+profile = "100% PWM"
