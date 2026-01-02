@@ -42,7 +42,7 @@ pub(crate) async fn get_status(
     debug!("Request: GET /api/v0/fan/status");
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!("Hardware not available - returning mock fan status data");
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
@@ -58,25 +58,25 @@ pub(crate) async fn get_status(
         return api_ok!(mock_status);
     };
 
-    // Get RPM data from hardware
-    let mut controller = fan_controller.lock().await;
-    match controller.get_all_fan_rpm().await {
-        Ok(rpm_map) => {
-            // Get cached PWM data
-            // Note: Hardware does not support reading PWM values, so we return cached values
-            let pwm_map = controller.get_all_fan_pwm();
-            debug!(
-                "Fan status retrieved - RPM: {:?}, PWM: {:?}",
-                rpm_map, pwm_map
-            );
-            let status = api::FanStatusResponse {
-                rpms: rpm_map,
-                pwms: pwm_map,
-            };
-            api_ok!(status)
-        }
-        Err(e) => Err(ApiError::from(e)),
-    }
+    // Get RPM and PWM data from hardware via connection manager
+    let status = cm
+        .with_controller(|controller| {
+            Box::pin(async move {
+                let rpm_map = controller.get_all_fan_rpm().await?;
+                let pwm_map = controller.get_all_fan_pwm();
+                debug!(
+                    "Fan status retrieved - RPM: {:?}, PWM: {:?}",
+                    rpm_map, pwm_map
+                );
+                Ok(api::FanStatusResponse {
+                    rpms: rpm_map,
+                    pwms: pwm_map,
+                })
+            })
+        })
+        .await?;
+
+    api_ok!(status)
 }
 
 /// Sets the PWM value for all fans simultaneously.
@@ -109,20 +109,22 @@ pub(crate) async fn set_all_fans(
     debug!("Setting all fans to {}% PWM", pwm_value);
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!("Hardware not available - simulating fan PWM set for testing");
         return api_ok!(());
     };
 
-    // Send command to hardware
-    let mut controller = fan_controller.lock().await;
-    match controller.set_all_fan_pwm(pwm_value).await {
-        Ok(response) => {
+    // Send command to hardware via connection manager
+    cm.with_controller(|controller| {
+        Box::pin(async move {
+            let response = controller.set_all_fan_pwm(pwm_value).await?;
             debug!("Set all fans response: {}", response);
-            api_ok!(())
-        }
-        Err(e) => Err(ApiError::from(e)),
-    }
+            Ok(())
+        })
+    })
+    .await?;
+
+    api_ok!(())
 }
 
 /// Sets the PWM value for a specific fan.
@@ -169,7 +171,7 @@ pub(crate) async fn set_fan_pwm(
     debug!("Setting fan {} to {}% PWM", fan_index, pwm_value);
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!(
             "Hardware not available - simulating fan {} PWM set for testing",
             fan_index
@@ -177,18 +179,17 @@ pub(crate) async fn set_fan_pwm(
         return api_ok!(());
     };
 
-    // Send command to hardware
-    let mut controller = fan_controller.lock().await;
-    match controller.set_fan_pwm(fan_index, pwm_value).await {
-        Ok(response) => {
+    // Send command to hardware via connection manager
+    cm.with_controller(|controller| {
+        Box::pin(async move {
+            let response = controller.set_fan_pwm(fan_index, pwm_value).await?;
             debug!("Set fan {} PWM response: {}", fan_index, response);
-            api_ok!(())
-        }
-        Err(e) => Err(ApiError::service_unavailable(format!(
-            "Failed to set fan {} PWM: {}",
-            fan_index, e
-        ))),
-    }
+            Ok(())
+        })
+    })
+    .await?;
+
+    api_ok!(())
 }
 
 /// Retrieves the current RPM reading for a specific fan.
@@ -224,7 +225,7 @@ pub(crate) async fn get_fan_rpm(
     state.board_info.validate_fan_id(fan_index)?;
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!(
             "Hardware not available - returning mock RPM for fan {}",
             fan_index
@@ -233,18 +234,18 @@ pub(crate) async fn get_fan_rpm(
         return api_ok!(mock_rpm);
     };
 
-    // Get single fan RPM from hardware
-    let mut controller = fan_controller.lock().await;
-    match controller.get_single_fan_rpm(fan_index).await {
-        Ok(rpm) => {
-            debug!("Fan {} RPM: {}", fan_index, rpm);
-            api_ok!(rpm)
-        }
-        Err(e) => Err(ApiError::service_unavailable(format!(
-            "Failed to get fan {} RPM: {}",
-            fan_index, e
-        ))),
-    }
+    // Get single fan RPM from hardware via connection manager
+    let rpm = cm
+        .with_controller(|controller| {
+            Box::pin(async move {
+                let rpm = controller.get_single_fan_rpm(fan_index).await?;
+                debug!("Fan {} RPM: {}", fan_index, rpm);
+                Ok(rpm)
+            })
+        })
+        .await?;
+
+    api_ok!(rpm)
 }
 
 /// Sets the target RPM for a specific fan.
@@ -291,7 +292,7 @@ pub(crate) async fn set_fan_rpm(
     debug!("Setting fan {} to {} RPM", fan_index, rpm_value);
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!(
             "Hardware not available - simulating fan {} RPM set for testing",
             fan_index
@@ -299,18 +300,17 @@ pub(crate) async fn set_fan_rpm(
         return api_ok!(());
     };
 
-    // Send command to hardware
-    let mut controller = fan_controller.lock().await;
-    match controller.set_fan_rpm(fan_index, rpm_value).await {
-        Ok(response) => {
+    // Send command to hardware via connection manager
+    cm.with_controller(|controller| {
+        Box::pin(async move {
+            let response = controller.set_fan_rpm(fan_index, rpm_value).await?;
             debug!("Set fan {} RPM response: {}", fan_index, response);
-            api_ok!(())
-        }
-        Err(e) => Err(ApiError::service_unavailable(format!(
-            "Failed to set fan {} RPM: {}",
-            fan_index, e
-        ))),
-    }
+            Ok(())
+        })
+    })
+    .await?;
+
+    api_ok!(())
 }
 
 #[cfg(test)]

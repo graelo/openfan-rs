@@ -122,9 +122,20 @@ data_dir = "/var/lib/openfan"
 bind_address = "127.0.0.1"
 port = 3000
 communication_timeout = 1
+
+[reconnect]
+enabled = true                    # Enable automatic reconnection
+max_attempts = 0                  # 0 = unlimited retries
+initial_delay_secs = 1            # Initial retry delay
+max_delay_secs = 30               # Maximum retry delay
+backoff_multiplier = 2.0          # Exponential backoff multiplier
+enable_heartbeat = true           # Background connection monitoring
+heartbeat_interval_secs = 10      # Heartbeat check interval
 ```
 
 Hardware detection is automatic via USB VID/PID. No hardware configuration needed.
+
+When the hardware disconnects (USB unplug, power cycle), the server automatically attempts reconnection with exponential backoff and restores the previous PWM state.
 
 Data files (aliases, profiles, zones, thermal curves) are managed via CLI
 commands rather than edited directly. See the [Tutorial](docs/TUTORIAL.md) for

@@ -348,7 +348,7 @@ pub(crate) async fn apply_zone(
     }
 
     // Check if hardware is available
-    let Some(fan_controller) = &state.fan_controller else {
+    let Some(cm) = &state.connection_manager else {
         debug!("Hardware not available - simulating zone application for testing");
         info!(
             "Applied {} {} to zone '{}' (mock mode)",
@@ -359,20 +359,30 @@ pub(crate) async fn apply_zone(
         return api_ok!(());
     };
 
-    let mut controller = fan_controller.lock().await;
     let value = params.value as u32;
+    let port_ids = zone.port_ids.clone();
+    let zone_name = name.clone();
 
-    // Apply value to each fan in the zone
-    for &fan_id in &zone.port_ids {
-        let result = match mode {
-            ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-            ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-        };
+    // Apply value to each fan in the zone via connection manager
+    cm.with_controller(|controller| {
+        Box::pin(async move {
+            for &fan_id in &port_ids {
+                let result = match mode {
+                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+                };
 
-        if let Err(e) = result {
-            warn!("Failed to set fan {} in zone '{}': {}", fan_id, name, e);
-        }
-    }
+                if let Err(e) = result {
+                    warn!(
+                        "Failed to set fan {} in zone '{}': {}",
+                        fan_id, zone_name, e
+                    );
+                }
+            }
+            Ok(())
+        })
+    })
+    .await?;
 
     info!(
         "Applied {} {} to {} fans in zone '{}'",

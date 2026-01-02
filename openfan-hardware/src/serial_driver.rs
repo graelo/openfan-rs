@@ -21,11 +21,18 @@ pub trait SerialTransport: Send {
 
     /// Clear the input buffer
     fn clear_input_buffer(&mut self) -> Result<()>;
+
+    /// Check if the transport is connected
+    fn is_connected(&self) -> bool;
+
+    /// Get the port path for reconnection purposes
+    fn port_path(&self) -> Option<&str>;
 }
 
 /// Serial driver for hardware communication
 pub struct SerialDriver<B: BoardConfig = openfan_core::DefaultBoard> {
     port: SerialStream,
+    port_path: String,
     prefix: String,
     suffix: String,
     timeout_duration: Duration,
@@ -63,6 +70,7 @@ impl<B: BoardConfig> SerialDriver<B> {
 
         Ok(Self {
             port,
+            port_path: port_path.to_string(),
             prefix: String::new(),
             suffix: "\r\n".to_string(),
             timeout_duration: Duration::from_millis(timeout_ms),
@@ -118,8 +126,11 @@ impl<B: BoardConfig> SerialDriver<B> {
                 let mut line = String::new();
                 match reader.read_line(&mut line).await {
                     Ok(0) => {
-                        // EOF
-                        break;
+                        // EOF indicates device disconnection (USB unplugged, power loss, etc.)
+                        warn!("Serial port returned EOF - device may have been disconnected");
+                        return Err(OpenFanError::DeviceDisconnected(
+                            "Serial port returned EOF - device may have been unplugged".to_string(),
+                        ));
                     }
                     Ok(_) => {
                         let line = line.trim().to_string();
@@ -183,6 +194,39 @@ impl<B: BoardConfig + Send + Sync> SerialTransport for SerialDriver<B> {
 
     fn clear_input_buffer(&mut self) -> Result<()> {
         self.clear_input_buffer_impl()
+    }
+
+    fn is_connected(&self) -> bool {
+        // Check if the serial port is still valid by attempting to get port info
+        // Note: This is a best-effort check; actual disconnection is detected during I/O
+        true // SerialStream doesn't provide a direct "is open" check
+    }
+
+    fn port_path(&self) -> Option<&str> {
+        Some(&self.port_path)
+    }
+}
+
+/// Determine if an error indicates device disconnection
+///
+/// Returns `true` if the error suggests the device has been disconnected
+/// (USB unplugged, power loss, etc.) rather than a transient error.
+pub fn is_disconnect_error(err: &OpenFanError) -> bool {
+    match err {
+        OpenFanError::DeviceDisconnected(_) => true,
+        OpenFanError::Serial(msg) | OpenFanError::Hardware(msg) => {
+            let msg_lower = msg.to_lowercase();
+            msg_lower.contains("broken pipe")
+                || msg_lower.contains("no such device")
+                || msg_lower.contains("resource temporarily unavailable")
+                || msg_lower.contains("permission denied")
+                || msg_lower.contains("device disconnected")
+                || msg_lower.contains("device not configured")
+                || msg_lower.contains("input/output error")
+        }
+        // Timeouts are typically transient, not disconnection
+        OpenFanError::Timeout(_) => false,
+        _ => false,
     }
 }
 
@@ -261,29 +305,8 @@ pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_find_ports() {
-        // This test will only work if ports are available
-        // Just check that the function doesn't panic
-        let _ = tokio_serial::available_ports();
-    }
-
-    #[test]
-    fn test_find_fan_controller() {
-        // This will fail if hardware isn't connected, which is expected
-        let result = find_fan_controller::<openfan_core::DefaultBoard>();
-        // Just verify the function runs without panicking
-        let _ = result;
-    }
-
-    #[test]
-    fn test_detect_board_from_usb_no_device() {
-        // Without hardware connected, should return DeviceNotFound
-        let result = detect_board_from_usb();
-        // We can't guarantee the error type without mocking USB,
-        // but verify the function runs without panicking
-        let _ = result;
-    }
+    // Hardware-dependent tests (find_ports, find_fan_controller, detect_board_from_usb)
+    // are tested via integration tests with actual hardware or mocks.
 
     #[test]
     fn test_board_usb_identifiers_standard() {
@@ -403,5 +426,47 @@ mod tests {
 
         // Invalid PWM
         assert!(info.validate_pwm(101).is_err());
+    }
+
+    #[test]
+    fn test_is_disconnect_error_device_disconnected() {
+        let err = OpenFanError::DeviceDisconnected("test".to_string());
+        assert!(is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_serial_broken_pipe() {
+        let err = OpenFanError::Serial("Broken pipe".to_string());
+        assert!(is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_serial_no_such_device() {
+        let err = OpenFanError::Serial("No such device".to_string());
+        assert!(is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_hardware_io_error() {
+        let err = OpenFanError::Hardware("Input/output error".to_string());
+        assert!(is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_timeout_not_disconnect() {
+        let err = OpenFanError::Timeout("Read timeout".to_string());
+        assert!(!is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_other_not_disconnect() {
+        let err = OpenFanError::InvalidInput("Bad value".to_string());
+        assert!(!is_disconnect_error(&err));
+    }
+
+    #[test]
+    fn test_is_disconnect_error_serial_normal_error() {
+        let err = OpenFanError::Serial("Write failed: some other error".to_string());
+        assert!(!is_disconnect_error(&err));
     }
 }

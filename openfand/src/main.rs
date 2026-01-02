@@ -10,10 +10,11 @@ use anyhow::Result;
 use api::AppState;
 use clap::Parser;
 use config::RuntimeConfig;
-use hardware::connection;
+use hardware::{connection, ConnectionManager};
 use openfan_core::{default_config_path, BoardType};
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
 
@@ -118,12 +119,14 @@ async fn main() -> Result<()> {
     let port = args.port.unwrap_or(server_config.port);
     let bind_addr = format!("{}:{}", args.bind, port);
 
-    // Step 4: Initialize hardware connection
-    let fan_controller = if args.mock {
+    // Step 4: Initialize hardware connection with reconnection support
+    let connection_manager = if args.mock {
         None
     } else {
         info!("Initializing hardware connection...");
-        match connection::auto_connect(2000, args.verbose).await {
+        let timeout_ms = server_config.communication_timeout * 1000;
+
+        match connection::auto_connect(timeout_ms, args.verbose).await {
             Ok(mut controller) => {
                 info!("Hardware connected successfully");
 
@@ -133,7 +136,34 @@ async fn main() -> Result<()> {
                 }
 
                 info!("Hardware layer ready");
-                Some(controller)
+
+                // Wrap controller in ConnectionManager for automatic reconnection
+                let reconnect_config = runtime_config.static_config().reconnect.clone();
+                info!(
+                    "Reconnection support: {} (max_attempts: {}, initial_delay: {}s, heartbeat: {})",
+                    if reconnect_config.enabled { "enabled" } else { "disabled" },
+                    if reconnect_config.max_attempts == 0 { "unlimited".to_string() } else { reconnect_config.max_attempts.to_string() },
+                    reconnect_config.initial_delay_secs,
+                    if reconnect_config.enable_heartbeat { "enabled" } else { "disabled" }
+                );
+
+                let manager = Arc::new(ConnectionManager::new(
+                    controller,
+                    reconnect_config.clone(),
+                    timeout_ms,
+                    args.verbose,
+                ));
+
+                // Start heartbeat task if enabled
+                if reconnect_config.enable_heartbeat {
+                    info!(
+                        "Starting heartbeat monitor (interval: {}s)",
+                        reconnect_config.heartbeat_interval_secs
+                    );
+                    manager.clone().start_heartbeat();
+                }
+
+                Some(manager)
             }
             Err(e) => {
                 error!(
@@ -146,7 +176,7 @@ async fn main() -> Result<()> {
     };
 
     // Step 5: Create application state with board info
-    let app_state = AppState::new(board_info, runtime_config, fan_controller);
+    let app_state = AppState::new(board_info, runtime_config, connection_manager);
 
     // Set up API router
     let app = api::create_router(app_state);

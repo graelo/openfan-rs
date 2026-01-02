@@ -66,9 +66,30 @@ data_dir = "/var/lib/openfan"
 bind_address = "127.0.0.1"
 port = 3000
 communication_timeout = 1
+
+[reconnect]
+enabled = true                    # Enable automatic reconnection (default: true)
+max_attempts = 0                  # Max reconnection attempts, 0 = unlimited (default: 0)
+initial_delay_secs = 1            # Initial retry delay in seconds (default: 1)
+max_delay_secs = 30               # Maximum retry delay in seconds (default: 30)
+backoff_multiplier = 2.0          # Exponential backoff multiplier (default: 2.0)
+enable_heartbeat = true           # Enable background health monitoring (default: true)
+heartbeat_interval_secs = 10      # Heartbeat check interval in seconds (default: 10)
 ```
 
 **Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT` environment variable, or common device paths. No `[hardware]` section is needed in the configuration.
+
+#### Device Reconnection
+
+The server automatically handles hardware disconnections (USB unplug, power cycle):
+
+- **Automatic reconnection**: Exponential backoff retry strategy when device disconnects
+- **State restoration**: PWM values are cached and restored after successful reconnection
+- **Heartbeat monitoring**: Background task periodically checks connection health
+- **API behavior**: During disconnect, API returns HTTP 503 with descriptive error messages
+- **Manual reconnection**: Use `POST /api/v0/reconnect` to trigger immediate reconnection attempt
+
+The `[reconnect]` section is optional. If omitted, reconnection is enabled with default values.
 
 ## CLI Usage
 
@@ -427,7 +448,8 @@ The server exposes a REST API on port 3000 (default).
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v0/info` | GET | Server info |
+| `/api/v0/info` | GET | Server info (includes connection status) |
+| `/api/v0/reconnect` | POST | Trigger manual reconnection attempt |
 | `/api/v0/fan/status` | GET | All fan status |
 | `/api/v0/fan/{id}/pwm?value=N` | GET | Set fan PWM (0-100) |
 | `/api/v0/fan/{id}/rpm?value=N` | GET | Set fan RPM target (500-9000) |
@@ -495,7 +517,76 @@ curl -X POST http://localhost:3000/api/v0/cfm/0 \
 
 # Delete CFM mapping
 curl -X DELETE http://localhost:3000/api/v0/cfm/0
+
+# Trigger manual reconnection
+curl -X POST http://localhost:3000/api/v0/reconnect
 ```
+
+### API Response Format
+
+All endpoints return JSON in this format:
+
+```json
+// Success response
+{
+  "data": { ... }
+}
+
+// Error response
+{
+  "error": "Error message"
+}
+```
+
+### Connection State Information
+
+The `/api/v0/info` endpoint includes connection status fields:
+
+```json
+{
+  "data": {
+    "version": "1.0.0",
+    "hardware_connected": true,
+    "connection_status": "connected",
+    "reconnect_count": 2,
+    "reconnection_enabled": true,
+    "time_since_disconnect_secs": null,
+    "uptime": 3600,
+    ...
+  }
+}
+```
+
+**Connection status values:**
+- `"connected"` - Device is connected and operational
+- `"disconnected"` - Device is disconnected
+- `"reconnecting"` - Reconnection attempt in progress
+- `"mock"` - Running in mock mode (no hardware)
+
+**Reconnection fields:**
+- `reconnect_count`: Number of successful reconnections since server start
+- `reconnection_enabled`: Whether automatic reconnection is enabled
+- `time_since_disconnect_secs`: Seconds since last disconnect (null if never disconnected)
+
+### Error Handling During Disconnection
+
+When the device is disconnected or reconnecting, API endpoints return HTTP 503 (Service Unavailable):
+
+```json
+{
+  "error": "Device disconnected: ..."
+}
+```
+
+or
+
+```json
+{
+  "error": "Reconnection in progress"
+}
+```
+
+Once reconnection succeeds, the cached PWM state is automatically restored and normal operation resumes.
 
 ## Shell Completion
 

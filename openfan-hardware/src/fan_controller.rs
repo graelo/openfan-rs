@@ -341,6 +341,14 @@ mod tests {
         fn clear_input_buffer(&mut self) -> Result<()> {
             Ok(())
         }
+
+        fn is_connected(&self) -> bool {
+            true
+        }
+
+        fn port_path(&self) -> Option<&str> {
+            Some("mock://test")
+        }
     }
 
     /// Create a test FanController with mock transport

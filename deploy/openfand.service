@@ -1,6 +1,6 @@
 [Unit]
 Description=OpenFAN Controller Server
-Documentation=https://github.com/graelo/OpenFanController
+Documentation=https://github.com/graelo/openfan-rs
 After=network.target
 Wants=network-online.target
 

@@ -126,7 +126,7 @@ Architecture: $ARCHITECTURE
 Installed-Size: $installed_size
 Depends: libc6 (>= 2.17), libgcc-s1 (>= 3.0), systemd
 Maintainer: OpenFAN Contributors <maintainer@example.com>
-Homepage: https://github.com/graelo/OpenFanController
+Homepage: https://github.com/graelo/openfan-rs
 Description: OpenFAN Controller - Fan Management System
  OpenFAN Controller is a high-performance fan management system written in Rust.
  It provides both a REST API server and command-line interface for controlling
