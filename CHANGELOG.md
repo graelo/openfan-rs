@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed duplicate type definitions across crates
   - Enhanced async method documentation with proper imperative mood
   - Minimized imports in openfanctl for better maintainability
+  - Improved test coverage (183 integration tests, 75.21% code coverage)
+    - Added integration tests for edge cases in fan handlers (non-numeric IDs, missing controllers, PWM clamping)
+    - Added error conversion and Display trait tests in openfan-core
 
 ### Changed
 
@@ -69,6 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration tests now run correctly in CI environment
 - Removed random failure simulation from test utilities that was causing flaky
   CI tests
+- **CI coverage workflow**: Fixed `cargo-tarpaulin` execution by adding
+  `--skip-clean` flag (tarpaulin 0.35.0 cleans by default, breaking E2E tests)
 
 ## [0.1.0] - 2024-12-31
 
