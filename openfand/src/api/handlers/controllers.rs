@@ -6,37 +6,10 @@ use axum::{
     extract::{Path, State},
     Json,
 };
-use openfan_core::api::ApiResponse;
-use serde::{Deserialize, Serialize};
+use openfan_core::api::{ApiResponse, ControllerInfo, ControllersListResponse};
 use tracing::{info, warn};
 
 use crate::api::{error::ApiError, AppState};
-
-/// Controller info returned by the API
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ControllerInfo {
-    /// Unique identifier for this controller
-    pub id: String,
-    /// Board name
-    pub board_name: String,
-    /// Number of fan ports
-    pub fan_count: usize,
-    /// Optional description
-    pub description: Option<String>,
-    /// Whether this controller is in mock mode
-    pub mock_mode: bool,
-    /// Connection status
-    pub connected: bool,
-}
-
-/// Response for listing all controllers
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ControllersListResponse {
-    /// Total number of controllers
-    pub count: usize,
-    /// List of controller info
-    pub controllers: Vec<ControllerInfo>,
-}
 
 /// GET /api/v0/controllers
 ///
