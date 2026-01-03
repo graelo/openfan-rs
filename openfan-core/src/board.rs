@@ -82,6 +82,7 @@ impl BoardConfig for OpenFanStandard {
 /// 2. Implement the `BoardConfig` trait for compile-time constants (optional)
 /// 3. Update `FromStr`, `name()`, `fan_count()`, and `to_board_info()`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum BoardType {
     /// OpenFAN Standard - 10-fan controller
     OpenFanStandard,
@@ -93,6 +94,23 @@ pub enum BoardType {
         /// Number of fan channels on this custom board (1-16)
         fan_count: usize,
     },
+}
+
+impl TryFrom<String> for BoardType {
+    type Error = crate::OpenFanError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl From<BoardType> for String {
+    fn from(board_type: BoardType) -> Self {
+        match board_type {
+            BoardType::OpenFanStandard => "standard".to_string(),
+            BoardType::Custom { fan_count } => format!("custom:{}", fan_count),
+        }
+    }
 }
 
 impl std::str::FromStr for BoardType {

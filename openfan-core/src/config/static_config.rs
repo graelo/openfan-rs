@@ -9,6 +9,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 
 use super::paths::default_data_dir;
+use crate::board::BoardType;
 
 /// Default profile name applied during shutdown for thermal safety
 pub const DEFAULT_SAFE_BOOT_PROFILE: &str = "100% PWM";
@@ -171,7 +172,7 @@ pub struct ControllerConfig {
     pub device: String,
 
     /// Board type: "standard" or "custom:N" where N is fan count 1-16
-    pub board: String,
+    pub board: BoardType,
 
     /// Optional human-readable description
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -180,11 +181,11 @@ pub struct ControllerConfig {
 
 impl ControllerConfig {
     /// Create a new controller configuration
-    pub fn new(id: impl Into<String>, device: impl Into<String>, board: impl Into<String>) -> Self {
+    pub fn new(id: impl Into<String>, device: impl Into<String>, board: BoardType) -> Self {
         Self {
             id: id.into(),
             device: device.into(),
-            board: board.into(),
+            board,
             description: None,
         }
     }
@@ -193,13 +194,13 @@ impl ControllerConfig {
     pub fn with_description(
         id: impl Into<String>,
         device: impl Into<String>,
-        board: impl Into<String>,
+        board: BoardType,
         description: impl Into<String>,
     ) -> Self {
         Self {
             id: id.into(),
             device: device.into(),
-            board: board.into(),
+            board,
             description: Some(description.into()),
         }
     }
@@ -608,10 +609,10 @@ mod tests {
     // ControllerConfig tests
     #[test]
     fn test_controller_config_new() {
-        let config = ControllerConfig::new("main", "/dev/ttyACM0", "standard");
+        let config = ControllerConfig::new("main", "/dev/ttyACM0", BoardType::OpenFanStandard);
         assert_eq!(config.id, "main");
         assert_eq!(config.device, "/dev/ttyACM0");
-        assert_eq!(config.board, "standard");
+        assert_eq!(config.board, BoardType::OpenFanStandard);
         assert!(config.description.is_none());
     }
 
@@ -620,18 +621,18 @@ mod tests {
         let config = ControllerConfig::with_description(
             "gpu",
             "/dev/ttyUSB0",
-            "custom:4",
+            BoardType::Custom { fan_count: 4 },
             "GPU cooling rack",
         );
         assert_eq!(config.id, "gpu");
         assert_eq!(config.device, "/dev/ttyUSB0");
-        assert_eq!(config.board, "custom:4");
+        assert_eq!(config.board, BoardType::Custom { fan_count: 4 });
         assert_eq!(config.description, Some("GPU cooling rack".to_string()));
     }
 
     #[test]
     fn test_controller_config_serialization() {
-        let config = ControllerConfig::new("main", "/dev/ttyACM0", "standard");
+        let config = ControllerConfig::new("main", "/dev/ttyACM0", BoardType::OpenFanStandard);
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"id\":\"main\""));
         assert!(json.contains("\"device\":\"/dev/ttyACM0\""));
@@ -646,7 +647,7 @@ mod tests {
         let config: ControllerConfig = serde_json::from_str(json).unwrap();
         assert_eq!(config.id, "test");
         assert_eq!(config.device, "/dev/ttyUSB1");
-        assert_eq!(config.board, "custom:8");
+        assert_eq!(config.board, BoardType::Custom { fan_count: 8 });
         assert_eq!(config.description, Some("Test controller".to_string()));
     }
 
@@ -677,7 +678,7 @@ mod tests {
 
         assert_eq!(config.controllers[0].id, "main");
         assert_eq!(config.controllers[0].device, "/dev/ttyACM0");
-        assert_eq!(config.controllers[0].board, "standard");
+        assert_eq!(config.controllers[0].board, BoardType::OpenFanStandard);
         assert_eq!(
             config.controllers[0].description,
             Some("Main chassis".to_string())
@@ -685,7 +686,10 @@ mod tests {
 
         assert_eq!(config.controllers[1].id, "gpu");
         assert_eq!(config.controllers[1].device, "/dev/ttyUSB0");
-        assert_eq!(config.controllers[1].board, "custom:4");
+        assert_eq!(
+            config.controllers[1].board,
+            BoardType::Custom { fan_count: 4 }
+        );
         assert!(config.controllers[1].description.is_none());
     }
 
@@ -716,9 +720,11 @@ mod tests {
     #[test]
     fn test_static_config_controllers_serialization() {
         let mut config = StaticConfig::default();
-        config
-            .controllers
-            .push(ControllerConfig::new("main", "/dev/ttyACM0", "standard"));
+        config.controllers.push(ControllerConfig::new(
+            "main",
+            "/dev/ttyACM0",
+            BoardType::OpenFanStandard,
+        ));
 
         let toml_str = config.to_toml().unwrap();
         assert!(toml_str.contains("[[controllers]]"));

@@ -26,7 +26,6 @@ use config::RuntimeConfig;
 use hardware::{connection, ConnectionManager, ControllerEntry, ControllerRegistry};
 use openfan_core::{default_config_path, BoardInfo, BoardType};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -62,7 +61,7 @@ struct Args {
     /// Use "custom:N" for custom boards with N fans (1-16).
     /// Ignored when [[controllers]] is defined in config.
     #[arg(long, default_value = "standard")]
-    board: String,
+    board: BoardType,
 
     /// Serial device path (e.g., /dev/ttyACM0, /dev/ttyUSB0)
     ///
@@ -110,11 +109,7 @@ async fn main() -> Result<()> {
     // Determine controller configuration mode
     if let Some(ref device) = args.device {
         // CLI mode: --device specified, create single "default" controller
-        let board_type = BoardType::from_str(&args.board).unwrap_or_else(|e| {
-            error!("Invalid board type '{}': {}", args.board, e);
-            std::process::exit(1);
-        });
-        let board_info = board_type.to_board_info();
+        let board_info = args.board.to_board_info();
 
         info!(
             "Single-controller mode: device={}, board={} ({} fans)",
@@ -148,14 +143,7 @@ async fn main() -> Result<()> {
         );
 
         for (idx, ctrl_config) in controllers.iter().enumerate() {
-            let board_type = BoardType::from_str(&ctrl_config.board).unwrap_or_else(|e| {
-                error!(
-                    "Invalid board type '{}' for controller '{}': {}",
-                    ctrl_config.board, ctrl_config.id, e
-                );
-                std::process::exit(1);
-            });
-            let board_info = board_type.to_board_info();
+            let board_info = ctrl_config.board.to_board_info();
 
             info!(
                 "  Controller '{}': device={}, board={} ({} fans){}",
@@ -203,11 +191,7 @@ async fn main() -> Result<()> {
         }
     } else if args.mock {
         // Mock mode without config: create single mock "default" controller
-        let board_type = BoardType::from_str(&args.board).unwrap_or_else(|e| {
-            error!("Invalid board type '{}': {}", args.board, e);
-            std::process::exit(1);
-        });
-        let board_info = board_type.to_board_info();
+        let board_info = args.board.to_board_info();
 
         info!(
             "Mock mode: default controller with board={} ({} fans)",
