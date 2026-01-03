@@ -333,6 +333,15 @@ impl ConnectionManager {
     /// Force a manual reconnection attempt
     ///
     /// This can be called by an API endpoint to trigger immediate reconnection.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Triggered by POST /api/v0/controller/{id}/reconnect
+    /// if let Some(cm) = entry.connection_manager() {
+    ///     cm.force_reconnect().await?;
+    /// }
+    /// ```
     pub async fn force_reconnect(&self) -> Result<()> {
         // Mark as disconnected first
         {

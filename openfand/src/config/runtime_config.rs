@@ -51,6 +51,15 @@ impl RuntimeConfig {
     /// If config file doesn't exist, creates with defaults.
     /// If data directory doesn't exist, creates it.
     /// If data files don't exist, creates with defaults.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::path::Path;
+    ///
+    /// let config = RuntimeConfig::load(Path::new("/etc/openfan/config.toml")).await?;
+    /// println!("Data directory: {}", config.data_dir().display());
+    /// ```
     pub async fn load(config_path: &Path) -> Result<Self> {
         info!("Loading configuration from: {}", config_path.display());
 
@@ -287,6 +296,18 @@ impl RuntimeConfig {
     /// # Arguments
     ///
     /// * `controller_id` - Unique identifier for the controller
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let ctrl_data = config.controller_data("main").await?;
+    ///
+    /// // Access controller-specific profiles
+    /// let profiles = ctrl_data.profiles().await;
+    /// for profile in profiles.profiles.values() {
+    ///     println!("Profile: {}", profile.name);
+    /// }
+    /// ```
     pub async fn controller_data(&self, controller_id: &str) -> Result<Arc<ControllerData>> {
         // First try to get existing data with read lock
         {

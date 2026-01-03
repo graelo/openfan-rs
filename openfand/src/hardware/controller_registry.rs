@@ -131,6 +131,23 @@ impl ControllerEntryBuilder {
 /// Registry managing multiple fan controllers
 ///
 /// Thread-safe container for all controller entries with lookup by ID.
+///
+/// # Example
+///
+/// ```ignore
+/// use openfan_core::BoardType;
+///
+/// let registry = ControllerRegistry::new();
+///
+/// // Register controllers
+/// let board = BoardType::OpenFanStandard.to_board_info();
+/// let entry = ControllerEntry::builder("main", board).build();
+/// registry.register(entry).await?;
+///
+/// // Look up and list controllers
+/// let ctrl = registry.get_or_err("main").await?;
+/// println!("Controller {} has {} fans", ctrl.id(), ctrl.board_info().fan_count);
+/// ```
 pub struct ControllerRegistry {
     /// Map of controller ID to entry
     controllers: RwLock<HashMap<String, Arc<ControllerEntry>>>,

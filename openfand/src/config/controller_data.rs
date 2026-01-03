@@ -40,6 +40,18 @@ impl ControllerData {
     /// Load or create controller data from a directory
     ///
     /// Creates the directory structure if it doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::path::Path;
+    ///
+    /// let data = ControllerData::load("main", Path::new("/var/lib/openfan")).await?;
+    ///
+    /// // Access profiles for this controller
+    /// let profiles = data.profiles().await;
+    /// println!("Loaded {} profiles", profiles.profiles.len());
+    /// ```
     pub async fn load(id: impl Into<String>, base_data_dir: &Path) -> Result<Self> {
         let id = id.into();
         let data_path = base_data_dir.join("controllers").join(&id);
