@@ -76,7 +76,9 @@ impl AppState {
         use crate::hardware::ControllerEntry;
 
         let registry = ControllerRegistry::new();
-        let entry = ControllerEntry::new("default", board_info.clone(), connection_manager.clone());
+        let entry = ControllerEntry::builder("default", board_info.clone())
+            .maybe_connection_manager(connection_manager.clone())
+            .build();
         registry
             .register(entry)
             .await

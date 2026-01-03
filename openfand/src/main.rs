@@ -128,11 +128,9 @@ async fn main() -> Result<()> {
         default_board_info = Some(board_info.clone());
         default_connection_manager = connection_manager.clone();
 
-        let entry = if let Some(ref desc) = None::<String> {
-            ControllerEntry::with_description("default", board_info, connection_manager, desc)
-        } else {
-            ControllerEntry::new("default", board_info, connection_manager)
-        };
+        let entry = ControllerEntry::builder("default", board_info)
+            .maybe_connection_manager(connection_manager)
+            .build();
         registry.register(entry).await?;
     } else if !runtime_config.static_config().controllers.is_empty() {
         // Config mode: use [[controllers]] from config file
@@ -177,16 +175,10 @@ async fn main() -> Result<()> {
                 default_connection_manager = connection_manager.clone();
             }
 
-            let entry = if let Some(ref desc) = ctrl_config.description {
-                ControllerEntry::with_description(
-                    &ctrl_config.id,
-                    board_info,
-                    connection_manager,
-                    desc,
-                )
-            } else {
-                ControllerEntry::new(&ctrl_config.id, board_info, connection_manager)
-            };
+            let entry = ControllerEntry::builder(&ctrl_config.id, board_info)
+                .maybe_connection_manager(connection_manager)
+                .maybe_description(ctrl_config.description.clone())
+                .build();
             registry.register(entry).await?;
         }
     } else if args.mock {
@@ -200,7 +192,7 @@ async fn main() -> Result<()> {
 
         default_board_info = Some(board_info.clone());
 
-        let entry = ControllerEntry::new("default", board_info, None);
+        let entry = ControllerEntry::builder("default", board_info).build();
         registry.register(entry).await?;
     } else {
         error!(

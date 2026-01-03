@@ -154,16 +154,15 @@ mod tests {
         let gpu_board = BoardType::Custom { fan_count: 4 }.to_board_info();
 
         registry
-            .register(ControllerEntry::with_description(
-                "main",
-                main_board.clone(),
-                None,
-                "Main chassis controller",
-            ))
+            .register(
+                ControllerEntry::builder("main", main_board.clone())
+                    .maybe_description(Some("Main chassis controller".to_string()))
+                    .build(),
+            )
             .await
             .unwrap();
         registry
-            .register(ControllerEntry::new("gpu", gpu_board, None))
+            .register(ControllerEntry::builder("gpu", gpu_board).build())
             .await
             .unwrap();
 

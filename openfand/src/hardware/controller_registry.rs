@@ -19,33 +19,18 @@ pub struct ControllerEntry {
 }
 
 impl ControllerEntry {
-    /// Create a new controller entry
-    pub fn new(
-        id: impl Into<String>,
-        board_info: BoardInfo,
-        connection_manager: Option<Arc<ConnectionManager>>,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            board_info,
-            connection_manager,
-            description: None,
-        }
-    }
-
-    /// Create a new controller entry with a description
-    pub fn with_description(
-        id: impl Into<String>,
-        board_info: BoardInfo,
-        connection_manager: Option<Arc<ConnectionManager>>,
-        description: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            board_info,
-            connection_manager,
-            description: Some(description.into()),
-        }
+    /// Create a builder for constructing a controller entry
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let entry = ControllerEntry::builder("main", board_info)
+    ///     .maybe_description(Some("Main chassis fans".to_string()))
+    ///     .maybe_connection_manager(Some(cm))
+    ///     .build();
+    /// ```
+    pub fn builder(id: impl Into<String>, board_info: BoardInfo) -> ControllerEntryBuilder {
+        ControllerEntryBuilder::new(id, board_info)
     }
 
     /// Get the controller ID
@@ -76,6 +61,70 @@ impl ControllerEntry {
     /// Check if this controller is connected
     pub fn is_connected(&self) -> bool {
         self.connection_manager.is_some()
+    }
+}
+
+/// Builder for constructing [`ControllerEntry`] instances
+///
+/// Provides a fluent API for creating controller entries with optional fields.
+///
+/// # Example
+///
+/// ```ignore
+/// use openfan_core::BoardType;
+///
+/// let board_info = BoardType::OpenFanStandard.to_board_info();
+///
+/// // Minimal entry (mock mode, no description)
+/// let entry = ControllerEntry::builder("default", board_info.clone())
+///     .build();
+///
+/// // Full entry with all options
+/// let entry = ControllerEntry::builder("main", board_info)
+///     .maybe_description(Some("Main chassis controller".to_string()))
+///     .maybe_connection_manager(Some(connection_manager))
+///     .build();
+/// ```
+pub struct ControllerEntryBuilder {
+    id: String,
+    board_info: BoardInfo,
+    connection_manager: Option<Arc<ConnectionManager>>,
+    description: Option<String>,
+}
+
+impl ControllerEntryBuilder {
+    /// Create a new builder with required fields
+    pub fn new(id: impl Into<String>, board_info: BoardInfo) -> Self {
+        Self {
+            id: id.into(),
+            board_info,
+            connection_manager: None,
+            description: None,
+        }
+    }
+
+    /// Set an optional connection manager
+    ///
+    /// If `None`, the controller operates in mock mode.
+    pub fn maybe_connection_manager(mut self, cm: Option<Arc<ConnectionManager>>) -> Self {
+        self.connection_manager = cm;
+        self
+    }
+
+    /// Set an optional description for this controller
+    pub fn maybe_description(mut self, desc: Option<String>) -> Self {
+        self.description = desc;
+        self
+    }
+
+    /// Build the controller entry
+    pub fn build(self) -> ControllerEntry {
+        ControllerEntry {
+            id: self.id,
+            board_info: self.board_info,
+            connection_manager: self.connection_manager,
+            description: self.description,
+        }
     }
 }
 
@@ -154,7 +203,7 @@ mod tests {
     #[tokio::test]
     async fn test_register_controller() {
         let registry = ControllerRegistry::new();
-        let entry = ControllerEntry::new("main", mock_board_info(), None);
+        let entry = ControllerEntry::builder("main", mock_board_info()).build();
 
         registry.register(entry).await.unwrap();
 
@@ -164,8 +213,8 @@ mod tests {
     #[tokio::test]
     async fn test_register_duplicate_fails() {
         let registry = ControllerRegistry::new();
-        let entry1 = ControllerEntry::new("main", mock_board_info(), None);
-        let entry2 = ControllerEntry::new("main", mock_board_info(), None);
+        let entry1 = ControllerEntry::builder("main", mock_board_info()).build();
+        let entry2 = ControllerEntry::builder("main", mock_board_info()).build();
 
         registry.register(entry1).await.unwrap();
         let result = registry.register(entry2).await;
@@ -179,8 +228,9 @@ mod tests {
     #[tokio::test]
     async fn test_get_controller() {
         let registry = ControllerRegistry::new();
-        let entry =
-            ControllerEntry::with_description("main", mock_board_info(), None, "Main chassis");
+        let entry = ControllerEntry::builder("main", mock_board_info())
+            .maybe_description(Some("Main chassis".to_string()))
+            .build();
 
         registry.register(entry).await.unwrap();
 
@@ -210,11 +260,11 @@ mod tests {
     async fn test_list_controllers() {
         let registry = ControllerRegistry::new();
         registry
-            .register(ControllerEntry::new("main", mock_board_info(), None))
+            .register(ControllerEntry::builder("main", mock_board_info()).build())
             .await
             .unwrap();
         registry
-            .register(ControllerEntry::new("gpu", mock_board_info(), None))
+            .register(ControllerEntry::builder("gpu", mock_board_info()).build())
             .await
             .unwrap();
 
@@ -228,7 +278,78 @@ mod tests {
 
     #[tokio::test]
     async fn test_controller_entry_is_mock() {
-        let mock_entry = ControllerEntry::new("mock", mock_board_info(), None);
+        let mock_entry = ControllerEntry::builder("mock", mock_board_info()).build();
         assert!(mock_entry.is_mock());
+    }
+
+    // Builder pattern tests
+
+    #[test]
+    fn test_builder_minimal() {
+        let entry = ControllerEntry::builder("default", mock_board_info()).build();
+
+        assert_eq!(entry.id(), "default");
+        assert!(entry.is_mock());
+        assert!(entry.description().is_none());
+    }
+
+    #[test]
+    fn test_builder_with_description() {
+        let entry = ControllerEntry::builder("main", mock_board_info())
+            .maybe_description(Some("Main chassis controller".to_string()))
+            .build();
+
+        assert_eq!(entry.id(), "main");
+        assert_eq!(entry.description(), Some("Main chassis controller"));
+        assert!(entry.is_mock());
+    }
+
+    #[test]
+    fn test_builder_maybe_description_none() {
+        let entry = ControllerEntry::builder("test", mock_board_info())
+            .maybe_description(None)
+            .build();
+
+        assert!(entry.description().is_none());
+    }
+
+    #[test]
+    fn test_builder_maybe_connection_manager_none() {
+        let entry = ControllerEntry::builder("test", mock_board_info())
+            .maybe_connection_manager(None)
+            .build();
+
+        assert!(entry.is_mock());
+        assert!(entry.connection_manager().is_none());
+    }
+
+    #[test]
+    fn test_builder_chaining() {
+        // Test that all builder methods can be chained
+        let board = BoardType::Custom { fan_count: 4 }.to_board_info();
+        let entry = ControllerEntry::builder("gpu", board)
+            .maybe_description(Some("GPU cooling fans".to_string()))
+            .maybe_connection_manager(None)
+            .build();
+
+        assert_eq!(entry.id(), "gpu");
+        assert_eq!(entry.description(), Some("GPU cooling fans"));
+        assert_eq!(entry.board_info().fan_count, 4);
+        assert!(entry.is_mock());
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_registry() {
+        let registry = ControllerRegistry::new();
+
+        // Use builder to create entry and register it
+        let entry = ControllerEntry::builder("main", mock_board_info())
+            .maybe_description(Some("Main controller".to_string()))
+            .build();
+
+        registry.register(entry).await.unwrap();
+
+        let retrieved = registry.get("main").await.unwrap();
+        assert_eq!(retrieved.description(), Some("Main controller"));
     }
 }

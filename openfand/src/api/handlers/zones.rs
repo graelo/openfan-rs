@@ -928,14 +928,16 @@ communication_timeout = 1
 
             // Main controller: standard board (10 fans)
             let main_board = BoardType::OpenFanStandard.to_board_info();
-            let main_entry =
-                ControllerEntry::with_description("main", main_board.clone(), None, "Main chassis");
+            let main_entry = ControllerEntry::builder("main", main_board.clone())
+                .maybe_description(Some("Main chassis".to_string()))
+                .build();
             registry.register(main_entry).await.unwrap();
 
             // GPU controller: custom board (4 fans)
             let gpu_board = BoardType::Custom { fan_count: 4 }.to_board_info();
-            let gpu_entry =
-                ControllerEntry::with_description("gpu", gpu_board, None, "GPU cooling");
+            let gpu_entry = ControllerEntry::builder("gpu", gpu_board)
+                .maybe_description(Some("GPU cooling".to_string()))
+                .build();
             registry.register(gpu_entry).await.unwrap();
 
             let state = AppState::new(
