@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New API endpoints: `/api/v0/controllers`, `/api/v0/controller/{id}/info`,
     `/api/v0/controller/{id}/reconnect`
   - Backward compatible: single-controller setups work unchanged
+- **Code quality improvements**:
+  - `BoardType` enum now uses serde with string format (`"standard"`, `"custom:4"`)
+  - Builder pattern for `ControllerEntry` construction
+  - Removed duplicate type definitions across crates
+  - Enhanced async method documentation with proper imperative mood
+  - Minimized imports in openfanctl for better maintainability
 
 ### Changed
 
