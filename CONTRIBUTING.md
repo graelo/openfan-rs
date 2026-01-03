@@ -59,7 +59,7 @@ cargo run -p openfand -- --device /dev/ttyACM0 --board custom:4
 ## Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (481 tests total)
 cargo test --workspace
 
 # Run tests for a specific crate
@@ -68,8 +68,16 @@ cargo test -p openfan-core
 # Run unit tests only
 cargo test --lib
 
+# Run end-to-end tests
+cargo test --test e2e_integration_tests
+
 # Run with output
 cargo test --workspace -- --nocapture
+
+# Generate code coverage report
+# Note: Use --skip-clean to prevent tarpaulin from cleaning build artifacts
+# (needed for E2E tests that depend on compiled binaries)
+cargo tarpaulin --verbose --skip-clean -p openfand -p openfan-core -p openfan-hardware --timeout 120
 ```
 
 ## Code Style Guidelines

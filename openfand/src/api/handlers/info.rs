@@ -6,7 +6,7 @@ use crate::api::AppState;
 use axum::{extract::State, Json};
 use openfan_core::api;
 use serde_json::{json, Value};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 /// Handle the root endpoint.
 ///
@@ -158,45 +158,6 @@ pub(crate) async fn get_info(
     Ok(Json(api::ApiResponse::success(info_response)))
 }
 
-/// Trigger a manual reconnection attempt.
-///
-/// Forces the server to attempt reconnecting to the hardware device.
-/// Useful when hardware has been physically reconnected and immediate
-/// reconnection is desired without waiting for heartbeat detection.
-///
-/// # Endpoint
-///
-/// `POST /api/v0/reconnect`
-///
-/// # Returns
-///
-/// - Success: Empty response on successful reconnection
-/// - Error: 503 if reconnection fails or is in progress
-/// - Error: 400 if in mock mode (no hardware to reconnect)
-///
-/// # Behavior
-///
-/// - In mock mode, returns an error since there's no hardware to reconnect
-/// - Triggers immediate reconnection attempt with exponential backoff
-/// - Returns success only after connection is verified
-pub(crate) async fn reconnect(
-    State(state): State<AppState>,
-) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: POST /api/v0/reconnect");
-
-    let Some(cm) = &state.connection_manager else {
-        return Err(ApiError::bad_request(
-            "Cannot reconnect in mock mode - no hardware configured".to_string(),
-        ));
-    };
-
-    info!("Manual reconnection requested");
-    cm.force_reconnect().await?;
-    info!("Manual reconnection successful");
-
-    Ok(Json(api::ApiResponse::success(())))
-}
-
 #[cfg(test)]
 mod tests {
     use openfan_core::api;
@@ -309,8 +270,8 @@ mod tests {
 
         assert_eq!(board_info.name, "OpenFAN Standard");
         assert_eq!(board_info.fan_count, 10);
-        assert_eq!(board_info.usb_vid, 0x2E8A);
-        assert_eq!(board_info.usb_pid, 0x000A);
+        assert_eq!(board_info.max_pwm, 100);
+        assert_eq!(board_info.baud_rate, 115200);
     }
 
     #[test]
@@ -352,7 +313,8 @@ mod integration_tests {
             .await
             .unwrap();
         let config = RuntimeConfig::load(&config_path).await.unwrap();
-        let state = AppState::new(board_info, std::sync::Arc::new(config), None);
+        let state =
+            AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
         create_router(state)
     }
 
@@ -450,7 +412,10 @@ mod integration_tests {
             "OpenFAN Standard"
         );
         assert_eq!(board_info.get("fan_count").unwrap().as_u64().unwrap(), 10);
-        assert_eq!(board_info.get("usb_vid").unwrap().as_u64().unwrap(), 0x2E8A);
-        assert_eq!(board_info.get("usb_pid").unwrap().as_u64().unwrap(), 0x000A);
+        assert_eq!(board_info.get("max_pwm").unwrap().as_u64().unwrap(), 100);
+        assert_eq!(
+            board_info.get("baud_rate").unwrap().as_u64().unwrap(),
+            115200
+        );
     }
 }

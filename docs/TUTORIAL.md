@@ -83,11 +83,26 @@ heartbeat_interval_secs = 10      # Heartbeat check interval in seconds (default
 [shutdown]
 enabled = true                    # Enable safe boot profile on shutdown (default: true)
 profile = "100% PWM"              # Profile to apply before daemon terminates (default: "100% PWM")
+
+# Multi-controller setup (optional)
+# Define multiple controllers for complex setups (e.g., separate CPU and GPU cooling)
+[[controllers]]
+id = "main"
+device = "/dev/ttyACM0"
+board = "standard"
+description = "Main chassis fans"
+
+[[controllers]]
+id = "gpu"
+device = "/dev/ttyUSB0"
+board = "custom:4"
+description = "GPU cooling"
 ```
 
 **Note:** Hardware detection is automatic via USB VID/PID, `OPENFAN_COMPORT`
 environment variable, or common device paths. No `[hardware]` section is needed
-in the configuration.
+in the configuration. For multi-controller setups, use the `[[controllers]]`
+array to explicitly configure each controller.
 
 #### Device Reconnection
 
@@ -305,19 +320,101 @@ openfanctl alias delete 0
 
 Aliases support alphanumeric characters, hyphens, underscores, dots, and spaces.
 
+## Multi-Controller Management
+
+OpenFAN supports managing multiple fan controllers simultaneously, enabling
+complex setups like separate controllers for CPU and GPU cooling.
+
+### Listing Controllers
+
+```bash
+# List all controllers
+openfanctl controllers
+
+# Get detailed info for a specific controller
+openfanctl controller info main
+openfanctl controller info gpu
+```
+
+### Controller-Specific Commands
+
+Use the `--controller` or `-c` flag to target specific controllers:
+
+```bash
+# Control fans on specific controller
+openfanctl -c main fan set 0 --pwm 75
+openfanctl -c gpu fan set 0 --rpm 1500
+
+# View status for specific controller
+openfanctl -c main status
+openfanctl -c gpu status
+
+# Manage profiles per controller
+openfanctl -c main profile apply "Quiet"
+openfanctl -c gpu profile apply "Gaming"
+```
+
+### Manual Reconnection
+
+Force a reconnection attempt for a specific controller:
+
+```bash
+openfanctl controller reconnect main
+openfanctl controller reconnect gpu
+```
+
+### Configuration
+
+Define controllers in `config.toml`:
+
+```toml
+[[controllers]]
+id = "main"
+device = "/dev/ttyACM0"
+board = "standard"
+description = "Main chassis fans"
+
+[[controllers]]
+id = "gpu"
+device = "/dev/ttyUSB0"
+board = "custom:4"
+description = "GPU cooling"
+```
+
+**Controller ID**: Unique identifier used in CLI commands and zones
+**Device**: Serial port path (e.g., `/dev/ttyACM0`, `/dev/ttyUSB0`, `COM3`)
+**Board**: Board type (`standard` or `custom:N` where N is fan count)
+
 ## Zones
 
 Zones group multiple fans for coordinated control. Each fan port can belong to
-at most one zone.
+at most one zone. Zones can span multiple controllers for cross-controller
+coordination.
 
 ### Creating Zones
 
+Zones can contain fans from a single controller or span multiple controllers.
+
+**Single-controller zones:**
+
 ```bash
-# Create a zone with ports 0, 1, 2
+# Create a zone with ports 0, 1, 2 from the default controller
 openfanctl zone add intake --ports 0,1,2 --description "Front intake fans"
 
 # Create another zone
 openfanctl zone add exhaust --ports 3,4 --description "Rear exhaust fans"
+```
+
+**Multi-controller zones:**
+
+Use `controller:fan_id` format to specify fans from different controllers:
+
+```bash
+# Zone spanning two controllers
+openfanctl zone add all-intake --ports main:0,main:1,gpu:0 --description "All intake fans"
+
+# GPU-specific zone with multiple fans
+openfanctl zone add gpu-cooling --ports gpu:0,gpu:1,gpu:2,gpu:3 --description "GPU fans"
 ```
 
 ### Managing Zones
@@ -519,6 +616,9 @@ The server exposes a REST API on port 3000 (default).
 |----------|--------|-------------|
 | `/api/v0/info` | GET | Server info (includes connection status) |
 | `/api/v0/reconnect` | POST | Trigger manual reconnection attempt |
+| `/api/v0/controllers` | GET | List all controllers |
+| `/api/v0/controller/{id}/info` | GET | Get controller details |
+| `/api/v0/controller/{id}/reconnect` | POST | Reconnect specific controller |
 | `/api/v0/fan/status` | GET | All fan status |
 | `/api/v0/fan/{id}/pwm?value=N` | GET | Set fan PWM (0-100) |
 | `/api/v0/fan/{id}/rpm?value=N` | GET | Set fan RPM target (500-9000) |
@@ -589,6 +689,16 @@ curl -X DELETE http://localhost:3000/api/v0/cfm/0
 
 # Trigger manual reconnection
 curl -X POST http://localhost:3000/api/v0/reconnect
+
+# List all controllers
+curl http://localhost:3000/api/v0/controllers
+
+# Get controller info
+curl http://localhost:3000/api/v0/controller/main/info
+curl http://localhost:3000/api/v0/controller/gpu/info
+
+# Reconnect specific controller
+curl -X POST http://localhost:3000/api/v0/controller/main/reconnect
 ```
 
 ### API Response Format
@@ -837,4 +947,42 @@ openfanctl zone add exhaust --ports 5,6,7,8,9 --description "Rear exhaust"
 # Set intake slightly higher for positive pressure
 openfanctl zone apply intake --pwm 60
 openfanctl zone apply exhaust --pwm 50
+```
+
+### Multi-controller setup
+
+```bash
+# Configure two controllers in config.toml:
+# - "main" controller with 10 fans (OpenFAN Standard)
+# - "gpu" controller with 4 fans (custom board)
+
+# List all controllers
+openfanctl controllers
+
+# View status for each controller
+openfanctl -c main status
+openfanctl -c gpu status
+
+# Set fan speeds on specific controllers
+openfanctl -c main fan set 0 --pwm 50
+openfanctl -c gpu fan set 0 --pwm 80
+
+# Create cross-controller zones
+openfanctl zone add all-intake --ports main:0,main:1,main:2,gpu:0 \
+  --description "All intake fans across both controllers"
+
+openfanctl zone add gpu-exhaust --ports gpu:1,gpu:2,gpu:3 \
+  --description "GPU exhaust fans"
+
+# Apply settings to cross-controller zones
+openfanctl zone apply all-intake --pwm 60
+openfanctl zone apply gpu-exhaust --pwm 80
+
+# Create profiles per controller
+openfanctl -c main profile add "Balanced" pwm 50,50,50,50,50,50,50,50,50,50
+openfanctl -c gpu profile add "Gaming" pwm 80,80,80,80
+
+# Apply profiles
+openfanctl -c main profile apply "Balanced"
+openfanctl -c gpu profile apply "Gaming"
 ```

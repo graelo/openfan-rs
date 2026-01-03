@@ -1,6 +1,18 @@
 //! OpenFAN Server
 //!
 //! REST API server for controlling fan hardware via serial communication.
+//!
+//! # Multi-Controller Support
+//!
+//! Controllers can be specified in two ways:
+//!
+//! 1. **CLI flags** (single-controller mode): Use `--device` and `--board` to specify
+//!    a single controller. This creates an implicit "default" controller.
+//!
+//! 2. **Config file** (multi-controller mode): Define `[[controllers]]` entries in
+//!    the config.toml file for multiple controllers.
+//!
+//! If `--device` is specified, it takes precedence over config file controllers.
 
 mod api;
 mod config;
@@ -11,10 +23,9 @@ use anyhow::Result;
 use api::AppState;
 use clap::Parser;
 use config::RuntimeConfig;
-use hardware::{connection, ConnectionManager};
-use openfan_core::{default_config_path, BoardType};
+use hardware::{connection, ConnectionManager, ControllerEntry, ControllerRegistry};
+use openfan_core::{default_config_path, BoardInfo, BoardType};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -46,15 +57,17 @@ struct Args {
 
     /// Board type (standard, custom:N where N is fan count 1-16)
     ///
-    /// Required with --mock or --device. For auto-detection, omit this flag.
+    /// Specifies the board type for single-controller mode.
+    /// Use "custom:N" for custom boards with N fans (1-16).
+    /// Ignored when [[controllers]] is defined in config.
     #[arg(long, default_value = "standard")]
-    board: String,
+    board: BoardType,
 
-    /// Serial device path for custom boards (e.g., /dev/ttyACM0, /dev/ttyUSB0)
+    /// Serial device path (e.g., /dev/ttyACM0, /dev/ttyUSB0)
     ///
-    /// Use this with --board to connect to custom/DIY hardware.
-    /// Bypasses USB VID/PID auto-detection.
-    #[arg(long, conflicts_with = "mock")]
+    /// For single-controller mode. Creates an implicit "default" controller.
+    /// Takes precedence over [[controllers]] in config file.
+    #[arg(long)]
     device: Option<String>,
 }
 
@@ -75,144 +88,160 @@ async fn main() -> Result<()> {
     });
     info!("Configuration file: {}", config_path.display());
 
-    // Step 1: Determine board type and connection mode
-    let (board_type, device_path) = if args.mock {
-        // Mock mode - no hardware
-        info!("Mock mode enabled - running without hardware");
-        let board = BoardType::from_str(&args.board).unwrap_or_else(|e| {
-            error!("Invalid board type '{}': {}", args.board, e);
-            std::process::exit(1);
-        });
-        (board, None)
-    } else if let Some(ref device) = args.device {
-        // Direct device connection - use specified board type
-        info!("Using specified device: {}", device);
-        let board = BoardType::from_str(&args.board).unwrap_or_else(|e| {
-            error!("Invalid board type '{}': {}", args.board, e);
-            std::process::exit(1);
-        });
-        (board, Some(device.clone()))
-    } else {
-        // Auto-detect via USB VID/PID
-        info!("Detecting hardware board type...");
-        match hardware::detect_board_from_usb() {
-            Ok(board) => {
-                info!("Detected board: {}", board.name());
-                (board, None)
-            }
-            Err(e) => {
-                error!(
-                    "Failed to detect hardware board: {}. Use --mock flag for testing, or --device to specify the serial device.",
-                    e
-                );
-                std::process::exit(1);
-            }
-        }
-    };
-
-    let board_info = board_type.to_board_info();
-    info!(
-        "Board: {} ({} fans, VID:0x{:04X}, PID:0x{:04X})",
-        board_info.name, board_info.fan_count, board_info.usb_vid, board_info.usb_pid
-    );
-
-    // Step 2: Load configuration
+    // Step 1: Load configuration
     let runtime_config = RuntimeConfig::load(&config_path).await?;
     info!("Configuration loaded successfully");
     info!("  Static config: {}", config_path.display());
     info!("  Data directory: {}", runtime_config.data_dir().display());
 
-    // Step 3: Validate configuration against detected board
-    if let Err(e) = runtime_config.validate_for_board(&board_info).await {
-        error!("Configuration validation failed: {}", e);
-        std::process::exit(1);
-    }
-    info!(
-        "Configuration validated successfully for {}",
-        board_info.name
-    );
-
-    // Auto-fill missing defaults
-    runtime_config.fill_defaults_for_board(&board_info).await?;
-
     // Get server config
     let server_config = &runtime_config.static_config().server;
     let port = args.port.unwrap_or(server_config.port);
     let bind_addr = format!("{}:{}", args.bind, port);
+    let timeout_ms = server_config.communication_timeout * 1000;
+    let reconnect_config = runtime_config.static_config().reconnect.clone();
 
-    // Step 4: Initialize hardware connection with reconnection support
-    let connection_manager = if args.mock {
-        None
-    } else {
-        info!("Initializing hardware connection...");
-        let timeout_ms = server_config.communication_timeout * 1000;
+    // Step 2: Initialize controller registry
+    let registry = ControllerRegistry::new();
+    let mut default_board_info: Option<BoardInfo> = None;
+    let mut default_connection_manager: Option<Arc<ConnectionManager>> = None;
 
-        // Use specified device path or auto-detect
-        let connect_result = if let Some(ref device) = device_path {
-            connection::connect_to_device(device, timeout_ms, args.verbose).await
-        } else {
-            connection::auto_connect(timeout_ms, args.verbose).await
-        };
+    // Determine controller configuration mode
+    if let Some(ref device) = args.device {
+        // CLI mode: --device specified, create single "default" controller
+        let board_info = args.board.to_board_info();
 
-        match connect_result {
-            Ok(mut controller) => {
-                info!("Hardware connected successfully");
+        info!(
+            "Single-controller mode: device={}, board={} ({} fans)",
+            device, board_info.name, board_info.fan_count
+        );
 
-                // Test the connection
-                if let Err(e) = connection::test_connection(&mut controller).await {
-                    warn!("Hardware test failed, but continuing: {}", e);
-                }
+        let connection_manager = connect_controller(
+            "default",
+            device,
+            timeout_ms,
+            args.verbose,
+            &reconnect_config,
+        )
+        .await;
 
-                info!("Hardware layer ready");
+        default_board_info = Some(board_info.clone());
+        default_connection_manager = connection_manager.clone();
 
-                // Wrap controller in ConnectionManager for automatic reconnection
-                let reconnect_config = runtime_config.static_config().reconnect.clone();
-                info!(
-                    "Reconnection support: {} (max_attempts: {}, initial_delay: {}s, heartbeat: {})",
-                    if reconnect_config.enabled { "enabled" } else { "disabled" },
-                    if reconnect_config.max_attempts == 0 { "unlimited".to_string() } else { reconnect_config.max_attempts.to_string() },
-                    reconnect_config.initial_delay_secs,
-                    if reconnect_config.enable_heartbeat { "enabled" } else { "disabled" }
-                );
+        let entry = ControllerEntry::builder("default", board_info)
+            .maybe_connection_manager(connection_manager)
+            .build();
+        registry.register(entry).await?;
+    } else if !runtime_config.static_config().controllers.is_empty() {
+        // Config mode: use [[controllers]] from config file
+        let controllers = &runtime_config.static_config().controllers;
+        info!(
+            "Multi-controller mode: {} controller(s) configured",
+            controllers.len()
+        );
 
-                let manager = Arc::new(ConnectionManager::new(
-                    controller,
-                    reconnect_config.clone(),
+        for (idx, ctrl_config) in controllers.iter().enumerate() {
+            let board_info = ctrl_config.board.to_board_info();
+
+            info!(
+                "  Controller '{}': device={}, board={} ({} fans){}",
+                ctrl_config.id,
+                ctrl_config.device,
+                board_info.name,
+                board_info.fan_count,
+                ctrl_config
+                    .description
+                    .as_ref()
+                    .map(|d| format!(" - {}", d))
+                    .unwrap_or_default()
+            );
+
+            let connection_manager = if args.mock {
+                None
+            } else {
+                connect_controller(
+                    &ctrl_config.id,
+                    &ctrl_config.device,
                     timeout_ms,
                     args.verbose,
-                ));
+                    &reconnect_config,
+                )
+                .await
+            };
 
-                // Start heartbeat task if enabled
-                if reconnect_config.enable_heartbeat {
-                    info!(
-                        "Starting heartbeat monitor (interval: {}s)",
-                        reconnect_config.heartbeat_interval_secs
-                    );
-                    manager.clone().start_heartbeat();
-                }
+            // First controller becomes the default for legacy compatibility
+            if idx == 0 {
+                default_board_info = Some(board_info.clone());
+                default_connection_manager = connection_manager.clone();
+            }
 
-                Some(manager)
-            }
-            Err(e) => {
-                error!(
-                    "Hardware connection failed: {}. Server cannot start without hardware. Use --mock flag to run in mock mode.",
-                    e
-                );
-                std::process::exit(1);
-            }
+            let entry = ControllerEntry::builder(&ctrl_config.id, board_info)
+                .maybe_connection_manager(connection_manager)
+                .maybe_description(ctrl_config.description.clone())
+                .build();
+            registry.register(entry).await?;
         }
-    };
+    } else if args.mock {
+        // Mock mode without config: create single mock "default" controller
+        let board_info = args.board.to_board_info();
 
-    // Wrap runtime_config in Arc for sharing between AppState and shutdown handler
+        info!(
+            "Mock mode: default controller with board={} ({} fans)",
+            board_info.name, board_info.fan_count
+        );
+
+        default_board_info = Some(board_info.clone());
+
+        let entry = ControllerEntry::builder("default", board_info).build();
+        registry.register(entry).await?;
+    } else {
+        error!(
+            "No controllers configured. Use one of:\n  \
+             --device /dev/ttyACM0 --board standard    (single controller)\n  \
+             --mock --board standard                   (mock mode)\n  \
+             Configure [[controllers]] in config.toml  (multi-controller)"
+        );
+        std::process::exit(1);
+    }
+
+    // Ensure we have at least one controller
+    let default_board_info =
+        default_board_info.expect("At least one controller should be registered");
+
+    info!(
+        "Controller registry initialized: {} controller(s)",
+        registry.list().await.len()
+    );
+
+    // Step 3: Validate global zones against all controllers
+    // TODO: In the future, validate each zone fan against its controller's board
+    if let Err(e) = runtime_config.validate_for_board(&default_board_info).await {
+        error!("Configuration validation failed: {}", e);
+        std::process::exit(1);
+    }
+    info!("Configuration validated successfully");
+
+    // Auto-fill missing defaults for the default controller
+    runtime_config
+        .fill_defaults_for_board(&default_board_info)
+        .await?;
+
+    // Wrap in Arc for sharing
+    let registry = Arc::new(registry);
     let runtime_config = Arc::new(runtime_config);
 
-    // Clone for shutdown handler (before moving into AppState)
+    // Clone for shutdown handler
     let runtime_config_for_shutdown = runtime_config.clone();
-    let cm_for_shutdown = connection_manager.clone();
+    let cm_for_shutdown = default_connection_manager.clone();
     let is_mock = args.mock;
 
-    // Step 5: Create application state with board info
-    let app_state = AppState::new(board_info, runtime_config, connection_manager);
+    // Step 4: Create application state
+    let app_state = AppState::new(
+        registry,
+        runtime_config,
+        default_board_info,
+        default_connection_manager,
+    );
 
     // Set up API router
     let app = api::create_router(app_state);
@@ -239,6 +268,58 @@ async fn main() -> Result<()> {
 
     info!("Server shutdown complete");
     Ok(())
+}
+
+/// Connect to a single controller and wrap in ConnectionManager
+async fn connect_controller(
+    id: &str,
+    device_path: &str,
+    timeout_ms: u64,
+    verbose: bool,
+    reconnect_config: &openfan_core::ReconnectConfig,
+) -> Option<Arc<ConnectionManager>> {
+    info!("Connecting to controller '{}' at {}...", id, device_path);
+
+    match connection::connect_to_device(device_path, timeout_ms, verbose).await {
+        Ok(mut controller) => {
+            info!("Controller '{}' connected successfully", id);
+
+            // Test the connection
+            if let Err(e) = connection::test_connection(&mut controller).await {
+                warn!(
+                    "Controller '{}' hardware test failed, continuing: {}",
+                    id, e
+                );
+            }
+
+            // Wrap in ConnectionManager
+            let manager = Arc::new(ConnectionManager::new(
+                controller,
+                reconnect_config.clone(),
+                device_path.to_string(),
+                timeout_ms,
+                verbose,
+            ));
+
+            // Start heartbeat if enabled
+            if reconnect_config.enable_heartbeat {
+                info!(
+                    "Controller '{}': heartbeat enabled (interval: {}s)",
+                    id, reconnect_config.heartbeat_interval_secs
+                );
+                manager.clone().start_heartbeat();
+            }
+
+            Some(manager)
+        }
+        Err(e) => {
+            error!(
+                "Controller '{}' connection failed: {}. Use --mock for testing without hardware.",
+                id, e
+            );
+            std::process::exit(1);
+        }
+    }
 }
 
 /// Wait for shutdown signal

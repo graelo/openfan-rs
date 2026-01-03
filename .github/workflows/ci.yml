@@ -99,7 +99,7 @@ jobs:
         run: cargo install cargo-tarpaulin
 
       - name: Generate coverage report
-        run: cargo tarpaulin --verbose -p openfand -p openfan-core -p openfan-hardware --timeout 120 --out xml
+        run: cargo tarpaulin --verbose --skip-clean -p openfand -p openfan-core -p openfan-hardware --timeout 120 --out xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

@@ -3,12 +3,56 @@
 use anyhow::Result;
 use openfan_core::parse_points;
 use openfan_core::types::{ControlMode, FanProfile};
+use openfan_core::ZoneFan;
 
 use crate::client::OpenFanClient;
 use crate::config::CliConfig;
 use crate::format::format_success;
 
 use super::commands::*;
+
+/// Default controller ID used when controller is not specified in port format.
+const DEFAULT_CONTROLLER_ID: &str = "default";
+
+/// Error message when neither --pwm nor --rpm is specified.
+const ERR_PWM_OR_RPM_REQUIRED: &str = "Must specify either --pwm or --rpm";
+
+/// Parse zone port specifications into ZoneFan entries.
+///
+/// Supports two formats:
+/// - Simple: "0,1,2" (uses "default" controller)
+/// - Controller-qualified: "main:0,main:1,gpu:0"
+/// - Mixed: "0,1,gpu:2" (plain numbers use "default" controller)
+fn parse_zone_ports(ports: &str) -> Result<Vec<ZoneFan>> {
+    let mut fans = Vec::new();
+
+    for part in ports.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        if let Some((controller, fan_id_str)) = part.split_once(':') {
+            // Controller-qualified format: "main:0"
+            let fan_id: u8 = fan_id_str
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid fan ID '{}' in '{}'", fan_id_str, part))?;
+            fans.push(ZoneFan::new(controller, fan_id));
+        } else {
+            // Simple format: just a number, uses default controller
+            let fan_id: u8 = part
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid port specification '{}'", part))?;
+            fans.push(ZoneFan::new(DEFAULT_CONTROLLER_ID, fan_id));
+        }
+    }
+
+    if fans.is_empty() {
+        return Err(anyhow::anyhow!("No valid port specifications provided"));
+    }
+
+    Ok(fans)
+}
 
 /// Handle info command
 pub async fn handle_info(client: &OpenFanClient, format: &OutputFormat) -> Result<()> {
@@ -75,6 +119,80 @@ pub async fn handle_health(client: &OpenFanClient, format: &OutputFormat) -> Res
     Ok(())
 }
 
+/// Handle controllers list command
+pub async fn handle_controllers_list(client: &OpenFanClient, format: &OutputFormat) -> Result<()> {
+    let response = client.list_controllers().await?;
+
+    match format {
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&response)?);
+        }
+        OutputFormat::Table => {
+            println!("Controllers ({}):", response.count);
+            println!(
+                "{:<12} {:<20} {:<6} {:<10} {:<10} Description",
+                "ID", "Board", "Fans", "Mock", "Connected"
+            );
+            println!("{}", "-".repeat(80));
+
+            for ctrl in &response.controllers {
+                println!(
+                    "{:<12} {:<20} {:<6} {:<10} {:<10} {}",
+                    ctrl.id,
+                    ctrl.board_name,
+                    ctrl.fan_count,
+                    if ctrl.mock_mode { "yes" } else { "no" },
+                    if ctrl.connected { "yes" } else { "no" },
+                    ctrl.description.as_deref().unwrap_or("")
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle controller subcommands
+pub async fn handle_controller(
+    client: &OpenFanClient,
+    command: ControllerCommands,
+    format: &OutputFormat,
+) -> Result<()> {
+    match command {
+        ControllerCommands::Info { id } => {
+            let info = client.get_controller_info(&id).await?;
+
+            match format {
+                OutputFormat::Json => {
+                    println!("{}", serde_json::to_string_pretty(&info)?);
+                }
+                OutputFormat::Table => {
+                    println!("Controller: {}", info.id);
+                    println!("  Board:      {}", info.board_name);
+                    println!("  Fans:       {}", info.fan_count);
+                    println!(
+                        "  Mock mode:  {}",
+                        if info.mock_mode { "yes" } else { "no" }
+                    );
+                    println!(
+                        "  Connected:  {}",
+                        if info.connected { "yes" } else { "no" }
+                    );
+                    if let Some(desc) = &info.description {
+                        println!("  Description: {}", desc);
+                    }
+                }
+            }
+        }
+        ControllerCommands::Reconnect { id } => {
+            let message = client.reconnect_controller(&id).await?;
+            println!("{}", format_success(&message));
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle fan commands
 pub async fn handle_fan(
     client: &OpenFanClient,
@@ -98,7 +216,7 @@ pub async fn handle_fan(
                 );
             }
             _ => {
-                return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
+                return Err(anyhow::anyhow!(ERR_PWM_OR_RPM_REQUIRED));
             }
         },
         FanCommands::Rpm { fan_id } => {
@@ -268,17 +386,17 @@ pub async fn handle_zone(
                     if zones.zones.is_empty() {
                         println!("No zones configured.");
                     } else {
-                        println!("{:<20} {:<30} Description", "Name", "Ports");
-                        println!("{}", "-".repeat(70));
+                        println!("{:<20} {:<40} Description", "Name", "Fans");
+                        println!("{}", "-".repeat(80));
                         for (name, zone) in &zones.zones {
-                            let ports_str = zone
-                                .port_ids
+                            let fans_str = zone
+                                .fans
                                 .iter()
-                                .map(|p| p.to_string())
+                                .map(|f| format!("{}:{}", f.controller, f.fan_id))
                                 .collect::<Vec<_>>()
                                 .join(", ");
                             let desc = zone.description.as_deref().unwrap_or("-");
-                            println!("{:<20} {:<30} {}", name, ports_str, desc);
+                            println!("{:<20} {:<40} {}", name, fans_str, desc);
                         }
                     }
                 }
@@ -293,14 +411,14 @@ pub async fn handle_zone(
                     println!("{}", serde_json::to_string_pretty(&response)?);
                 }
                 OutputFormat::Table => {
-                    let ports_str = zone
-                        .port_ids
+                    let fans_str = zone
+                        .fans
                         .iter()
-                        .map(|p| p.to_string())
+                        .map(|f| format!("{}:{}", f.controller, f.fan_id))
                         .collect::<Vec<_>>()
                         .join(", ");
                     println!("Zone: {}", zone.name);
-                    println!("Ports: {}", ports_str);
+                    println!("Fans: {}", fans_str);
                     if let Some(desc) = &zone.description {
                         println!("Description: {}", desc);
                     }
@@ -312,11 +430,8 @@ pub async fn handle_zone(
             ports,
             description,
         } => {
-            let port_ids: Result<Vec<u8>, _> =
-                ports.split(',').map(|s| s.trim().parse::<u8>()).collect();
-            let port_ids = port_ids?;
-
-            client.add_zone(&name, port_ids, description).await?;
+            let fans = parse_zone_ports(&ports)?;
+            client.add_zone(&name, fans, description).await?;
             println!("{}", format_success(&format!("Added zone: {}", name)));
         }
         ZoneCommands::Update {
@@ -324,11 +439,8 @@ pub async fn handle_zone(
             ports,
             description,
         } => {
-            let port_ids: Result<Vec<u8>, _> =
-                ports.split(',').map(|s| s.trim().parse::<u8>()).collect();
-            let port_ids = port_ids?;
-
-            client.update_zone(&name, port_ids, description).await?;
+            let fans = parse_zone_ports(&ports)?;
+            client.update_zone(&name, fans, description).await?;
             println!("{}", format_success(&format!("Updated zone: {}", name)));
         }
         ZoneCommands::Delete { name } => {
@@ -351,7 +463,7 @@ pub async fn handle_zone(
                 );
             }
             _ => {
-                return Err(anyhow::anyhow!("Must specify either --pwm or --rpm"));
+                return Err(anyhow::anyhow!(ERR_PWM_OR_RPM_REQUIRED));
             }
         },
     }
@@ -1198,5 +1310,82 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Invalid timeout value"));
+    }
+
+    // ==================== parse_zone_ports tests ====================
+
+    #[test]
+    fn test_parse_zone_ports_simple_format() {
+        let result = super::parse_zone_ports("0,1,2").unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].controller, "default");
+        assert_eq!(result[0].fan_id, 0);
+        assert_eq!(result[1].controller, "default");
+        assert_eq!(result[1].fan_id, 1);
+        assert_eq!(result[2].controller, "default");
+        assert_eq!(result[2].fan_id, 2);
+    }
+
+    #[test]
+    fn test_parse_zone_ports_qualified_format() {
+        let result = super::parse_zone_ports("main:0,main:1,gpu:0").unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].controller, "main");
+        assert_eq!(result[0].fan_id, 0);
+        assert_eq!(result[1].controller, "main");
+        assert_eq!(result[1].fan_id, 1);
+        assert_eq!(result[2].controller, "gpu");
+        assert_eq!(result[2].fan_id, 0);
+    }
+
+    #[test]
+    fn test_parse_zone_ports_mixed_format() {
+        let result = super::parse_zone_ports("0,gpu:2,1").unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].controller, "default");
+        assert_eq!(result[0].fan_id, 0);
+        assert_eq!(result[1].controller, "gpu");
+        assert_eq!(result[1].fan_id, 2);
+        assert_eq!(result[2].controller, "default");
+        assert_eq!(result[2].fan_id, 1);
+    }
+
+    #[test]
+    fn test_parse_zone_ports_with_whitespace() {
+        let result = super::parse_zone_ports(" 0 , 1 , main:2 ").unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].controller, "default");
+        assert_eq!(result[0].fan_id, 0);
+        assert_eq!(result[1].controller, "default");
+        assert_eq!(result[1].fan_id, 1);
+        assert_eq!(result[2].controller, "main");
+        assert_eq!(result[2].fan_id, 2);
+    }
+
+    #[test]
+    fn test_parse_zone_ports_empty_fails() {
+        let result = super::parse_zone_ports("");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("No valid port specifications"));
+    }
+
+    #[test]
+    fn test_parse_zone_ports_invalid_number_fails() {
+        let result = super::parse_zone_ports("0,abc,2");
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Invalid port specification"));
+    }
+
+    #[test]
+    fn test_parse_zone_ports_invalid_qualified_format_fails() {
+        let result = super::parse_zone_ports("main:abc");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid fan ID"));
     }
 }

@@ -156,8 +156,8 @@ pub struct SingleZoneResponse {
 pub struct AddZoneRequest {
     /// Zone name
     pub name: String,
-    /// Port IDs to include in the zone
-    pub port_ids: Vec<u8>,
+    /// Fans to include in the zone (controller + fan_id pairs)
+    pub fans: Vec<crate::ZoneFan>,
     /// Optional description
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -166,8 +166,8 @@ pub struct AddZoneRequest {
 /// Zone update request
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpdateZoneRequest {
-    /// Port IDs to include in the zone
-    pub port_ids: Vec<u8>,
+    /// Fans to include in the zone (controller + fan_id pairs)
+    pub fans: Vec<crate::ZoneFan>,
     /// Optional description
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -409,6 +409,37 @@ where
     }
 
     deserializer.deserialize_map(U8F32MapVisitor)
+}
+
+// ============================================================================
+// Controller Management Types (Multi-Controller Support)
+// ============================================================================
+
+/// Controller info returned by the API
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControllerInfo {
+    /// Unique identifier for this controller
+    pub id: String,
+    /// Board name
+    pub board_name: String,
+    /// Number of fan ports
+    pub fan_count: usize,
+    /// Optional description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether this controller is in mock mode
+    pub mock_mode: bool,
+    /// Connection status
+    pub connected: bool,
+}
+
+/// Response for listing all controllers
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControllersListResponse {
+    /// Total number of controllers
+    pub count: usize,
+    /// List of controller info
+    pub controllers: Vec<ControllerInfo>,
 }
 
 #[cfg(test)]

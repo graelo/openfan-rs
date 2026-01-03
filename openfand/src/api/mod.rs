@@ -5,7 +5,7 @@
 pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
-use crate::hardware::ConnectionManager;
+use crate::hardware::{ConnectionManager, ControllerRegistry};
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -22,36 +22,74 @@ use tracing::info;
 /// Application state shared across all handlers
 #[derive(Clone)]
 pub(crate) struct AppState {
-    /// Runtime board information
-    pub board_info: Arc<BoardInfo>,
-    /// Runtime configuration (static config + mutable data)
+    /// Controller registry managing multiple fan controllers
+    pub registry: Arc<ControllerRegistry>,
+    /// Runtime configuration (static config + global zones)
     pub config: Arc<RuntimeConfig>,
-    /// Connection manager for hardware (None in mock mode)
-    pub connection_manager: Option<Arc<ConnectionManager>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
+
+    /// Board info for the default controller (used by system info and zone handlers)
+    pub board_info: Arc<BoardInfo>,
+    /// Connection manager for the default controller (used by system info and zone handlers)
+    pub connection_manager: Option<Arc<ConnectionManager>>,
 }
 
 impl AppState {
-    /// Create new application state
+    /// Create new application state with controller registry
+    ///
+    /// For multi-controller setups, also provide the default controller's
+    /// board_info and connection_manager for backward compatibility.
     ///
     /// # Arguments
     ///
-    /// * `board_info` - Hardware board information (wrapped in Arc internally)
+    /// * `registry` - Controller registry managing all controllers
     /// * `config` - Runtime configuration wrapped in Arc for sharing with the
     ///   shutdown handler, which needs access to shutdown settings
-    /// * `connection_manager` - Hardware connection manager wrapped in Arc for
-    ///   thread-safe access across request handlers (None in mock mode)
+    /// * `default_board_info` - Board info for the default/first controller
+    /// * `default_connection_manager` - Connection manager for the default/first controller
     pub fn new(
+        registry: Arc<ControllerRegistry>,
+        config: Arc<RuntimeConfig>,
+        default_board_info: BoardInfo,
+        default_connection_manager: Option<Arc<ConnectionManager>>,
+    ) -> Self {
+        Self {
+            registry,
+            config,
+            start_time: Instant::now(),
+            board_info: Arc::new(default_board_info),
+            connection_manager: default_connection_manager,
+        }
+    }
+
+    /// Create application state for single-controller mode
+    ///
+    /// Creates a registry with a single "default" controller.
+    /// Used primarily for testing.
+    #[cfg(test)]
+    pub async fn single_controller(
         board_info: BoardInfo,
         config: Arc<RuntimeConfig>,
         connection_manager: Option<Arc<ConnectionManager>>,
     ) -> Self {
+        use crate::hardware::ControllerEntry;
+
+        let registry = ControllerRegistry::new();
+        let entry = ControllerEntry::builder("default", board_info.clone())
+            .maybe_connection_manager(connection_manager.clone())
+            .build();
+        registry
+            .register(entry)
+            .await
+            .expect("Failed to register default controller");
+
         Self {
-            board_info: Arc::new(board_info),
+            registry: Arc::new(registry),
             config,
-            connection_manager,
             start_time: Instant::now(),
+            board_info: Arc::new(board_info),
+            connection_manager,
         }
     }
 }
@@ -71,39 +109,143 @@ pub(crate) fn create_router(state: AppState) -> Router {
         .layer(DefaultBodyLimit::max(1024 * 1024)); // 1MB limit
 
     Router::new()
-        // Profile endpoints
+        // =========================================================================
+        // System-wide endpoints
+        // =========================================================================
+        .route("/api/v0/info", get(handlers::info::get_info))
+        .route("/", get(handlers::info::root))
+        //
+        // =========================================================================
+        // Controller management endpoints
+        // =========================================================================
         .route(
-            "/api/v0/profiles/list",
-            get(handlers::profiles::list_profiles),
+            "/api/v0/controllers",
+            get(handlers::controllers::list_controllers),
         )
         .route(
-            "/api/v0/profiles/add",
-            post(handlers::profiles::add_profile),
+            "/api/v0/controller/{id}/info",
+            get(handlers::controllers::get_controller_info),
         )
         .route(
-            "/api/v0/profiles/remove",
-            get(handlers::profiles::remove_profile),
+            "/api/v0/controller/{id}/reconnect",
+            post(handlers::controllers::reconnect_controller),
         )
-        .route("/api/v0/profiles/set", get(handlers::profiles::set_profile))
-        // Fan status and control endpoints
-        .route("/api/v0/fan/status", get(handlers::fans::get_status))
-        .route("/api/v0/fan/all/set", get(handlers::fans::set_all_fans))
-        .route("/api/v0/fan/{id}/pwm", get(handlers::fans::set_fan_pwm))
-        .route("/api/v0/fan/{id}/rpm", get(handlers::fans::set_fan_rpm))
-        .route("/api/v0/fan/{id}/rpm/get", get(handlers::fans::get_fan_rpm))
-        .route("/api/v0/fan/{id}/set", get(handlers::fans::set_fan_pwm)) // Legacy endpoint
-        // Alias endpoints
+        //
+        // =========================================================================
+        // Controller-scoped fan endpoints
+        // =========================================================================
         .route(
-            "/api/v0/alias/all/get",
-            get(handlers::aliases::get_all_aliases),
+            "/api/v0/controller/{id}/fan/status",
+            get(handlers::fans::get_controller_fan_status),
         )
-        .route("/api/v0/alias/{id}/get", get(handlers::aliases::get_alias))
-        .route("/api/v0/alias/{id}/set", get(handlers::aliases::set_alias))
         .route(
-            "/api/v0/alias/{id}",
-            axum::routing::delete(handlers::aliases::delete_alias),
+            "/api/v0/controller/{id}/fan/all/set",
+            get(handlers::fans::set_controller_all_fans),
         )
-        // Zone endpoints
+        .route(
+            "/api/v0/controller/{id}/fan/{fan}/pwm",
+            get(handlers::fans::set_controller_fan_pwm),
+        )
+        .route(
+            "/api/v0/controller/{id}/fan/{fan}/rpm",
+            get(handlers::fans::set_controller_fan_rpm),
+        )
+        .route(
+            "/api/v0/controller/{id}/fan/{fan}/rpm/get",
+            get(handlers::fans::get_controller_fan_rpm),
+        )
+        //
+        // =========================================================================
+        // Controller-scoped profile endpoints
+        // =========================================================================
+        .route(
+            "/api/v0/controller/{id}/profiles/list",
+            get(handlers::profiles::list_controller_profiles),
+        )
+        .route(
+            "/api/v0/controller/{id}/profiles/add",
+            post(handlers::profiles::add_controller_profile),
+        )
+        .route(
+            "/api/v0/controller/{id}/profiles/remove",
+            get(handlers::profiles::remove_controller_profile),
+        )
+        .route(
+            "/api/v0/controller/{id}/profiles/set",
+            get(handlers::profiles::set_controller_profile),
+        )
+        //
+        // =========================================================================
+        // Controller-scoped alias endpoints
+        // =========================================================================
+        .route(
+            "/api/v0/controller/{id}/alias/all/get",
+            get(handlers::aliases::get_all_controller_aliases),
+        )
+        .route(
+            "/api/v0/controller/{id}/alias/{fan}/get",
+            get(handlers::aliases::get_controller_alias),
+        )
+        .route(
+            "/api/v0/controller/{id}/alias/{fan}/set",
+            get(handlers::aliases::set_controller_alias),
+        )
+        .route(
+            "/api/v0/controller/{id}/alias/{fan}",
+            axum::routing::delete(handlers::aliases::delete_controller_alias),
+        )
+        //
+        // =========================================================================
+        // Controller-scoped thermal curve endpoints
+        // =========================================================================
+        .route(
+            "/api/v0/controller/{id}/curves/list",
+            get(handlers::thermal_curves::list_controller_curves),
+        )
+        .route(
+            "/api/v0/controller/{id}/curves/add",
+            post(handlers::thermal_curves::add_controller_curve),
+        )
+        .route(
+            "/api/v0/controller/{id}/curve/{name}/get",
+            get(handlers::thermal_curves::get_controller_curve),
+        )
+        .route(
+            "/api/v0/controller/{id}/curve/{name}/update",
+            post(handlers::thermal_curves::update_controller_curve),
+        )
+        .route(
+            "/api/v0/controller/{id}/curve/{name}",
+            axum::routing::delete(handlers::thermal_curves::delete_controller_curve),
+        )
+        .route(
+            "/api/v0/controller/{id}/curve/{name}/interpolate",
+            get(handlers::thermal_curves::interpolate_controller_curve),
+        )
+        //
+        // =========================================================================
+        // Controller-scoped CFM endpoints
+        // =========================================================================
+        .route(
+            "/api/v0/controller/{id}/cfm/list",
+            get(handlers::cfm::list_controller_cfm),
+        )
+        .route(
+            "/api/v0/controller/{id}/cfm/{port}",
+            get(handlers::cfm::get_controller_cfm),
+        )
+        .route(
+            "/api/v0/controller/{id}/cfm/{port}",
+            post(handlers::cfm::set_controller_cfm),
+        )
+        .route(
+            "/api/v0/controller/{id}/cfm/{port}",
+            axum::routing::delete(handlers::cfm::delete_controller_cfm),
+        )
+        //
+        // =========================================================================
+        // Global zone endpoints (zones span across controllers)
+        // =========================================================================
         .route("/api/v0/zones/list", get(handlers::zones::list_zones))
         .route("/api/v0/zones/add", post(handlers::zones::add_zone))
         .route("/api/v0/zone/{name}/get", get(handlers::zones::get_zone))
@@ -119,45 +261,6 @@ pub(crate) fn create_router(state: AppState) -> Router {
             "/api/v0/zone/{name}/apply",
             get(handlers::zones::apply_zone),
         )
-        // Thermal curve endpoints
-        .route(
-            "/api/v0/curves/list",
-            get(handlers::thermal_curves::list_curves),
-        )
-        .route(
-            "/api/v0/curves/add",
-            post(handlers::thermal_curves::add_curve),
-        )
-        .route(
-            "/api/v0/curve/{name}/get",
-            get(handlers::thermal_curves::get_curve),
-        )
-        .route(
-            "/api/v0/curve/{name}/update",
-            post(handlers::thermal_curves::update_curve),
-        )
-        .route(
-            "/api/v0/curve/{name}",
-            axum::routing::delete(handlers::thermal_curves::delete_curve),
-        )
-        .route(
-            "/api/v0/curve/{name}/interpolate",
-            get(handlers::thermal_curves::interpolate_curve),
-        )
-        // CFM mapping endpoints
-        .route("/api/v0/cfm/list", get(handlers::cfm::list_cfm))
-        .route("/api/v0/cfm/{port}", get(handlers::cfm::get_cfm))
-        .route("/api/v0/cfm/{port}", post(handlers::cfm::set_cfm))
-        .route(
-            "/api/v0/cfm/{port}",
-            axum::routing::delete(handlers::cfm::delete_cfm),
-        )
-        // System info endpoint
-        .route("/api/v0/info", get(handlers::info::get_info))
-        // Manual reconnection endpoint
-        .route("/api/v0/reconnect", post(handlers::info::reconnect))
-        // Root endpoint
-        .route("/", get(handlers::info::root))
         .layer(middleware_stack)
         .with_state(state)
 }
@@ -171,7 +274,7 @@ pub(crate) mod error {
     };
     use openfan_core::api::ApiResponse;
 
-    use tracing::error;
+    use tracing::debug;
 
     /// Custom error type for API responses
     #[derive(Debug)]
@@ -207,7 +310,8 @@ pub(crate) mod error {
 
     impl IntoResponse for ApiError {
         fn into_response(self) -> Response {
-            error!("API Error {}: {}", self.status_code, self.message);
+            // Log at debug level to avoid duplicating error info already sent to client
+            debug!("API Error {}: {}", self.status_code, self.message);
 
             let response: ApiResponse<()> = ApiResponse::error(self.message);
 
@@ -253,6 +357,16 @@ pub(crate) mod error {
                 openfan_core::OpenFanError::Hardware(msg) => Self::service_unavailable(msg),
                 openfan_core::OpenFanError::Serial(msg) => Self::service_unavailable(msg),
                 openfan_core::OpenFanError::Timeout(msg) => Self::service_unavailable(msg),
+                openfan_core::OpenFanError::ControllerNotFound(id) => Self::new(
+                    StatusCode::NOT_FOUND,
+                    format!("Controller not found: {}", id),
+                ),
+                openfan_core::OpenFanError::ControllerIdRequired => {
+                    Self::bad_request("Controller ID required")
+                }
+                openfan_core::OpenFanError::DuplicateControllerId(id) => {
+                    Self::bad_request(format!("Duplicate controller ID: {}", id))
+                }
                 _ => Self::internal_error(err.to_string()),
             }
         }
@@ -430,5 +544,34 @@ mod tests {
         assert!(api_error.message.contains("Reconnection failed"));
         assert!(api_error.message.contains("5 attempts"));
         assert!(api_error.message.contains("Device not found"));
+    }
+
+    #[test]
+    fn test_controller_not_found_error_conversion() {
+        let error = OpenFanError::ControllerNotFound("main".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::NOT_FOUND);
+        assert!(api_error.message.contains("Controller not found"));
+        assert!(api_error.message.contains("main"));
+    }
+
+    #[test]
+    fn test_controller_id_required_error_conversion() {
+        let error = OpenFanError::ControllerIdRequired;
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Controller ID required"));
+    }
+
+    #[test]
+    fn test_duplicate_controller_id_error_conversion() {
+        let error = OpenFanError::DuplicateControllerId("gpu".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Duplicate controller ID"));
+        assert!(api_error.message.contains("gpu"));
     }
 }

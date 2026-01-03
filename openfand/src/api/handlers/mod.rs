@@ -11,6 +11,7 @@
 //! - [`zones`] - Zone management for grouped fan control
 //! - [`thermal_curves`] - Thermal curve management for temperature-based PWM control
 //! - [`cfm`] - CFM mapping management for display-only airflow information
+//! - [`controllers`] - Controller management for multi-controller setups
 //!
 //! # API Structure
 //!
@@ -19,6 +20,11 @@
 //! - Return `Result<Json<ApiResponse<T>>, ApiError>` for uniform responses
 //! - Use `api_ok!()` and `api_fail!()` macros for response construction
 //! - Log operations using the `tracing` crate
+//!
+//! # Multi-Controller Support
+//!
+//! Controllers are registered in a `ControllerRegistry` and can be accessed
+//! via `/api/v0/controllers` and `/api/v0/controller/{id}/*` endpoints.
 //!
 //! # Mock Mode
 //!
@@ -34,6 +40,7 @@
 
 pub(crate) mod aliases;
 pub(crate) mod cfm;
+pub(crate) mod controllers;
 pub(crate) mod fans;
 pub(crate) mod info;
 pub(crate) mod profiles;

@@ -97,7 +97,10 @@ impl Default for MockServerState {
             "cpu".to_string(),
             Zone {
                 name: "cpu".to_string(),
-                port_ids: vec![0, 1],
+                fans: vec![
+                    openfan_core::ZoneFan::new("default", 0),
+                    openfan_core::ZoneFan::new("default", 1),
+                ],
                 description: Some("CPU cooling zone".to_string()),
             },
         );
@@ -105,7 +108,10 @@ impl Default for MockServerState {
             "gpu".to_string(),
             Zone {
                 name: "gpu".to_string(),
-                port_ids: vec![2, 3],
+                fans: vec![
+                    openfan_core::ZoneFan::new("default", 2),
+                    openfan_core::ZoneFan::new("default", 3),
+                ],
                 description: Some("GPU cooling zone".to_string()),
             },
         );
@@ -250,48 +256,93 @@ impl MockServer {
             .route("/", get(root_handler))
             // Info endpoint
             .route("/api/v0/info", get(info_handler))
-            // Fan endpoints
-            .route("/api/v0/fan/status", get(fan_status_handler))
-            .route("/api/v0/fan/{id}/pwm", get(set_fan_pwm_handler))
-            .route("/api/v0/fan/{id}/rpm", get(set_fan_rpm_handler))
-            .route("/api/v0/fan/{id}/rpm/get", get(get_fan_rpm_handler))
-            // Profile endpoints
-            .route("/api/v0/profiles/list", get(list_profiles_handler))
-            .route("/api/v0/profiles/set", get(set_profile_handler))
-            .route("/api/v0/profiles/add", post(add_profile_handler))
-            .route("/api/v0/profiles/remove", get(remove_profile_handler))
-            // Alias endpoints
-            .route("/api/v0/alias/all/get", get(get_all_aliases_handler))
-            .route("/api/v0/alias/{id}/get", get(get_alias_handler))
-            .route("/api/v0/alias/{id}/set", get(set_alias_handler))
+            // Controller-scoped fan endpoints (used by client)
             .route(
-                "/api/v0/alias/{id}",
+                "/api/v0/controller/default/fan/status",
+                get(fan_status_handler),
+            )
+            .route(
+                "/api/v0/controller/default/fan/{id}/pwm",
+                get(set_fan_pwm_handler),
+            )
+            .route(
+                "/api/v0/controller/default/fan/{id}/rpm",
+                get(set_fan_rpm_handler),
+            )
+            .route(
+                "/api/v0/controller/default/fan/{id}/rpm/get",
+                get(get_fan_rpm_handler),
+            )
+            // Controller-scoped profile endpoints
+            .route(
+                "/api/v0/controller/default/profiles/list",
+                get(list_profiles_handler),
+            )
+            .route(
+                "/api/v0/controller/default/profiles/set",
+                get(set_profile_handler),
+            )
+            .route(
+                "/api/v0/controller/default/profiles/add",
+                post(add_profile_handler),
+            )
+            .route(
+                "/api/v0/controller/default/profiles/remove",
+                get(remove_profile_handler),
+            )
+            // Controller-scoped alias endpoints
+            .route(
+                "/api/v0/controller/default/alias/all/get",
+                get(get_all_aliases_handler),
+            )
+            .route(
+                "/api/v0/controller/default/alias/{id}/get",
+                get(get_alias_handler),
+            )
+            .route(
+                "/api/v0/controller/default/alias/{id}/set",
+                get(set_alias_handler),
+            )
+            .route(
+                "/api/v0/controller/default/alias/{id}",
                 axum::routing::delete(delete_alias_handler),
             )
-            // Zone endpoints
+            // Zone endpoints (global, not controller-scoped)
             .route("/api/v0/zones/list", get(list_zones_handler))
             .route("/api/v0/zones/add", post(add_zone_handler))
             .route("/api/v0/zone/{name}/get", get(get_zone_handler))
             .route("/api/v0/zone/{name}/update", post(update_zone_handler))
             .route("/api/v0/zone/{name}/delete", get(delete_zone_handler))
             .route("/api/v0/zone/{name}/apply", get(apply_zone_handler))
-            // Curve endpoints
-            .route("/api/v0/curves/list", get(list_curves_handler))
-            .route("/api/v0/curves/add", post(add_curve_handler))
-            .route("/api/v0/curve/{name}/get", get(get_curve_handler))
-            .route("/api/v0/curve/{name}/update", post(update_curve_handler))
+            // Controller-scoped curve endpoints
             .route(
-                "/api/v0/curve/{name}",
+                "/api/v0/controller/default/curves/list",
+                get(list_curves_handler),
+            )
+            .route(
+                "/api/v0/controller/default/curves/add",
+                post(add_curve_handler),
+            )
+            .route(
+                "/api/v0/controller/default/curve/{name}/get",
+                get(get_curve_handler),
+            )
+            .route(
+                "/api/v0/controller/default/curve/{name}/update",
+                post(update_curve_handler),
+            )
+            .route(
+                "/api/v0/controller/default/curve/{name}",
                 axum::routing::delete(delete_curve_handler),
             )
             .route(
-                "/api/v0/curve/{name}/interpolate",
+                "/api/v0/controller/default/curve/{name}/interpolate",
                 get(interpolate_curve_handler),
             )
-            // CFM endpoints
-            .route("/api/v0/cfm/list", get(list_cfm_handler))
+            // Controller-scoped CFM endpoints
+            .route("/api/v0/controller/default/cfm/list", get(list_cfm_handler))
             .route(
-                "/api/v0/cfm/{port}",
+                "/api/v0/controller/default/cfm/{port}",
                 get(get_cfm_handler)
                     .post(set_cfm_handler)
                     .delete(delete_cfm_handler),
@@ -567,7 +618,7 @@ async fn add_zone_handler(
 ) -> Json<api::ApiResponse<()>> {
     let zone = Zone {
         name: req.name.clone(),
-        port_ids: req.port_ids,
+        fans: req.fans,
         description: req.description,
     };
     state.zones.lock().unwrap().insert(req.name, zone);
@@ -584,7 +635,7 @@ async fn update_zone_handler(
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             let zone = Zone {
                 name,
-                port_ids: req.port_ids,
+                fans: req.fans,
                 description: req.description,
             };
             entry.insert(zone);
@@ -626,14 +677,14 @@ async fn apply_zone_handler(
         match params.mode.as_str() {
             "pwm" => {
                 let mut pwms = state.pwms.lock().unwrap();
-                for port_id in &zone.port_ids {
-                    pwms.insert(port_id.to_string(), params.value as u32);
+                for fan in &zone.fans {
+                    pwms.insert(fan.fan_id.to_string(), params.value as u32);
                 }
             }
             "rpm" => {
                 let mut rpms = state.rpms.lock().unwrap();
-                for port_id in &zone.port_ids {
-                    rpms.insert(port_id.to_string(), params.value as u32);
+                for fan in &zone.fans {
+                    rpms.insert(fan.fan_id.to_string(), params.value as u32);
                 }
             }
             _ => return Err(StatusCode::BAD_REQUEST),
@@ -843,7 +894,7 @@ mod tests {
 
         let client = reqwest::Client::new();
         let response = client
-            .get(format!("{}/api/v0/fan/status", url))
+            .get(format!("{}/api/v0/controller/default/fan/status", url))
             .send()
             .await
             .unwrap();
@@ -871,7 +922,10 @@ mod tests {
 
         // Set PWM
         let response = client
-            .get(format!("{}/api/v0/fan/0/pwm?value=75", url))
+            .get(format!(
+                "{}/api/v0/controller/default/fan/0/pwm?value=75",
+                url
+            ))
             .send()
             .await
             .unwrap();
@@ -891,7 +945,7 @@ mod tests {
 
         // List profiles
         let response = client
-            .get(format!("{}/api/v0/profiles/list", url))
+            .get(format!("{}/api/v0/controller/default/profiles/list", url))
             .send()
             .await
             .unwrap();
@@ -909,7 +963,10 @@ mod tests {
 
         // Apply profile
         let response = client
-            .get(format!("{}/api/v0/profiles/set?name=50% PWM", url))
+            .get(format!(
+                "{}/api/v0/controller/default/profiles/set?name=50% PWM",
+                url
+            ))
             .send()
             .await
             .unwrap();
@@ -925,7 +982,7 @@ mod tests {
 
         // Get all aliases
         let response = client
-            .get(format!("{}/api/v0/alias/all/get", url))
+            .get(format!("{}/api/v0/controller/default/alias/all/get", url))
             .send()
             .await
             .unwrap();
@@ -933,7 +990,10 @@ mod tests {
 
         // Set alias
         let response = client
-            .get(format!("{}/api/v0/alias/0/set?value=CPU Fan", url))
+            .get(format!(
+                "{}/api/v0/controller/default/alias/0/set?value=CPU Fan",
+                url
+            ))
             .send()
             .await
             .unwrap();
@@ -941,7 +1001,7 @@ mod tests {
 
         // Get specific alias
         let response = client
-            .get(format!("{}/api/v0/alias/0/get", url))
+            .get(format!("{}/api/v0/controller/default/alias/0/get", url))
             .send()
             .await
             .unwrap();

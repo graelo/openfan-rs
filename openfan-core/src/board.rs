@@ -17,7 +17,7 @@ use std::marker::PhantomData;
 /// Hardware board configuration trait
 ///
 /// Each hardware board variant implements this trait to define its specific
-/// characteristics such as fan count, USB identifiers, and communication parameters.
+/// characteristics such as fan count and communication parameters.
 ///
 /// # Example
 ///
@@ -34,12 +34,6 @@ pub trait BoardConfig: Send + Sync + 'static {
 
     /// Number of fan channels supported by this board
     const FAN_COUNT: usize;
-
-    /// USB Vendor ID for device detection
-    const USB_VID: u16;
-
-    /// USB Product ID for device detection
-    const USB_PID: u16;
 
     /// Serial communication baud rate
     const BAUD_RATE: u32;
@@ -61,8 +55,6 @@ pub trait BoardConfig: Send + Sync + 'static {
 ///
 /// This is the standard 10-fan controller board with the following specifications:
 /// - 10 PWM fan channels
-/// - USB VID: 0x2E8A (Raspberry Pi Foundation)
-/// - USB PID: 0x000A (OpenFAN device)
 /// - 115200 baud serial communication
 /// - PWM mode: 0-100%
 /// - RPM target mode: 500-9000 (per OpenFAN docs)
@@ -71,8 +63,6 @@ pub struct OpenFanStandard;
 impl BoardConfig for OpenFanStandard {
     const NAME: &'static str = "OpenFAN Standard";
     const FAN_COUNT: usize = 10;
-    const USB_VID: u16 = 0x2E8A;
-    const USB_PID: u16 = 0x000A;
     const BAUD_RATE: u32 = 115200;
     const DEFAULT_TIMEOUT_MS: u64 = 1000;
     const MAX_PWM: u32 = 100;
@@ -83,27 +73,44 @@ impl BoardConfig for OpenFanStandard {
 /// Runtime board type enumeration
 ///
 /// Unlike the compile-time `BoardConfig` trait, this enum represents
-/// board types that can be detected and used at runtime.
+/// board types that can be used at runtime.
 ///
 /// # Adding New Board Types
 ///
-/// To add support for a new USB-based board:
+/// To add support for a new board:
 /// 1. Add a new variant to this enum with the fan count
 /// 2. Implement the `BoardConfig` trait for compile-time constants (optional)
-/// 3. Update `FromStr`, `name()`, `fan_count()`, `usb_vid()`, `usb_pid()`, and `to_board_info()`
-/// 4. Add USB VID/PID detection in `openfan-hardware/src/serial_driver.rs`
+/// 3. Update `FromStr`, `name()`, `fan_count()`, and `to_board_info()`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum BoardType {
-    /// OpenFAN Standard - 10-fan controller (USB VID:0x2E8A, PID:0x000A)
+    /// OpenFAN Standard - 10-fan controller
     OpenFanStandard,
-    /// Custom/DIY USB board with configurable fan count
+    /// Custom/DIY board with configurable fan count
     ///
-    /// Use this for custom or modified boards that use USB serial communication.
+    /// Use this for custom or modified boards that use serial communication.
     /// The fan count must be specified when creating a Custom board.
     Custom {
         /// Number of fan channels on this custom board (1-16)
         fan_count: usize,
     },
+}
+
+impl TryFrom<String> for BoardType {
+    type Error = crate::OpenFanError;
+
+    fn try_from(s: String) -> Result<Self, Self::Error> {
+        s.parse()
+    }
+}
+
+impl From<BoardType> for String {
+    fn from(board_type: BoardType) -> Self {
+        match board_type {
+            BoardType::OpenFanStandard => "standard".to_string(),
+            BoardType::Custom { fan_count } => format!("custom:{}", fan_count),
+        }
+    }
 }
 
 impl std::str::FromStr for BoardType {
@@ -175,26 +182,6 @@ impl BoardType {
         }
     }
 
-    /// Get USB VID for this board type
-    ///
-    /// Note: Custom boards return 0x0000 as they may use various USB identifiers.
-    pub fn usb_vid(&self) -> u16 {
-        match self {
-            BoardType::OpenFanStandard => OpenFanStandard::USB_VID,
-            BoardType::Custom { .. } => 0x0000, // Custom boards have no fixed VID
-        }
-    }
-
-    /// Get USB PID for this board type
-    ///
-    /// Note: Custom boards return 0x0000 as they may use various USB identifiers.
-    pub fn usb_pid(&self) -> u16 {
-        match self {
-            BoardType::OpenFanStandard => OpenFanStandard::USB_PID,
-            BoardType::Custom { .. } => 0x0000, // Custom boards have no fixed PID
-        }
-    }
-
     /// Convert to runtime board info
     pub fn to_board_info(self) -> BoardInfo {
         match self {
@@ -202,8 +189,6 @@ impl BoardType {
                 board_type: BoardType::OpenFanStandard,
                 name: OpenFanStandard::NAME.to_string(),
                 fan_count: OpenFanStandard::FAN_COUNT,
-                usb_vid: OpenFanStandard::USB_VID,
-                usb_pid: OpenFanStandard::USB_PID,
                 max_pwm: OpenFanStandard::MAX_PWM,
                 min_target_rpm: OpenFanStandard::MIN_TARGET_RPM,
                 max_target_rpm: OpenFanStandard::MAX_TARGET_RPM,
@@ -213,8 +198,6 @@ impl BoardType {
                 board_type: BoardType::Custom { fan_count },
                 name: format!("Custom Board ({} fans)", fan_count),
                 fan_count,
-                usb_vid: 0x0000,
-                usb_pid: 0x0000,
                 max_pwm: 100,
                 min_target_rpm: 500,
                 max_target_rpm: 9000,
@@ -231,7 +214,7 @@ impl BoardType {
 /// shared across the application.
 ///
 /// Unlike `BoardConfig` which is a compile-time trait, `BoardInfo` provides
-/// runtime flexibility for dynamic board detection.
+/// runtime flexibility for board configuration.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BoardInfo {
     /// Board type variant
@@ -240,10 +223,6 @@ pub struct BoardInfo {
     pub name: String,
     /// Number of fan channels supported
     pub fan_count: usize,
-    /// USB Vendor ID
-    pub usb_vid: u16,
-    /// USB Product ID
-    pub usb_pid: u16,
     /// Maximum PWM percentage value (0-100)
     pub max_pwm: u32,
     /// Minimum RPM for target mode
@@ -390,8 +369,6 @@ mod tests {
     fn test_openfan_standard_config() {
         assert_eq!(OpenFanStandard::NAME, "OpenFAN Standard");
         assert_eq!(OpenFanStandard::FAN_COUNT, 10);
-        assert_eq!(OpenFanStandard::USB_VID, 0x2E8A);
-        assert_eq!(OpenFanStandard::USB_PID, 0x000A);
         assert_eq!(OpenFanStandard::BAUD_RATE, 115200);
         assert_eq!(OpenFanStandard::DEFAULT_TIMEOUT_MS, 1000);
         assert_eq!(OpenFanStandard::MAX_PWM, 100);
@@ -490,14 +467,10 @@ mod tests {
         let standard = BoardType::OpenFanStandard;
         assert_eq!(standard.name(), "OpenFAN Standard");
         assert_eq!(standard.fan_count(), 10);
-        assert_eq!(standard.usb_vid(), 0x2E8A);
-        assert_eq!(standard.usb_pid(), 0x000A);
 
         let custom = BoardType::Custom { fan_count: 4 };
         assert_eq!(custom.name(), "Custom Board");
         assert_eq!(custom.fan_count(), 4);
-        assert_eq!(custom.usb_vid(), 0x0000); // Custom boards have no fixed VID
-        assert_eq!(custom.usb_pid(), 0x0000); // Custom boards have no fixed PID
     }
 
     #[test]
@@ -505,16 +478,12 @@ mod tests {
         let standard_info = BoardType::OpenFanStandard.to_board_info();
         assert_eq!(standard_info.name, "OpenFAN Standard");
         assert_eq!(standard_info.fan_count, 10);
-        assert_eq!(standard_info.usb_vid, 0x2E8A);
-        assert_eq!(standard_info.usb_pid, 0x000A);
         assert_eq!(standard_info.max_pwm, 100);
         assert_eq!(standard_info.baud_rate, 115200);
 
         let custom_info = BoardType::Custom { fan_count: 4 }.to_board_info();
         assert_eq!(custom_info.name, "Custom Board (4 fans)");
         assert_eq!(custom_info.fan_count, 4);
-        assert_eq!(custom_info.usb_vid, 0x0000);
-        assert_eq!(custom_info.usb_pid, 0x0000);
         assert_eq!(custom_info.max_pwm, 100);
         assert_eq!(custom_info.baud_rate, 115200);
     }

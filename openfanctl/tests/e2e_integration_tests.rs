@@ -623,13 +623,40 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
 
     let server_port = 18500 + (std::process::id() % 100) as u16;
 
+    // Create a temporary config file to avoid using user's config
+    let temp_dir = tempfile::TempDir::new()?;
+    let config_path = temp_dir.path().join("config.toml");
+    let data_dir = temp_dir.path().join("data");
+    std::fs::create_dir_all(&data_dir)?;
+
+    let config_content = format!(
+        r#"
+data_dir = "{}"
+
+[server]
+bind_address = "127.0.0.1"
+port = {}
+communication_timeout = 1
+"#,
+        data_dir.display(),
+        server_port
+    );
+    std::fs::write(&config_path, config_content)?;
+
     // Use pre-built binary to avoid cargo lock contention
     let server_binary = get_server_binary();
 
-    // Try to start server without --mock flag
+    // Try to start server without --mock flag (should fail without hardware)
     let output = timeout(Duration::from_secs(15), async {
         Command::new(&server_binary)
-            .args(["--port", &server_port.to_string(), "--bind", "127.0.0.1"])
+            .args([
+                "--config",
+                config_path.to_str().unwrap(),
+                "--port",
+                &server_port.to_string(),
+                "--bind",
+                "127.0.0.1",
+            ])
             .output()
     })
     .await??;
@@ -645,10 +672,11 @@ async fn test_e2e_server_without_mock_fails_gracefully() -> Result<()> {
     let combined_output = format!("{} {}", stderr, stdout);
 
     assert!(
-        combined_output.contains("Hardware connection failed")
+        combined_output.contains("No controllers configured")
+            || combined_output.contains("--device")
             || combined_output.contains("--mock")
-            || combined_output.contains("cannot start without hardware"),
-        "Error message should mention hardware failure or mock flag: {}",
+            || combined_output.contains("[[controllers]]"),
+        "Error message should mention controller configuration options: {}",
         combined_output
     );
 
@@ -1332,7 +1360,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test valid value
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=75",
+            "{}/api/v0/controller/default/fan/all/set?value=75",
             harness.server_url
         ))
         .send()
@@ -1353,7 +1381,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test another value
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=50",
+            "{}/api/v0/controller/default/fan/all/set?value=50",
             harness.server_url
         ))
         .send()
@@ -1365,7 +1393,10 @@ async fn test_e2e_fan_all_set() -> Result<()> {
 
     // Test edge case: 0%
     let response = client
-        .get(format!("{}/api/v0/fan/all/set?value=0", harness.server_url))
+        .get(format!(
+            "{}/api/v0/controller/default/fan/all/set?value=0",
+            harness.server_url
+        ))
         .send()
         .await?;
     assert!(
@@ -1376,7 +1407,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test edge case: 100%
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=100",
+            "{}/api/v0/controller/default/fan/all/set?value=100",
             harness.server_url
         ))
         .send()
@@ -1388,7 +1419,10 @@ async fn test_e2e_fan_all_set() -> Result<()> {
 
     // Test missing value parameter
     let response = client
-        .get(format!("{}/api/v0/fan/all/set", harness.server_url))
+        .get(format!(
+            "{}/api/v0/controller/default/fan/all/set",
+            harness.server_url
+        ))
         .send()
         .await?;
     assert!(
@@ -1634,6 +1668,130 @@ async fn test_e2e_concurrent_operations() -> Result<()> {
         "At least 12 out of 15 concurrent operations should succeed, got {}",
         successes
     );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+// ==================== Controller management tests ====================
+
+#[tokio::test]
+async fn test_e2e_controllers_list() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test listing controllers
+    let list_output = harness.run_cli_success(&["controllers"]).await?;
+    assert!(
+        list_output.contains("default") || list_output.contains("Controllers"),
+        "Should list the default controller: {}",
+        list_output
+    );
+
+    // Test JSON output for controllers list
+    let list_json = harness
+        .run_cli_success(&["--format", "json", "controllers"])
+        .await?;
+    let list_value: Value = serde_json::from_str(&list_json)?;
+    assert!(
+        list_value.get("count").is_some() && list_value.get("controllers").is_some(),
+        "JSON should contain count and controllers: {}",
+        list_json
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_controller_info() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting info for the default controller
+    let info_output = harness
+        .run_cli_success(&["controller", "info", "default"])
+        .await?;
+    assert!(
+        info_output.contains("default")
+            && (info_output.contains("Board") || info_output.contains("Fans")),
+        "Should show controller info: {}",
+        info_output
+    );
+
+    // Test JSON output for controller info
+    let info_json = harness
+        .run_cli_success(&["--format", "json", "controller", "info", "default"])
+        .await?;
+    let info_value: Value = serde_json::from_str(&info_json)?;
+    assert!(
+        info_value.get("id").is_some() && info_value.get("board_name").is_some(),
+        "JSON should contain id and board_name: {}",
+        info_json
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_controller_not_found() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test getting info for non-existent controller
+    let error_output = harness
+        .run_cli_expect_failure(&["controller", "info", "non_existent"])
+        .await?;
+    assert!(
+        error_output.contains("not found")
+            || error_output.to_lowercase().contains("controller")
+            || error_output.contains("404"),
+        "Should show controller not found error: {}",
+        error_output
+    );
+
+    harness.stop_server().await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_e2e_zone_with_controller_format() -> Result<()> {
+    let harness = E2ETestHarness::default();
+    harness.start_server().await?;
+
+    // Test adding a zone with controller:fan_id format
+    let add_output = harness
+        .run_cli_success(&[
+            "zone",
+            "add",
+            "multi_ctrl_zone",
+            "--ports",
+            "default:0,default:1,default:2",
+            "--description",
+            "Zone with controller-qualified ports",
+        ])
+        .await?;
+    assert!(
+        add_output.contains("Added") || add_output.contains("multi_ctrl_zone"),
+        "Should confirm zone creation: {}",
+        add_output
+    );
+
+    // Test getting the zone
+    let get_output = harness
+        .run_cli_success(&["zone", "get", "multi_ctrl_zone"])
+        .await?;
+    assert!(
+        get_output.contains("default") && get_output.contains("multi_ctrl_zone"),
+        "Should show zone with controller info: {}",
+        get_output
+    );
+
+    // Clean up
+    let _delete = harness
+        .run_cli_success(&["zone", "delete", "multi_ctrl_zone"])
+        .await?;
 
     harness.stop_server().await?;
     Ok(())

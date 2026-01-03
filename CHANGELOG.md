@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Use `--board custom:N` where N is fan count (1-16)
   - Use `--device /dev/ttyACM0` to specify the serial device directly
   - Enables extensibility for community-built hardware
+- **Multi-controller support**: Manage multiple fan controllers simultaneously
+  - Configure multiple controllers via `[[controllers]]` array in config.toml
+  - CLI `--controller` (`-c`) flag for controller-specific commands
+  - New `openfanctl controllers` command to list all controllers
+  - New `openfanctl controller info <id>` and `controller reconnect <id>` subcommands
+  - Zones now support cross-controller fan grouping with `controller:fan_id` format
+  - New API endpoints: `/api/v0/controllers`, `/api/v0/controller/{id}/info`,
+    `/api/v0/controller/{id}/reconnect`
+  - Backward compatible: single-controller setups work unchanged
+- **Code quality improvements**:
+  - `BoardType` enum now uses serde with string format (`"standard"`, `"custom:4"`)
+  - Builder pattern for `ControllerEntry` construction
+  - Removed duplicate type definitions across crates
+  - Enhanced async method documentation with proper imperative mood
+  - Minimized imports in openfanctl for better maintainability
+  - Improved test coverage (183 integration tests, 75.21% code coverage)
+    - Added integration tests for edge cases in fan handlers (non-numeric IDs, missing controllers, PWM clamping)
+    - Added error conversion and Display trait tests in openfan-core
 
 ### Changed
 
@@ -54,6 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration tests now run correctly in CI environment
 - Removed random failure simulation from test utilities that was causing flaky
   CI tests
+- **CI coverage workflow**: Fixed `cargo-tarpaulin` execution by adding
+  `--skip-clean` flag (tarpaulin 0.35.0 cleans by default, breaking E2E tests)
 
 ## [0.1.0] - 2024-12-31
 
