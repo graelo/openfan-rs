@@ -68,80 +68,67 @@ fn validate_points(points: &[CurvePoint]) -> Result<(), String> {
     Ok(())
 }
 
-/// Lists all configured thermal curves.
+/// Lists all configured thermal curves for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/curves/list`
-pub(crate) async fn list_curves(
+/// `GET /api/v0/controller/{id}/curves/list`
+pub(crate) async fn list_controller_curves(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
 ) -> Result<Json<api::ApiResponse<api::ThermalCurveResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/curves/list");
+    debug!(
+        "Request: GET /api/v0/controller/{}/curves/list",
+        controller_id
+    );
 
-    let curves = state.config.thermal_curves().await;
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let curves = controller_data.thermal_curves().await;
     let curve_map = curves.curves.clone();
 
     let response = api::ThermalCurveResponse { curves: curve_map };
 
-    info!("Listed {} thermal curves", response.curves.len());
+    info!(
+        "Listed {} curves for controller '{}'",
+        response.curves.len(),
+        controller_id
+    );
     api_ok!(response)
 }
 
-/// Gets a single thermal curve by name.
+/// Adds a new thermal curve for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/curve/{name}/get`
-pub(crate) async fn get_curve(
+/// `POST /api/v0/controller/{id}/curves/add`
+pub(crate) async fn add_controller_curve(
     State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> Result<Json<api::ApiResponse<api::SingleCurveResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/curve/{}/get", name);
-
-    let curves = state.config.thermal_curves().await;
-
-    match curves.get(&name) {
-        Some(curve) => {
-            let response = api::SingleCurveResponse {
-                curve: curve.clone(),
-            };
-            api_ok!(response)
-        }
-        None => Err(OpenFanError::CurveNotFound(name).into()),
-    }
-}
-
-/// Adds a new thermal curve.
-///
-/// # Validation Rules
-///
-/// - Curve name must be non-empty and contain only alphanumeric characters, hyphens, and underscores
-/// - At least 2 points are required
-/// - Points must be in ascending temperature order
-/// - PWM values must be 0-100
-///
-/// # Endpoint
-///
-/// `POST /api/v0/curves/add`
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "name": "Custom",
-///   "points": [
-///     {"temp_c": 30.0, "pwm": 25},
-///     {"temp_c": 50.0, "pwm": 50},
-///     {"temp_c": 80.0, "pwm": 100}
-///   ],
-///   "description": "Custom thermal curve"
-/// }
-/// ```
-pub(crate) async fn add_curve(
-    State(state): State<AppState>,
+    Path(controller_id): Path<String>,
     Json(request): Json<api::AddCurveRequest>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: POST /api/v0/curves/add");
+    debug!(
+        "Request: POST /api/v0/controller/{}/curves/add",
+        controller_id
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
 
     let curve_name = request.name.trim();
 
@@ -156,9 +143,15 @@ pub(crate) async fn add_curve(
         return api_fail!(e);
     }
 
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
     // Add curve
     {
-        let mut curves = state.config.thermal_curves_mut().await;
+        let mut curves = controller_data.thermal_curves_mut().await;
 
         // Check if curve name already exists
         if curves.contains(curve_name) {
@@ -174,50 +167,96 @@ pub(crate) async fn add_curve(
     }
 
     // Save to disk
-    if let Err(e) = state.config.save_thermal_curves().await {
+    if let Err(e) = controller_data.save_thermal_curves().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save thermal curves: {}",
             e
         )));
     }
 
-    info!("Added thermal curve: {}", curve_name);
+    info!(
+        "Added thermal curve '{}' for controller '{}'",
+        curve_name, controller_id
+    );
     api_ok!(())
 }
 
-/// Updates an existing thermal curve.
+/// Gets a single thermal curve by name for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/curve/{name}/update`
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "points": [
-///     {"temp_c": 30.0, "pwm": 30},
-///     {"temp_c": 60.0, "pwm": 60},
-///     {"temp_c": 85.0, "pwm": 100}
-///   ],
-///   "description": "Updated description"
-/// }
-/// ```
-pub(crate) async fn update_curve(
+/// `GET /api/v0/controller/{id}/curve/{name}/get`
+pub(crate) async fn get_controller_curve(
     State(state): State<AppState>,
-    Path(name): Path<String>,
+    Path((controller_id, name)): Path<(String, String)>,
+) -> Result<Json<api::ApiResponse<api::SingleCurveResponse>>, ApiError> {
+    debug!(
+        "Request: GET /api/v0/controller/{}/curve/{}/get",
+        controller_id, name
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let curves = controller_data.thermal_curves().await;
+
+    match curves.get(&name) {
+        Some(curve) => {
+            let response = api::SingleCurveResponse {
+                curve: curve.clone(),
+            };
+            api_ok!(response)
+        }
+        None => Err(OpenFanError::CurveNotFound(name).into()),
+    }
+}
+
+/// Updates an existing thermal curve for a specific controller.
+///
+/// # Endpoint
+///
+/// `POST /api/v0/controller/{id}/curve/{name}/update`
+pub(crate) async fn update_controller_curve(
+    State(state): State<AppState>,
+    Path((controller_id, name)): Path<(String, String)>,
     Json(request): Json<api::UpdateCurveRequest>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: POST /api/v0/curve/{}/update", name);
+    debug!(
+        "Request: POST /api/v0/controller/{}/curve/{}/update",
+        controller_id, name
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
 
     // Validate points
     if let Err(e) = validate_points(&request.points) {
         return api_fail!(e);
     }
 
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
     // Update curve
     {
-        let mut curves = state.config.thermal_curves_mut().await;
+        let mut curves = controller_data.thermal_curves_mut().await;
 
         // Check if curve exists
         if !curves.contains(&name) {
@@ -239,31 +278,50 @@ pub(crate) async fn update_curve(
     }
 
     // Save to disk
-    if let Err(e) = state.config.save_thermal_curves().await {
+    if let Err(e) = controller_data.save_thermal_curves().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save thermal curves: {}",
             e
         )));
     }
 
-    info!("Updated thermal curve: {}", name);
+    info!(
+        "Updated thermal curve '{}' for controller '{}'",
+        name, controller_id
+    );
     api_ok!(())
 }
 
-/// Deletes a thermal curve.
+/// Deletes a thermal curve for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `DELETE /api/v0/curve/{name}`
-pub(crate) async fn delete_curve(
+/// `DELETE /api/v0/controller/{id}/curve/{name}`
+pub(crate) async fn delete_controller_curve(
     State(state): State<AppState>,
-    Path(name): Path<String>,
+    Path((controller_id, name)): Path<(String, String)>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: DELETE /api/v0/curve/{}", name);
+    debug!(
+        "Request: DELETE /api/v0/controller/{}/curve/{}",
+        controller_id, name
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
 
     // Remove curve
     {
-        let mut curves = state.config.thermal_curves_mut().await;
+        let mut curves = controller_data.thermal_curves_mut().await;
 
         if curves.remove(&name).is_none() {
             return Err(OpenFanError::CurveNotFound(name).into());
@@ -271,33 +329,49 @@ pub(crate) async fn delete_curve(
     }
 
     // Save to disk
-    if let Err(e) = state.config.save_thermal_curves().await {
+    if let Err(e) = controller_data.save_thermal_curves().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save thermal curves: {}",
             e
         )));
     }
 
-    info!("Deleted thermal curve: {}", name);
+    info!(
+        "Deleted thermal curve '{}' from controller '{}'",
+        name, controller_id
+    );
     api_ok!(())
 }
 
-/// Interpolates PWM value for a given temperature using the specified curve.
+/// Interpolates PWM value for a given temperature using the specified curve on a controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/curve/{name}/interpolate?temp=X`
-pub(crate) async fn interpolate_curve(
+/// `GET /api/v0/controller/{id}/curve/{name}/interpolate?temp=X`
+pub(crate) async fn interpolate_controller_curve(
     State(state): State<AppState>,
-    Path(name): Path<String>,
+    Path((controller_id, name)): Path<(String, String)>,
     Query(params): Query<InterpolateQuery>,
 ) -> Result<Json<api::ApiResponse<api::InterpolateResponse>>, ApiError> {
     debug!(
-        "Request: GET /api/v0/curve/{}/interpolate?temp={}",
-        name, params.temp
+        "Request: GET /api/v0/controller/{}/curve/{}/interpolate?temp={}",
+        controller_id, name, params.temp
     );
 
-    let curves = state.config.thermal_curves().await;
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let curves = controller_data.thermal_curves().await;
 
     match curves.get(&name) {
         Some(curve) => {
@@ -307,8 +381,8 @@ pub(crate) async fn interpolate_curve(
                 pwm,
             };
             info!(
-                "Interpolated curve '{}' at {}°C = {}% PWM",
-                name, params.temp, pwm
+                "Controller '{}': Interpolated curve '{}' at {}C = {}% PWM",
+                controller_id, name, params.temp, pwm
             );
             api_ok!(response)
         }
@@ -422,7 +496,8 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
+            let state =
+                AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
 
             TestApp {
                 router: create_router(state),
@@ -448,7 +523,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/curves/list")
+                    .uri("/api/v0/controller/default/curves/list")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -472,7 +547,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "test-curve", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
@@ -494,7 +569,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "described-curve", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}], "description": "A test curve"}"#,
@@ -516,7 +591,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "invalid name", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
@@ -538,7 +613,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "one-point", "points": [{"temp_c": 50.0, "pwm": 50}]}"#,
@@ -560,7 +635,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "wrong-order", "points": [{"temp_c": 80.0, "pwm": 100}, {"temp_c": 30.0, "pwm": 25}]}"#,
@@ -582,7 +657,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "high-pwm", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 150}]}"#,
@@ -603,7 +678,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/curve/nonexistent/get")
+                    .uri("/api/v0/controller/default/curve/nonexistent/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -623,7 +698,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "to-get", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
@@ -639,7 +714,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/curve/to-get/get")
+                    .uri("/api/v0/controller/default/curve/to-get/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -657,7 +732,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::DELETE)
-                    .uri("/api/v0/curve/nonexistent")
+                    .uri("/api/v0/controller/default/curve/nonexistent")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -677,7 +752,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "to-delete", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
@@ -694,7 +769,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::DELETE)
-                    .uri("/api/v0/curve/to-delete")
+                    .uri("/api/v0/controller/default/curve/to-delete")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -711,7 +786,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/curve/nonexistent/interpolate?temp=50.0")
+                    .uri("/api/v0/controller/default/curve/nonexistent/interpolate?temp=50.0")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -731,7 +806,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/curves/add")
+                    .uri("/api/v0/controller/default/curves/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "interp-test", "points": [{"temp_c": 30.0, "pwm": 25}, {"temp_c": 80.0, "pwm": 100}]}"#,
@@ -747,7 +822,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/curve/interp-test/interpolate?temp=55.0")
+                    .uri("/api/v0/controller/default/curve/interp-test/interpolate?temp=55.0")
                     .body(Body::empty())
                     .unwrap(),
             )

@@ -19,179 +19,6 @@ pub(crate) struct AliasQuery {
     pub value: Option<String>,
 }
 
-/// Retrieve all configured fan aliases.
-///
-/// Return a map of fan IDs to their human-readable alias names.
-/// Fans without configured aliases will not appear in the response.
-///
-/// # Endpoint
-///
-/// `GET /api/v0/alias/all/get`
-pub(crate) async fn get_all_aliases(
-    State(state): State<AppState>,
-) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/alias/all/get");
-
-    let alias_data = state.config.aliases().await;
-    let aliases = alias_data.aliases.clone();
-
-    let response = api::AliasResponse { aliases };
-
-    info!("Retrieved all fan aliases");
-    api_ok!(response)
-}
-
-/// Retrieve the alias for a specific fan.
-///
-/// If no alias is configured, return the default alias "Fan #N" where N is fan_id + 1.
-///
-/// # Endpoint
-///
-/// `GET /api/v0/alias/{id}/get`
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-pub(crate) async fn get_alias(
-    State(state): State<AppState>,
-    Path(fan_id): Path<String>,
-) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/alias/{}/get", fan_id);
-
-    // Parse and validate fan ID
-    let fan_index = fan_id
-        .parse::<u8>()
-        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
-
-    // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
-
-    let alias_data = state.config.aliases().await;
-    let alias = alias_data.get(fan_index);
-
-    let mut aliases = HashMap::new();
-    aliases.insert(fan_index, alias.clone());
-
-    let response = api::AliasResponse { aliases };
-
-    debug!("Retrieved alias for fan {}: {}", fan_index, alias);
-    api_ok!(response)
-}
-
-/// Set a human-readable alias for a specific fan.
-///
-/// The alias is validated and saved to the configuration file.
-///
-/// # Validation
-///
-/// Aliases must contain only:
-/// - Alphanumeric characters (A-Z, a-z, 0-9)
-/// - Hyphens (-)
-/// - Underscores (_)
-/// - Hash symbols (#)
-/// - Periods (.)
-/// - Spaces
-///
-/// Empty aliases are not allowed.
-///
-/// # Endpoint
-///
-/// `GET /api/v0/alias/{id}/set?value=CPU Fan`
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-///
-/// # Query Parameters
-///
-/// - `value` - Alias to set (must match allowed character set)
-pub(crate) async fn set_alias(
-    State(state): State<AppState>,
-    Path(fan_id): Path<String>,
-    Query(params): Query<AliasQuery>,
-) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/alias/{}/set", fan_id);
-
-    // Parse and validate fan ID
-    let fan_index = fan_id
-        .parse::<u8>()
-        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
-
-    // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
-
-    let Some(alias_value) = params.value else {
-        return api_fail!("Fan alias cannot be none!");
-    };
-
-    // Validate alias format
-    if !is_valid_alias(&alias_value) {
-        return api_fail!(
-            "Fan alias can only contain 'A-Z', '0-9', '-', '_', '#' and <space> characters!"
-        );
-    }
-
-    // Update configuration
-    {
-        let mut aliases = state.config.aliases_mut().await;
-        aliases.set(fan_index, alias_value.clone());
-    }
-
-    // Save configuration
-    if let Err(e) = state.config.save_aliases().await {
-        return Err(ApiError::internal_error(format!(
-            "Failed to save configuration: {}",
-            e
-        )));
-    }
-
-    info!("Set alias for fan {} to '{}'", fan_index, alias_value);
-    api_ok!(())
-}
-
-/// Delete the alias for a specific fan (reverts to default).
-///
-/// After deletion, the fan will display its default alias "Fan #N".
-///
-/// # Endpoint
-///
-/// `DELETE /api/v0/alias/{id}`
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-pub(crate) async fn delete_alias(
-    State(state): State<AppState>,
-    Path(fan_id): Path<String>,
-) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/alias/{}/delete", fan_id);
-
-    // Parse and validate fan ID
-    let fan_index = fan_id
-        .parse::<u8>()
-        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
-
-    // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
-
-    // Remove alias from configuration
-    {
-        let mut aliases = state.config.aliases_mut().await;
-        aliases.remove(fan_index);
-    }
-
-    // Save configuration
-    if let Err(e) = state.config.save_aliases().await {
-        return Err(ApiError::internal_error(format!(
-            "Failed to save configuration: {}",
-            e
-        )));
-    }
-
-    info!("Deleted alias for fan {}", fan_index);
-    api_ok!(())
-}
-
 /// Validate alias string format.
 ///
 /// # Allowed Characters
@@ -211,6 +38,220 @@ fn is_valid_alias(alias: &str) -> bool {
     alias
         .chars()
         .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '#' || c == ' ' || c == '.')
+}
+
+// =============================================================================
+// Controller-scoped handlers
+// =============================================================================
+
+/// Retrieve all configured fan aliases for a specific controller.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/controller/{id}/alias/all/get`
+pub(crate) async fn get_all_controller_aliases(
+    State(state): State<AppState>,
+    Path(controller_id): Path<String>,
+) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
+    debug!(
+        "Request: GET /api/v0/controller/{}/alias/all/get",
+        controller_id
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let alias_data = controller_data.aliases().await;
+    let aliases = alias_data.aliases.clone();
+
+    let response = api::AliasResponse { aliases };
+
+    info!("Retrieved all aliases for controller '{}'", controller_id);
+    api_ok!(response)
+}
+
+/// Retrieve the alias for a specific fan on a controller.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/controller/{id}/alias/{fan}/get`
+pub(crate) async fn get_controller_alias(
+    State(state): State<AppState>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
+) -> Result<Json<api::ApiResponse<api::AliasResponse>>, ApiError> {
+    debug!(
+        "Request: GET /api/v0/controller/{}/alias/{}/get",
+        controller_id, fan_id
+    );
+
+    // Parse and validate fan ID
+    let fan_index = fan_id
+        .parse::<u8>()
+        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Validate fan ID against board configuration
+    entry.board_info().validate_fan_id(fan_index)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let alias_data = controller_data.aliases().await;
+    let alias = alias_data.get(fan_index);
+
+    let mut aliases = HashMap::new();
+    aliases.insert(fan_index, alias.clone());
+
+    let response = api::AliasResponse { aliases };
+
+    debug!(
+        "Retrieved alias for fan {} on controller '{}': {}",
+        fan_index, controller_id, alias
+    );
+    api_ok!(response)
+}
+
+/// Set a human-readable alias for a specific fan on a controller.
+///
+/// # Endpoint
+///
+/// `GET /api/v0/controller/{id}/alias/{fan}/set?value=CPU Fan`
+pub(crate) async fn set_controller_alias(
+    State(state): State<AppState>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
+    Query(params): Query<AliasQuery>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
+    debug!(
+        "Request: GET /api/v0/controller/{}/alias/{}/set",
+        controller_id, fan_id
+    );
+
+    // Parse and validate fan ID
+    let fan_index = fan_id
+        .parse::<u8>()
+        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Validate fan ID against board configuration
+    entry.board_info().validate_fan_id(fan_index)?;
+
+    let Some(alias_value) = params.value else {
+        return api_fail!("Fan alias cannot be none!");
+    };
+
+    // Validate alias format
+    if !is_valid_alias(&alias_value) {
+        return api_fail!(
+            "Fan alias can only contain 'A-Z', '0-9', '-', '_', '#' and <space> characters!"
+        );
+    }
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    // Update configuration
+    {
+        let mut aliases = controller_data.aliases_mut().await;
+        aliases.set(fan_index, alias_value.clone());
+    }
+
+    // Save configuration
+    if let Err(e) = controller_data.save_aliases().await {
+        return Err(ApiError::internal_error(format!(
+            "Failed to save aliases: {}",
+            e
+        )));
+    }
+
+    info!(
+        "Set alias for fan {} on controller '{}' to '{}'",
+        fan_index, controller_id, alias_value
+    );
+    api_ok!(())
+}
+
+/// Delete the alias for a specific fan on a controller (reverts to default).
+///
+/// # Endpoint
+///
+/// `DELETE /api/v0/controller/{id}/alias/{fan}`
+pub(crate) async fn delete_controller_alias(
+    State(state): State<AppState>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
+) -> Result<Json<api::ApiResponse<()>>, ApiError> {
+    debug!(
+        "Request: DELETE /api/v0/controller/{}/alias/{}",
+        controller_id, fan_id
+    );
+
+    // Parse and validate fan ID
+    let fan_index = fan_id
+        .parse::<u8>()
+        .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Validate fan ID against board configuration
+    entry.board_info().validate_fan_id(fan_index)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    // Remove alias from configuration
+    {
+        let mut aliases = controller_data.aliases_mut().await;
+        aliases.remove(fan_index);
+    }
+
+    // Save configuration
+    if let Err(e) = controller_data.save_aliases().await {
+        return Err(ApiError::internal_error(format!(
+            "Failed to save aliases: {}",
+            e
+        )));
+    }
+
+    info!(
+        "Deleted alias for fan {} on controller '{}'",
+        fan_index, controller_id
+    );
+    api_ok!(())
 }
 
 #[cfg(test)]
@@ -301,7 +342,8 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
+            let state =
+                AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
 
             TestApp {
                 router: create_router(state),
@@ -327,7 +369,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/all/get")
+                    .uri("/api/v0/controller/default/alias/all/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -350,7 +392,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/0/get")
+                    .uri("/api/v0/controller/default/alias/0/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -368,7 +410,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/99/get")
+                    .uri("/api/v0/controller/default/alias/99/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -386,7 +428,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/0/set?value=CPU%20Fan")
+                    .uri("/api/v0/controller/default/alias/0/set?value=CPU%20Fan")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -404,7 +446,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/0/set")
+                    .uri("/api/v0/controller/default/alias/0/set")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -422,7 +464,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/0/set?value=Fan@Invalid")
+                    .uri("/api/v0/controller/default/alias/0/set?value=Fan@Invalid")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -440,7 +482,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/99/set?value=Test")
+                    .uri("/api/v0/controller/default/alias/99/set?value=Test")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -459,7 +501,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/alias/5/set?value=TestFan")
+                    .uri("/api/v0/controller/default/alias/5/set?value=TestFan")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -472,7 +514,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::DELETE)
-                    .uri("/api/v0/alias/5")
+                    .uri("/api/v0/controller/default/alias/5")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -491,7 +533,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::DELETE)
-                    .uri("/api/v0/alias/99")
+                    .uri("/api/v0/controller/default/alias/99")
                     .body(Body::empty())
                     .unwrap(),
             )

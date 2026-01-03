@@ -7,26 +7,39 @@ use openfan_core::{
     config::{AliasData, CfmMappingData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
     BoardInfo, OpenFanError, Result,
 };
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
+
+use super::ControllerData;
 
 /// Runtime configuration combining static config and mutable data.
 ///
 /// Static config is read once at startup and remains immutable.
 /// Mutable data (aliases, profiles, zones, thermal curves, cfm mappings) can be modified via API and saved independently.
+///
+/// For multi-controller setups, per-controller data is stored separately in `ControllerData`
+/// instances accessed via `controller_data()`.
 pub(crate) struct RuntimeConfig {
     /// Static configuration (immutable after load)
     static_config: StaticConfig,
 
+    /// Per-controller mutable data (aliases, profiles, curves, CFM)
+    /// Key is controller ID, value is the controller's data
+    controller_data: RwLock<HashMap<String, Arc<ControllerData>>>,
+
+    // Legacy global data for backward compatibility
+    // TODO: Remove these once all handlers use per-controller data
     /// Alias data with independent locking
     aliases: RwLock<AliasData>,
 
     /// Profile data with independent locking
     profiles: RwLock<ProfileData>,
 
-    /// Zone data with independent locking
+    /// Zone data with independent locking (zones are cross-controller)
     zones: RwLock<ZoneData>,
 
     /// Thermal curve data with independent locking
@@ -69,6 +82,7 @@ impl RuntimeConfig {
 
         Ok(Self {
             static_config,
+            controller_data: RwLock::new(HashMap::new()),
             aliases: RwLock::new(aliases),
             profiles: RwLock::new(profiles),
             zones: RwLock::new(zones),
@@ -270,7 +284,64 @@ impl RuntimeConfig {
     }
 
     // =========================================================================
-    // Alias access and modification
+    // Per-controller data access
+    // =========================================================================
+
+    /// Get or create controller data for the specified controller.
+    ///
+    /// If the controller data doesn't exist yet, it will be loaded from disk
+    /// (or created with defaults if the files don't exist).
+    ///
+    /// # Arguments
+    ///
+    /// * `controller_id` - Unique identifier for the controller
+    /// * `board_info` - Board information for validation (required for new controllers)
+    pub async fn controller_data(
+        &self,
+        controller_id: &str,
+        board_info: &BoardInfo,
+    ) -> Result<Arc<ControllerData>> {
+        // First try to get existing data with read lock
+        {
+            let data = self.controller_data.read().await;
+            if let Some(cd) = data.get(controller_id) {
+                return Ok(cd.clone());
+            }
+        }
+
+        // Need to create new controller data
+        let cd = ControllerData::load(controller_id, board_info.clone(), self.data_dir()).await?;
+        let cd = Arc::new(cd);
+
+        // Store in cache
+        {
+            let mut data = self.controller_data.write().await;
+            // Check again in case another task created it while we were loading
+            if let Some(existing) = data.get(controller_id) {
+                return Ok(existing.clone());
+            }
+            data.insert(controller_id.to_string(), cd.clone());
+        }
+
+        Ok(cd)
+    }
+
+    /// Get controller data if it exists, without creating it.
+    ///
+    /// Returns None if the controller data hasn't been loaded yet.
+    pub async fn get_controller_data(&self, controller_id: &str) -> Option<Arc<ControllerData>> {
+        let data = self.controller_data.read().await;
+        data.get(controller_id).cloned()
+    }
+
+    /// Check if controller data exists for the given controller ID.
+    pub async fn has_controller_data(&self, controller_id: &str) -> bool {
+        let data = self.controller_data.read().await;
+        data.contains_key(controller_id)
+    }
+
+    // =========================================================================
+    // Alias access and modification (legacy global)
     // =========================================================================
 
     /// Get read lock on alias data.

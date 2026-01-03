@@ -104,7 +104,10 @@ impl ControllerData {
     /// Ensure data directory exists and is writable
     async fn ensure_data_dir(data_path: &Path) -> Result<()> {
         if !data_path.exists() {
-            info!("Creating controller data directory: {}", data_path.display());
+            info!(
+                "Creating controller data directory: {}",
+                data_path.display()
+            );
             fs::create_dir_all(data_path).await.map_err(|e| {
                 OpenFanError::Config(format!(
                     "Failed to create controller data directory '{}': {}",
@@ -186,7 +189,11 @@ impl ControllerData {
 
         Self::write_toml(&path, &content).await?;
 
-        debug!("Saved aliases for controller '{}' to {}", self.id, path.display());
+        debug!(
+            "Saved aliases for controller '{}' to {}",
+            self.id,
+            path.display()
+        );
         Ok(())
     }
 
@@ -233,7 +240,11 @@ impl ControllerData {
 
         Self::write_toml(&path, &content).await?;
 
-        debug!("Saved profiles for controller '{}' to {}", self.id, path.display());
+        debug!(
+            "Saved profiles for controller '{}' to {}",
+            self.id,
+            path.display()
+        );
         Ok(())
     }
 

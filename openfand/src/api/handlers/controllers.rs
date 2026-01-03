@@ -49,12 +49,12 @@ pub async fn list_controllers(
     let controller_list: Vec<ControllerInfo> = controllers
         .iter()
         .map(|entry| ControllerInfo {
-            id: entry.id.clone(),
-            board_name: entry.board_info.name.clone(),
-            fan_count: entry.board_info.fan_count,
-            description: entry.description.clone(),
+            id: entry.id().to_string(),
+            board_name: entry.board_info().name.clone(),
+            fan_count: entry.board_info().fan_count,
+            description: entry.description().map(String::from),
             mock_mode: entry.is_mock(),
-            connected: entry.connection_manager.is_some(),
+            connected: entry.is_connected(),
         })
         .collect();
 
@@ -80,12 +80,12 @@ pub async fn get_controller_info(
         .map_err(ApiError::from)?;
 
     let info = ControllerInfo {
-        id: entry.id.clone(),
-        board_name: entry.board_info.name.clone(),
-        fan_count: entry.board_info.fan_count,
-        description: entry.description.clone(),
+        id: entry.id().to_string(),
+        board_name: entry.board_info().name.clone(),
+        fan_count: entry.board_info().fan_count,
+        description: entry.description().map(String::from),
         mock_mode: entry.is_mock(),
-        connected: entry.connection_manager.is_some(),
+        connected: entry.is_connected(),
     };
 
     Ok(Json(ApiResponse::success(info)))
@@ -104,7 +104,7 @@ pub async fn reconnect_controller(
         .await
         .map_err(ApiError::from)?;
 
-    if let Some(ref cm) = entry.connection_manager {
+    if let Some(cm) = entry.connection_manager() {
         info!("Forcing reconnection for controller '{}'", controller_id);
         // Trigger reconnect asynchronously - success/failure will be reflected in future status checks
         let _ = cm.force_reconnect().await;
@@ -167,12 +167,7 @@ mod tests {
             .await
             .unwrap();
 
-        let state = AppState::new(
-            Arc::new(registry),
-            Arc::new(config),
-            main_board,
-            None,
-        );
+        let state = AppState::new(Arc::new(registry), Arc::new(config), main_board, None);
         create_router(state)
     }
 

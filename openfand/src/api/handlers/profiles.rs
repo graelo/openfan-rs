@@ -4,7 +4,7 @@ use crate::api::error::ApiError;
 use crate::api::AppState;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     Json,
 };
 use openfan_core::{api, ControlMode, FanProfile};
@@ -28,60 +28,71 @@ pub(crate) struct AddProfileRequest {
     pub profile: FanProfile,
 }
 
-/// Lists all available fan profiles.
-///
-/// Returns all configured profiles with their control modes and fan values.
+/// Lists all available fan profiles for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/profiles/list`
-pub(crate) async fn list_profiles(
+/// `GET /api/v0/controller/{id}/profiles/list`
+pub(crate) async fn list_controller_profiles(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
 ) -> Result<Json<api::ApiResponse<api::ProfileResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/profiles/list");
+    debug!(
+        "Request: GET /api/v0/controller/{}/profiles/list",
+        controller_id
+    );
 
-    let profiles = state.config.profiles().await;
+    // Get controller from registry to get board_info
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let profiles = controller_data.profiles().await;
     let fan_profiles = profiles.profiles.clone();
 
     let response = api::ProfileResponse {
         profiles: fan_profiles,
     };
 
-    info!("Listed {} fan profiles", response.profiles.len());
+    info!(
+        "Listed {} profiles for controller '{}'",
+        response.profiles.len(),
+        controller_id
+    );
     api_ok!(response)
 }
 
-/// Adds a new fan profile to the configuration.
-///
-/// Validates the profile data and saves it to the configuration file.
-///
-/// # Validation Rules
-///
-/// - Profile name must not be empty after trimming whitespace
-/// - Must have exactly 10 values (one per fan)
-/// - PWM mode: values must be 0-100 (percentage)
-/// - RPM mode: values must be 0-16000 (revolutions per minute)
+/// Adds a new fan profile to a specific controller.
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/profiles/add`
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///   "name": "Gaming",
-///   "profile": {
-///     "control_mode": "pwm",
-///     "values": [50, 60, 70, 80, 90, 100, 90, 80, 70, 60]
-///   }
-/// }
-/// ```
-pub(crate) async fn add_profile(
+/// `POST /api/v0/controller/{id}/profiles/add`
+pub(crate) async fn add_controller_profile(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
     Json(request): Json<AddProfileRequest>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: POST /api/v0/profiles/add");
+    debug!(
+        "Request: POST /api/v0/controller/{}/profiles/add",
+        controller_id
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    let board_info = entry.board_info();
 
     let profile_name = request.name.trim();
 
@@ -92,10 +103,10 @@ pub(crate) async fn add_profile(
     let profile = request.profile;
 
     // Validate values count against board configuration
-    if profile.values.len() != state.board_info.fan_count {
+    if profile.values.len() != board_info.fan_count {
         return api_fail!(format!(
             "Profile must have exactly {} values for {}!",
-            state.board_info.fan_count, state.board_info.name
+            board_info.fan_count, board_info.name
         ));
     }
 
@@ -123,62 +134,83 @@ pub(crate) async fn add_profile(
         }
     }
 
-    // Add to configuration
+    // Get controller data and add profile
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, board_info)
+        .await?;
+
     {
-        let mut profiles = state.config.profiles_mut().await;
+        let mut profiles = controller_data.profiles_mut().await;
         profiles.insert(profile_name.to_string(), profile);
     }
 
     // Save configuration
-    if let Err(e) = state.config.save_profiles().await {
+    if let Err(e) = controller_data.save_profiles().await {
         return Err(ApiError::internal_error(format!(
-            "Failed to save configuration: {}",
+            "Failed to save profiles: {}",
             e
         )));
     }
 
-    info!("Added profile: {}", profile_name);
+    info!(
+        "Added profile '{}' for controller '{}'",
+        profile_name, controller_id
+    );
     api_ok!(())
 }
 
-/// Removes a profile from the configuration.
-///
-/// The profile name is case-sensitive. If the profile exists, it is removed
-/// and the configuration is saved.
+/// Removes a profile from a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/profiles/remove?name=Custom`
-///
-/// # Query Parameters
-///
-/// - `name` - Name of the profile to remove (case-sensitive)
-pub(crate) async fn remove_profile(
+/// `GET /api/v0/controller/{id}/profiles/remove?name=Custom`
+pub(crate) async fn remove_controller_profile(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
     Query(params): Query<ProfileQuery>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/profiles/remove");
+    debug!(
+        "Request: GET /api/v0/controller/{}/profiles/remove",
+        controller_id
+    );
 
     let Some(profile_name) = params.name else {
         return api_fail!("Name cannot be empty!");
     };
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
     // Remove from configuration
     let removed = {
-        let mut profiles = state.config.profiles_mut().await;
+        let mut profiles = controller_data.profiles_mut().await;
         profiles.remove(&profile_name)
     };
 
     if removed.is_some() {
         // Save configuration
-        if let Err(e) = state.config.save_profiles().await {
+        if let Err(e) = controller_data.save_profiles().await {
             return Err(ApiError::internal_error(format!(
-                "Failed to save configuration: {}",
+                "Failed to save profiles: {}",
                 e
             )));
         }
 
-        info!("Removed profile: {}", profile_name);
+        info!(
+            "Removed profile '{}' from controller '{}'",
+            profile_name, controller_id
+        );
         api_ok!(())
     } else {
         api_fail!(format!(
@@ -188,37 +220,41 @@ pub(crate) async fn remove_profile(
     }
 }
 
-/// Applies a profile to all fans.
-///
-/// Sets all fans to the values defined in the profile. The control mode
-/// (PWM or RPM) determines how the values are applied.
-///
-/// # Behavior
-///
-/// - In mock mode (no hardware): simulates applying the profile
-/// - With hardware: sets each fan individually based on control mode
-/// - Partial failures are logged but don't prevent other fans from being set
+/// Applies a profile to all fans on a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/profiles/set?name=Gaming`
-///
-/// # Query Parameters
-///
-/// - `name` - Name of the profile to apply (case-sensitive)
-pub(crate) async fn set_profile(
+/// `GET /api/v0/controller/{id}/profiles/set?name=Gaming`
+pub(crate) async fn set_controller_profile(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
     Query(params): Query<ProfileQuery>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/profiles/set");
+    debug!(
+        "Request: GET /api/v0/controller/{}/profiles/set",
+        controller_id
+    );
 
     let Some(profile_name) = params.name else {
         return api_fail!("Name cannot be empty!");
     };
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
     // Get profile from configuration
     let profile = {
-        let profiles = state.config.profiles().await;
+        let profiles = controller_data.profiles().await;
         match profiles.get(&profile_name) {
             Some(p) => p.clone(),
             None => {
@@ -231,15 +267,22 @@ pub(crate) async fn set_profile(
     };
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
-        debug!("Hardware not available - simulating profile application for testing");
-        info!("Applied profile '{}' (mock mode)", profile_name);
+    let Some(cm) = entry.connection_manager() else {
+        debug!(
+            "Controller '{}' is in mock mode - simulating profile application",
+            controller_id
+        );
+        info!(
+            "Applied profile '{}' to controller '{}' (mock mode)",
+            profile_name, controller_id
+        );
         return api_ok!(());
     };
 
     let profile_values = profile.values.clone();
     let control_mode = profile.control_mode;
     let pname = profile_name.clone();
+    let cid = controller_id.clone();
 
     // Apply profile values to each fan via connection manager
     cm.with_controller(|controller| {
@@ -254,8 +297,8 @@ pub(crate) async fn set_profile(
 
                 if let Err(e) = result {
                     warn!(
-                        "Failed to set fan {} while applying profile '{}': {}",
-                        fan_id, pname, e
+                        "Controller '{}': Failed to set fan {} while applying profile '{}': {}",
+                        cid, fan_id, pname, e
                     );
                 }
             }
@@ -264,7 +307,10 @@ pub(crate) async fn set_profile(
     })
     .await?;
 
-    info!("Applied profile '{}' to all fans", profile_name);
+    info!(
+        "Applied profile '{}' to controller '{}'",
+        profile_name, controller_id
+    );
     api_ok!(())
 }
 
@@ -421,7 +467,8 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
+            let state =
+                AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
 
             TestApp {
                 router: create_router(state),
@@ -447,7 +494,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/list")
+                    .uri("/api/v0/controller/default/profiles/list")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -471,7 +518,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "test_pwm", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
@@ -493,7 +540,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "test_rpm", "profile": {"type": "rpm", "values": [1000,1000,1000,1000,1000,1000,1000,1000,1000,1000]}}"#,
@@ -515,7 +562,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "  ", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
@@ -537,7 +584,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "wrong_count", "profile": {"type": "pwm", "values": [50,50,50]}}"#,
@@ -559,7 +606,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "bad_pwm", "profile": {"type": "pwm", "values": [50,50,50,101,50,50,50,50,50,50]}}"#,
@@ -581,7 +628,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "bad_rpm", "profile": {"type": "rpm", "values": [1000,1000,1000,16001,1000,1000,1000,1000,1000,1000]}}"#,
@@ -602,7 +649,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/remove")
+                    .uri("/api/v0/controller/default/profiles/remove")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -620,7 +667,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/remove?name=nonexistent")
+                    .uri("/api/v0/controller/default/profiles/remove?name=nonexistent")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -640,7 +687,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "to_remove", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
@@ -656,7 +703,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/remove?name=to_remove")
+                    .uri("/api/v0/controller/default/profiles/remove?name=to_remove")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -673,7 +720,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/set")
+                    .uri("/api/v0/controller/default/profiles/set")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -691,7 +738,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/set?name=nonexistent")
+                    .uri("/api/v0/controller/default/profiles/set?name=nonexistent")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -711,7 +758,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/profiles/add")
+                    .uri("/api/v0/controller/default/profiles/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
                         r#"{"name": "to_apply", "profile": {"type": "pwm", "values": [50,50,50,50,50,50,50,50,50,50]}}"#,
@@ -727,7 +774,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/profiles/set?name=to_apply")
+                    .uri("/api/v0/controller/default/profiles/set?name=to_apply")
                     .body(Body::empty())
                     .unwrap(),
             )

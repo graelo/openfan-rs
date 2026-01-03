@@ -310,7 +310,10 @@ async fn connect_controller(
 
             // Test the connection
             if let Err(e) = connection::test_connection(&mut controller).await {
-                warn!("Controller '{}' hardware test failed, continuing: {}", id, e);
+                warn!(
+                    "Controller '{}' hardware test failed, continuing: {}",
+                    id, e
+                );
             }
 
             // Wrap in ConnectionManager

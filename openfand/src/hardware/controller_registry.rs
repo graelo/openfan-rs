@@ -12,14 +12,10 @@ use super::ConnectionManager;
 
 /// An individual controller entry in the registry
 pub struct ControllerEntry {
-    /// Unique identifier for this controller
-    pub id: String,
-    /// Board information for this controller
-    pub board_info: BoardInfo,
-    /// Connection manager for hardware communication (None in mock mode)
-    pub connection_manager: Option<Arc<ConnectionManager>>,
-    /// Optional description
-    pub description: Option<String>,
+    id: String,
+    board_info: BoardInfo,
+    connection_manager: Option<Arc<ConnectionManager>>,
+    description: Option<String>,
 }
 
 impl ControllerEntry {
@@ -52,9 +48,34 @@ impl ControllerEntry {
         }
     }
 
+    /// Get the controller ID
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Get the board info
+    pub fn board_info(&self) -> &BoardInfo {
+        &self.board_info
+    }
+
+    /// Get the description
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// Get the connection manager
+    pub fn connection_manager(&self) -> Option<&Arc<ConnectionManager>> {
+        self.connection_manager.as_ref()
+    }
+
     /// Check if this controller is in mock mode
     pub fn is_mock(&self) -> bool {
         self.connection_manager.is_none()
+    }
+
+    /// Check if this controller is connected
+    pub fn is_connected(&self) -> bool {
+        self.connection_manager.is_some()
     }
 }
 
@@ -80,11 +101,12 @@ impl ControllerRegistry {
     pub async fn register(&self, entry: ControllerEntry) -> Result<()> {
         let mut controllers = self.controllers.write().await;
 
-        if controllers.contains_key(&entry.id) {
-            return Err(OpenFanError::DuplicateControllerId(entry.id));
+        let id = entry.id.clone();
+        if controllers.contains_key(&id) {
+            return Err(OpenFanError::DuplicateControllerId(id));
         }
 
-        controllers.insert(entry.id.clone(), Arc::new(entry));
+        controllers.insert(id, Arc::new(entry));
         Ok(())
     }
 
@@ -189,12 +211,8 @@ mod tests {
     #[tokio::test]
     async fn test_get_controller() {
         let registry = ControllerRegistry::new();
-        let entry = ControllerEntry::with_description(
-            "main",
-            mock_board_info(),
-            None,
-            "Main chassis",
-        );
+        let entry =
+            ControllerEntry::with_description("main", mock_board_info(), None, "Main chassis");
 
         registry.register(entry).await.unwrap();
 

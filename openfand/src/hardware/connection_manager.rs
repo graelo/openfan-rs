@@ -212,7 +212,9 @@ impl ConnectionManager {
             );
 
             // Try to connect using stored device path
-            match connection::connect_to_device(&self.device_path, self.timeout_ms, self.debug_uart).await {
+            match connection::connect_to_device(&self.device_path, self.timeout_ms, self.debug_uart)
+                .await
+            {
                 Ok(mut new_controller) => {
                     // Verify connection works
                     if connection::test_connection(&mut new_controller)

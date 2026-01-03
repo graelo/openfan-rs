@@ -59,6 +59,9 @@ pub struct OpenFanClient {
 }
 
 impl OpenFanClient {
+    /// Default controller ID used for all controller-scoped API routes.
+    const DEFAULT_CONTROLLER: &'static str = "default";
+
     /// Get the board information for the connected server.
     ///
     /// # Returns
@@ -244,8 +247,12 @@ impl OpenFanClient {
     ///
     /// Returns PWM values and RPM readings for all fans in the system.
     pub async fn get_fan_status(&self) -> Result<api::FanStatusResponse> {
-        let url = format!("{}/api/v0/fan/status", self.base_url);
-        let endpoint = "fan/status";
+        let url = format!(
+            "{}/api/v0/controller/{}/fan/status",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/fan/status";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -260,8 +267,12 @@ impl OpenFanClient {
     ///
     /// * `_fan_id` - Currently ignored, reserved for future use
     pub async fn get_fan_status_by_id(&self, _fan_id: u8) -> Result<api::FanStatusResponse> {
-        let url = format!("{}/api/v0/fan/status", self.base_url);
-        let endpoint = "fan/status";
+        let url = format!(
+            "{}/api/v0/controller/{}/fan/status",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/fan/status";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -279,8 +290,13 @@ impl OpenFanClient {
     pub async fn get_fan_rpm(&self, fan_id: u8) -> Result<api::FanRpmResponse> {
         self.board_info.validate_fan_id(fan_id)?;
 
-        let url = format!("{}/api/v0/fan/{}/rpm/get", self.base_url, fan_id);
-        let endpoint = &format!("fan/{}/rpm/get", fan_id);
+        let url = format!(
+            "{}/api/v0/controller/{}/fan/{}/rpm/get",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id
+        );
+        let endpoint = &format!("controller/default/fan/{}/rpm/get", fan_id);
 
         let rpm: u32 = self
             .execute_with_retry(endpoint, || self.client.get(&url).send())
@@ -307,8 +323,14 @@ impl OpenFanClient {
         self.board_info.validate_fan_id(fan_id)?;
         self.board_info.validate_pwm(pwm)?;
 
-        let url = format!("{}/api/v0/fan/{}/pwm?value={}", self.base_url, fan_id, pwm);
-        let endpoint = &format!("fan/{}/pwm", fan_id);
+        let url = format!(
+            "{}/api/v0/controller/{}/fan/{}/pwm?value={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id,
+            pwm
+        );
+        let endpoint = &format!("controller/default/fan/{}/pwm", fan_id);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -333,8 +355,14 @@ impl OpenFanClient {
         self.board_info.validate_fan_id(fan_id)?;
         self.board_info.validate_target_rpm(rpm)?;
 
-        let url = format!("{}/api/v0/fan/{}/rpm?value={}", self.base_url, fan_id, rpm);
-        let endpoint = &format!("fan/{}/rpm", fan_id);
+        let url = format!(
+            "{}/api/v0/controller/{}/fan/{}/rpm?value={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id,
+            rpm
+        );
+        let endpoint = &format!("controller/default/fan/{}/rpm", fan_id);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -347,8 +375,12 @@ impl OpenFanClient {
     ///
     /// Returns a list of profile names and their configurations.
     pub async fn get_profiles(&self) -> Result<api::ProfileResponse> {
-        let url = format!("{}/api/v0/profiles/list", self.base_url);
-        let endpoint = "profiles/list";
+        let url = format!(
+            "{}/api/v0/controller/{}/profiles/list",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/profiles/list";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -372,10 +404,12 @@ impl OpenFanClient {
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
         let url = format!(
-            "{}/api/v0/profiles/set?name={}",
-            self.base_url, encoded_name
+            "{}/api/v0/controller/{}/profiles/set?name={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name
         );
-        let endpoint = "profiles/set";
+        let endpoint = "controller/default/profiles/set";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -407,12 +441,16 @@ impl OpenFanClient {
             ));
         }
 
-        let url = format!("{}/api/v0/profiles/add", self.base_url);
+        let url = format!(
+            "{}/api/v0/controller/{}/profiles/add",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
         let mut request_body = HashMap::new();
         request_body.insert("name", serde_json::Value::String(name.to_string()));
         request_body.insert("profile", serde_json::to_value(profile)?);
 
-        let endpoint = "profiles/add";
+        let endpoint = "controller/default/profiles/add";
 
         let response = self
             .client
@@ -443,10 +481,12 @@ impl OpenFanClient {
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
         let url = format!(
-            "{}/api/v0/profiles/remove?name={}",
-            self.base_url, encoded_name
+            "{}/api/v0/controller/{}/profiles/remove?name={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name
         );
-        let endpoint = "profiles/remove";
+        let endpoint = "controller/default/profiles/remove";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -459,8 +499,12 @@ impl OpenFanClient {
     ///
     /// Returns a map of fan IDs to their human-readable alias names.
     pub async fn get_aliases(&self) -> Result<api::AliasResponse> {
-        let url = format!("{}/api/v0/alias/all/get", self.base_url);
-        let endpoint = "alias/all/get";
+        let url = format!(
+            "{}/api/v0/controller/{}/alias/all/get",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/alias/all/get";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -478,8 +522,13 @@ impl OpenFanClient {
     pub async fn get_alias(&self, fan_id: u8) -> Result<api::AliasResponse> {
         self.board_info.validate_fan_id(fan_id)?;
 
-        let url = format!("{}/api/v0/alias/{}/get", self.base_url, fan_id);
-        let endpoint = &format!("alias/{}/get", fan_id);
+        let url = format!(
+            "{}/api/v0/controller/{}/alias/{}/get",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id
+        );
+        let endpoint = &format!("controller/default/alias/{}/get", fan_id);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -512,10 +561,13 @@ impl OpenFanClient {
 
         let encoded_alias = alias.replace(' ', "%20").replace('&', "%26");
         let url = format!(
-            "{}/api/v0/alias/{}/set?value={}",
-            self.base_url, fan_id, encoded_alias
+            "{}/api/v0/controller/{}/alias/{}/set?value={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id,
+            encoded_alias
         );
-        let endpoint = &format!("alias/{}/set", fan_id);
+        let endpoint = &format!("controller/default/alias/{}/set", fan_id);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -536,8 +588,13 @@ impl OpenFanClient {
     pub async fn delete_alias(&self, fan_id: u8) -> Result<()> {
         self.board_info.validate_fan_id(fan_id)?;
 
-        let url = format!("{}/api/v0/alias/{}", self.base_url, fan_id);
-        let endpoint = &format!("alias/{}", fan_id);
+        let url = format!(
+            "{}/api/v0/controller/{}/alias/{}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            fan_id
+        );
+        let endpoint = &format!("controller/default/alias/{}", fan_id);
 
         self.execute_with_retry(endpoint, || self.client.delete(&url).send())
             .await
@@ -606,11 +663,8 @@ impl OpenFanClient {
             return Err(anyhow::anyhow!("Zone name cannot be empty"));
         }
 
-        // Validate fan IDs
-        // TODO: In multi-controller mode, validate against each controller's board info
-        for fan in &fans {
-            self.board_info.validate_fan_id(fan.fan_id)?;
-        }
+        // Note: Fan ID validation is done server-side since zones can span
+        // multiple controllers, each with different board configurations.
 
         let url = format!("{}/api/v0/zones/add", self.base_url);
         let mut request_body = HashMap::new();
@@ -658,11 +712,8 @@ impl OpenFanClient {
             return Err(anyhow::anyhow!("Zone name cannot be empty"));
         }
 
-        // Validate fan IDs
-        // TODO: In multi-controller mode, validate against each controller's board info
-        for fan in &fans {
-            self.board_info.validate_fan_id(fan.fan_id)?;
-        }
+        // Note: Fan ID validation is done server-side since zones can span
+        // multiple controllers, each with different board configurations.
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
         let url = format!("{}/api/v0/zone/{}/update", self.base_url, encoded_name);
@@ -777,8 +828,12 @@ impl OpenFanClient {
     ///
     /// Returns a map of curve names to their configurations.
     pub async fn get_curves(&self) -> Result<api::ThermalCurveResponse> {
-        let url = format!("{}/api/v0/curves/list", self.base_url);
-        let endpoint = "curves/list";
+        let url = format!(
+            "{}/api/v0/controller/{}/curves/list",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/curves/list";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -799,8 +854,13 @@ impl OpenFanClient {
         }
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
-        let url = format!("{}/api/v0/curve/{}/get", self.base_url, encoded_name);
-        let endpoint = &format!("curve/{}/get", name);
+        let url = format!(
+            "{}/api/v0/controller/{}/curve/{}/get",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name
+        );
+        let endpoint = &format!("controller/default/curve/{}/get", name);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -830,7 +890,11 @@ impl OpenFanClient {
             return Err(anyhow::anyhow!("Curve name cannot be empty"));
         }
 
-        let url = format!("{}/api/v0/curves/add", self.base_url);
+        let url = format!(
+            "{}/api/v0/controller/{}/curves/add",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
         let mut request_body = HashMap::new();
         request_body.insert("name", serde_json::Value::String(name.to_string()));
         request_body.insert("points", serde_json::to_value(&points)?);
@@ -838,7 +902,7 @@ impl OpenFanClient {
             request_body.insert("description", serde_json::Value::String(desc));
         }
 
-        let endpoint = "curves/add";
+        let endpoint = "controller/default/curves/add";
 
         let response = self
             .client
@@ -878,14 +942,19 @@ impl OpenFanClient {
         }
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
-        let url = format!("{}/api/v0/curve/{}/update", self.base_url, encoded_name);
+        let url = format!(
+            "{}/api/v0/controller/{}/curve/{}/update",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name
+        );
         let mut request_body = HashMap::new();
         request_body.insert("points", serde_json::to_value(&points)?);
         if let Some(desc) = description {
             request_body.insert("description", serde_json::Value::String(desc));
         }
 
-        let endpoint = &format!("curve/{}/update", name);
+        let endpoint = &format!("controller/default/curve/{}/update", name);
 
         let response = self
             .client
@@ -915,8 +984,13 @@ impl OpenFanClient {
         }
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
-        let url = format!("{}/api/v0/curve/{}", self.base_url, encoded_name);
-        let endpoint = &format!("curve/{}", name);
+        let url = format!(
+            "{}/api/v0/controller/{}/curve/{}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name
+        );
+        let endpoint = &format!("controller/default/curve/{}", name);
 
         self.execute_with_retry(endpoint, || self.client.delete(&url).send())
             .await
@@ -950,10 +1024,13 @@ impl OpenFanClient {
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
         let url = format!(
-            "{}/api/v0/curve/{}/interpolate?temp={}",
-            self.base_url, encoded_name, temp
+            "{}/api/v0/controller/{}/curve/{}/interpolate?temp={}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            encoded_name,
+            temp
         );
-        let endpoint = &format!("curve/{}/interpolate", name);
+        let endpoint = &format!("controller/default/curve/{}/interpolate", name);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -969,8 +1046,12 @@ impl OpenFanClient {
     ///
     /// Returns a map of port IDs to their CFM@100% values.
     pub async fn get_cfm_mappings(&self) -> Result<api::CfmListResponse> {
-        let url = format!("{}/api/v0/cfm/list", self.base_url);
-        let endpoint = "cfm/list";
+        let url = format!(
+            "{}/api/v0/controller/{}/cfm/list",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER
+        );
+        let endpoint = "controller/default/cfm/list";
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -988,8 +1069,13 @@ impl OpenFanClient {
     pub async fn get_cfm(&self, port: u8) -> Result<api::CfmGetResponse> {
         self.board_info.validate_fan_id(port)?;
 
-        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
-        let endpoint = &format!("cfm/{}", port);
+        let url = format!(
+            "{}/api/v0/controller/{}/cfm/{}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            port
+        );
+        let endpoint = &format!("controller/default/cfm/{}", port);
 
         self.execute_with_retry(endpoint, || self.client.get(&url).send())
             .await
@@ -1018,9 +1104,14 @@ impl OpenFanClient {
             return Err(anyhow::anyhow!("CFM value must be <= 500"));
         }
 
-        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
+        let url = format!(
+            "{}/api/v0/controller/{}/cfm/{}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            port
+        );
         let request = api::SetCfmRequest { cfm_at_100 };
-        let endpoint = &format!("cfm/{}", port);
+        let endpoint = &format!("controller/default/cfm/{}", port);
 
         let response = self
             .client
@@ -1047,8 +1138,13 @@ impl OpenFanClient {
     pub async fn delete_cfm(&self, port: u8) -> Result<()> {
         self.board_info.validate_fan_id(port)?;
 
-        let url = format!("{}/api/v0/cfm/{}", self.base_url, port);
-        let endpoint = &format!("cfm/{}", port);
+        let url = format!(
+            "{}/api/v0/controller/{}/cfm/{}",
+            self.base_url,
+            Self::DEFAULT_CONTROLLER,
+            port
+        );
+        let endpoint = &format!("controller/default/cfm/{}", port);
 
         self.execute_with_retry(endpoint, || self.client.delete(&url).send())
             .await

@@ -11,115 +11,141 @@ use openfan_core::config::CfmMappingData;
 use openfan_core::{api, OpenFanError};
 use tracing::{debug, info};
 
-/// List all CFM mappings.
-///
-/// Returns a map of port IDs to their CFM@100% values.
+/// List all CFM mappings for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/cfm/list`
-pub(crate) async fn list_cfm(
+/// `GET /api/v0/controller/{id}/cfm/list`
+pub(crate) async fn list_controller_cfm(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
 ) -> Result<Json<api::ApiResponse<api::CfmListResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/cfm/list");
+    debug!("Request: GET /api/v0/controller/{}/cfm/list", controller_id);
 
-    let cfm_data = state.config.cfm_mappings().await;
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let cfm_data = controller_data.cfm_mappings().await;
     let mappings = cfm_data.mappings.clone();
 
     let response = api::CfmListResponse { mappings };
 
-    info!("Listed {} CFM mappings", response.mappings.len());
+    info!(
+        "Listed {} CFM mappings for controller '{}'",
+        response.mappings.len(),
+        controller_id
+    );
     api_ok!(response)
 }
 
-/// Get CFM mapping for a specific port.
-///
-/// Returns the CFM@100% value for the specified port.
+/// Get CFM mapping for a specific port on a controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/cfm/{port}`
-///
-/// # Path Parameters
-///
-/// - `port` - Port identifier (0-9 for standard board)
-pub(crate) async fn get_cfm(
+/// `GET /api/v0/controller/{id}/cfm/{port}`
+pub(crate) async fn get_controller_cfm(
     State(state): State<AppState>,
-    Path(port): Path<String>,
+    Path((controller_id, port)): Path<(String, String)>,
 ) -> Result<Json<api::ApiResponse<api::CfmGetResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/cfm/{}", port);
+    debug!(
+        "Request: GET /api/v0/controller/{}/cfm/{}",
+        controller_id, port
+    );
 
     // Parse and validate port ID
     let port_id = port
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid port ID: {}", port)))?;
 
-    // Validate port ID against board configuration
-    state.board_info.validate_fan_id(port_id)?;
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
 
-    let cfm_data = state.config.cfm_mappings().await;
+    // Validate port ID against board configuration
+    entry.board_info().validate_fan_id(port_id)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
+    let cfm_data = controller_data.cfm_mappings().await;
 
     match cfm_data.get(port_id) {
-        Some(cfm_at_100) => {
+        Some(cfm) => {
             let response = api::CfmGetResponse {
                 port: port_id,
-                cfm_at_100,
+                cfm_at_100: cfm,
             };
-            debug!("Retrieved CFM mapping for port {}: {}", port_id, cfm_at_100);
             api_ok!(response)
         }
         None => Err(OpenFanError::CfmMappingNotFound(port_id).into()),
     }
 }
 
-/// Set CFM mapping for a specific port.
-///
-/// The CFM@100% value represents the airflow when the fan runs at 100% PWM.
-/// Actual CFM is calculated as: `cfm = (pwm / 100.0) * cfm_at_100`
+/// Set CFM mapping for a specific port on a controller.
 ///
 /// # Endpoint
 ///
-/// `POST /api/v0/cfm/{port}`
-///
-/// # Path Parameters
-///
-/// - `port` - Port identifier (0-9 for standard board)
-///
-/// # Request Body
-///
-/// ```json
-/// {
-///     "cfm_at_100": 45.0
-/// }
-/// ```
-pub(crate) async fn set_cfm(
+/// `POST /api/v0/controller/{id}/cfm/{port}`
+pub(crate) async fn set_controller_cfm(
     State(state): State<AppState>,
-    Path(port): Path<String>,
+    Path((controller_id, port)): Path<(String, String)>,
     Json(request): Json<api::SetCfmRequest>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: POST /api/v0/cfm/{}", port);
+    debug!(
+        "Request: POST /api/v0/controller/{}/cfm/{}",
+        controller_id, port
+    );
 
     // Parse and validate port ID
     let port_id = port
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid port ID: {}", port)))?;
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
     // Validate port ID against board configuration
-    state.board_info.validate_fan_id(port_id)?;
+    entry.board_info().validate_fan_id(port_id)?;
 
     // Validate CFM value
     if let Err(e) = CfmMappingData::validate_cfm(request.cfm_at_100) {
         return api_fail!(e);
     }
 
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
+
     // Update configuration
     {
-        let mut cfm_data = state.config.cfm_mappings_mut().await;
+        let mut cfm_data = controller_data.cfm_mappings_mut().await;
         cfm_data.set(port_id, request.cfm_at_100);
     }
 
     // Save configuration
-    if let Err(e) = state.config.save_cfm_mappings().await {
+    if let Err(e) = controller_data.save_cfm_mappings().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
@@ -127,40 +153,50 @@ pub(crate) async fn set_cfm(
     }
 
     info!(
-        "Set CFM mapping for port {} to {}",
-        port_id, request.cfm_at_100
+        "Controller '{}': Set CFM mapping for port {} to {}",
+        controller_id, port_id, request.cfm_at_100
     );
     api_ok!(())
 }
 
-/// Delete CFM mapping for a specific port.
-///
-/// After deletion, no CFM value will be displayed for this port in status output.
+/// Delete CFM mapping for a specific port on a controller.
 ///
 /// # Endpoint
 ///
-/// `DELETE /api/v0/cfm/{port}`
-///
-/// # Path Parameters
-///
-/// - `port` - Port identifier (0-9 for standard board)
-pub(crate) async fn delete_cfm(
+/// `DELETE /api/v0/controller/{id}/cfm/{port}`
+pub(crate) async fn delete_controller_cfm(
     State(state): State<AppState>,
-    Path(port): Path<String>,
+    Path((controller_id, port)): Path<(String, String)>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: DELETE /api/v0/cfm/{}", port);
+    debug!(
+        "Request: DELETE /api/v0/controller/{}/cfm/{}",
+        controller_id, port
+    );
 
     // Parse and validate port ID
     let port_id = port
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid port ID: {}", port)))?;
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
     // Validate port ID against board configuration
-    state.board_info.validate_fan_id(port_id)?;
+    entry.board_info().validate_fan_id(port_id)?;
+
+    // Get controller data
+    let controller_data = state
+        .config
+        .controller_data(&controller_id, entry.board_info())
+        .await?;
 
     // Check if mapping exists
     let existed = {
-        let mut cfm_data = state.config.cfm_mappings_mut().await;
+        let mut cfm_data = controller_data.cfm_mappings_mut().await;
         cfm_data.remove(port_id)
     };
 
@@ -169,14 +205,17 @@ pub(crate) async fn delete_cfm(
     }
 
     // Save configuration
-    if let Err(e) = state.config.save_cfm_mappings().await {
+    if let Err(e) = controller_data.save_cfm_mappings().await {
         return Err(ApiError::internal_error(format!(
             "Failed to save configuration: {}",
             e
         )));
     }
 
-    info!("Deleted CFM mapping for port {}", port_id);
+    info!(
+        "Controller '{}': Deleted CFM mapping for port {}",
+        controller_id, port_id
+    );
     api_ok!(())
 }
 
@@ -376,7 +415,8 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
+            let state =
+                AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
 
             TestApp {
                 router: create_router(state),
@@ -402,7 +442,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/cfm/list")
+                    .uri("/api/v0/controller/default/cfm/list")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -429,7 +469,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/cfm/0")
+                    .uri("/api/v0/controller/default/cfm/0")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"cfm_at_100": 45.0}"#))
                     .unwrap(),
@@ -442,7 +482,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/cfm/0")
+                    .uri("/api/v0/controller/default/cfm/0")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -466,7 +506,7 @@ communication_timeout = 1
             .router()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/cfm/99")
+                    .uri("/api/v0/controller/default/cfm/99")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -485,7 +525,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/cfm/0")
+                    .uri("/api/v0/controller/default/cfm/0")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"cfm_at_100": 45.0}"#))
                     .unwrap(),
@@ -506,7 +546,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/cfm/0")
+                    .uri("/api/v0/controller/default/cfm/0")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"cfm_at_100": 0.0}"#))
                     .unwrap(),
@@ -527,7 +567,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/cfm/0")
+                    .uri("/api/v0/controller/default/cfm/0")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"cfm_at_100": -10.0}"#))
                     .unwrap(),
@@ -548,7 +588,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::POST)
-                    .uri("/api/v0/cfm/5")
+                    .uri("/api/v0/controller/default/cfm/5")
                     .header("content-type", "application/json")
                     .body(Body::from(r#"{"cfm_at_100": 30.0}"#))
                     .unwrap(),
@@ -563,7 +603,7 @@ communication_timeout = 1
             .oneshot(
                 Request::builder()
                     .method(Method::DELETE)
-                    .uri("/api/v0/cfm/5")
+                    .uri("/api/v0/controller/default/cfm/5")
                     .body(Body::empty())
                     .unwrap(),
             )

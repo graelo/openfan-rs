@@ -20,36 +20,41 @@ pub(crate) struct FanControlQuery {
     pub value: Option<f64>,
 }
 
-/// Retrieves the current status of all fans.
-///
-/// Returns RPM readings and cached PWM values for all fans in the system.
-///
-/// # Behavior
-///
-/// - With hardware: Returns actual RPM readings and cached PWM values
-/// - Mock mode: Returns simulated fan data for testing
-///
-/// # Note
-///
-/// PWM values are cached because the hardware does not support reading them back.
+/// Retrieves the current status of all fans for a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/status`
-pub(crate) async fn get_status(
+/// `GET /api/v0/controller/{id}/fan/status`
+pub(crate) async fn get_controller_fan_status(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
 ) -> Result<Json<api::ApiResponse<api::FanStatusResponse>>, ApiError> {
-    debug!("Request: GET /api/v0/fan/status");
+    debug!(
+        "Request: GET /api/v0/controller/{}/fan/status",
+        controller_id
+    );
+
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    let board_info = entry.board_info();
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
-        debug!("Hardware not available - returning mock fan status data");
+    let Some(cm) = entry.connection_manager() else {
+        debug!(
+            "Controller '{}' is in mock mode - returning simulated fan status",
+            controller_id
+        );
         // Return mock fan data for testing/development
         let mut mock_rpms = HashMap::new();
         let mut mock_pwms = HashMap::new();
-        for i in 0..state.board_info.fan_count as u8 {
-            mock_rpms.insert(i, 1500 + (i as u32 * 100)); // Mock RPM values
-            mock_pwms.insert(i, 50 + (i as u32 * 5)); // Mock PWM values
+        for i in 0..board_info.fan_count as u8 {
+            mock_rpms.insert(i, 1500 + (i as u32 * 100));
+            mock_pwms.insert(i, 50 + (i as u32 * 5));
         }
         let mock_status = api::FanStatusResponse {
             rpms: mock_rpms,
@@ -79,25 +84,20 @@ pub(crate) async fn get_status(
     api_ok!(status)
 }
 
-/// Sets the PWM value for all fans simultaneously.
-///
-/// # Validation
-///
-/// - PWM values are automatically clamped to 0-100 range
-/// - Values outside this range are adjusted without error
+/// Sets the PWM value for all fans on a specific controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/all/set?value=50`
-///
-/// # Query Parameters
-///
-/// - `value` - PWM percentage (0-100, automatically clamped)
-pub(crate) async fn set_all_fans(
+/// `GET /api/v0/controller/{id}/fan/all/set?value=50`
+pub(crate) async fn set_controller_all_fans(
     State(state): State<AppState>,
+    Path(controller_id): Path<String>,
     Query(params): Query<FanControlQuery>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/fan/all/set");
+    debug!(
+        "Request: GET /api/v0/controller/{}/fan/all/set",
+        controller_id
+    );
 
     let Some(value) = params.value else {
         return api_fail!("Missing 'value' parameter");
@@ -106,11 +106,24 @@ pub(crate) async fn set_all_fans(
     // Validate and clamp PWM value
     let pwm_value = value.clamp(0.0, 100.0) as u32;
 
-    debug!("Setting all fans to {}% PWM", pwm_value);
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    debug!(
+        "Setting all fans on controller '{}' to {}% PWM",
+        controller_id, pwm_value
+    );
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
-        debug!("Hardware not available - simulating fan PWM set for testing");
+    let Some(cm) = entry.connection_manager() else {
+        debug!(
+            "Controller '{}' is in mock mode - simulating fan PWM set",
+            controller_id
+        );
         return api_ok!(());
     };
 
@@ -127,39 +140,35 @@ pub(crate) async fn set_all_fans(
     api_ok!(())
 }
 
-/// Sets the PWM value for a specific fan.
+/// Sets the PWM value for a specific fan on a controller.
 ///
-/// # Validation
+/// # Endpoint
 ///
-/// - Fan ID must be 0-9 (corresponding to 10 fans)
-/// - PWM values are automatically clamped to 0-100 range
-///
-/// # Endpoints
-///
-/// - `GET /api/v0/fan/{id}/pwm?value=50` (current)
-/// - `GET /api/v0/fan/{id}/set?value=50` (legacy)
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-///
-/// # Query Parameters
-///
-/// - `value` - PWM percentage (0-100, automatically clamped)
-pub(crate) async fn set_fan_pwm(
+/// `GET /api/v0/controller/{id}/fan/{fan}/pwm?value=50`
+pub(crate) async fn set_controller_fan_pwm(
     State(state): State<AppState>,
-    Path(fan_id): Path<String>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
     Query(params): Query<FanControlQuery>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/fan/{}/pwm", fan_id);
+    debug!(
+        "Request: GET /api/v0/controller/{}/fan/{}/pwm",
+        controller_id, fan_id
+    );
 
     // Parse and validate fan ID
     let fan_index = fan_id
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
     // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
+    entry.board_info().validate_fan_id(fan_index)?;
 
     let Some(value) = params.value else {
         return api_fail!("Missing 'value' parameter");
@@ -168,13 +177,16 @@ pub(crate) async fn set_fan_pwm(
     // Validate and clamp PWM value
     let pwm_value = value.clamp(0.0, 100.0) as u32;
 
-    debug!("Setting fan {} to {}% PWM", fan_index, pwm_value);
+    debug!(
+        "Setting fan {} on controller '{}' to {}% PWM",
+        fan_index, controller_id, pwm_value
+    );
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
+    let Some(cm) = entry.connection_manager() else {
         debug!(
-            "Hardware not available - simulating fan {} PWM set for testing",
-            fan_index
+            "Controller '{}' is in mock mode - simulating fan {} PWM set",
+            controller_id, fan_index
         );
         return api_ok!(());
     };
@@ -192,45 +204,42 @@ pub(crate) async fn set_fan_pwm(
     api_ok!(())
 }
 
-/// Retrieves the current RPM reading for a specific fan.
-///
-/// # Validation
-///
-/// - Fan ID must be 0-9 (corresponding to 10 fans)
-///
-/// # Behavior
-///
-/// - With hardware: Returns actual RPM reading from the fan
-/// - Mock mode: Returns simulated RPM value
+/// Retrieves the current RPM reading for a specific fan on a controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/{id}/rpm/get`
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-pub(crate) async fn get_fan_rpm(
-    Path(fan_id): Path<String>,
+/// `GET /api/v0/controller/{id}/fan/{fan}/rpm/get`
+pub(crate) async fn get_controller_fan_rpm(
     State(state): State<AppState>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
 ) -> Result<Json<api::ApiResponse<u32>>, ApiError> {
-    debug!("Request: GET /api/v0/fan/{}/rpm/get", fan_id);
+    debug!(
+        "Request: GET /api/v0/controller/{}/fan/{}/rpm/get",
+        controller_id, fan_id
+    );
 
     // Parse and validate fan ID
     let fan_index = fan_id
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
     // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
+    entry.board_info().validate_fan_id(fan_index)?;
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
+    let Some(cm) = entry.connection_manager() else {
         debug!(
-            "Hardware not available - returning mock RPM for fan {}",
-            fan_index
+            "Controller '{}' is in mock mode - returning mock RPM for fan {}",
+            controller_id, fan_index
         );
-        let mock_rpm = 1500 + (fan_index as u32 * 100); // Mock RPM value
+        let mock_rpm = 1500 + (fan_index as u32 * 100);
         return api_ok!(mock_rpm);
     };
 
@@ -248,38 +257,35 @@ pub(crate) async fn get_fan_rpm(
     api_ok!(rpm)
 }
 
-/// Sets the target RPM for a specific fan.
-///
-/// # Validation
-///
-/// - Fan ID must be valid for the board (0-9 for standard)
-/// - RPM values must be within the board's target range (500-9000 per OpenFAN docs)
+/// Sets the target RPM for a specific fan on a controller.
 ///
 /// # Endpoint
 ///
-/// `GET /api/v0/fan/{id}/rpm?value=1000`
-///
-/// # Path Parameters
-///
-/// - `id` - Fan identifier (0-9)
-///
-/// # Query Parameters
-///
-/// - `value` - Target RPM (must be within board's min/max target RPM range)
-pub(crate) async fn set_fan_rpm(
+/// `GET /api/v0/controller/{id}/fan/{fan}/rpm?value=1000`
+pub(crate) async fn set_controller_fan_rpm(
     State(state): State<AppState>,
-    Path(fan_id): Path<String>,
+    Path((controller_id, fan_id)): Path<(String, String)>,
     Query(params): Query<FanControlQuery>,
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
-    debug!("Request: GET /api/v0/fan/{}/rpm", fan_id);
+    debug!(
+        "Request: GET /api/v0/controller/{}/fan/{}/rpm",
+        controller_id, fan_id
+    );
 
     // Parse and validate fan ID
     let fan_index = fan_id
         .parse::<u8>()
         .map_err(|_| ApiError::bad_request(format!("Invalid fan ID: {}", fan_id)))?;
 
+    // Get controller from registry
+    let entry = state
+        .registry
+        .get_or_err(&controller_id)
+        .await
+        .map_err(ApiError::from)?;
+
     // Validate fan ID against board configuration
-    state.board_info.validate_fan_id(fan_index)?;
+    entry.board_info().validate_fan_id(fan_index)?;
 
     let Some(value) = params.value else {
         return api_fail!("Missing 'value' parameter");
@@ -287,15 +293,18 @@ pub(crate) async fn set_fan_rpm(
 
     // Convert to u32 and validate against board's target RPM range
     let rpm_value = value as u32;
-    state.board_info.validate_target_rpm(rpm_value)?;
+    entry.board_info().validate_target_rpm(rpm_value)?;
 
-    debug!("Setting fan {} to {} RPM", fan_index, rpm_value);
+    debug!(
+        "Setting fan {} on controller '{}' to {} RPM",
+        fan_index, controller_id, rpm_value
+    );
 
     // Check if hardware is available
-    let Some(cm) = &state.connection_manager else {
+    let Some(cm) = entry.connection_manager() else {
         debug!(
-            "Hardware not available - simulating fan {} RPM set for testing",
-            fan_index
+            "Controller '{}' is in mock mode - simulating fan {} RPM set",
+            controller_id, fan_index
         );
         return api_ok!(());
     };
@@ -476,7 +485,8 @@ mod integration_tests {
             .await
             .unwrap();
         let config = RuntimeConfig::load(&config_path).await.unwrap();
-        let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
+        let state =
+            AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
         create_router(state)
     }
 
@@ -493,7 +503,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/status")
+                    .uri("/api/v0/controller/default/fan/status")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -523,7 +533,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/all/set")
+                    .uri("/api/v0/controller/default/fan/all/set")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -543,7 +553,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/all/set?value=50")
+                    .uri("/api/v0/controller/default/fan/all/set?value=50")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -560,7 +570,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/pwm?value=75")
+                    .uri("/api/v0/controller/default/fan/0/pwm?value=75")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -578,7 +588,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/10/pwm?value=50")
+                    .uri("/api/v0/controller/default/fan/10/pwm?value=50")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -595,7 +605,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/pwm")
+                    .uri("/api/v0/controller/default/fan/0/pwm")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -612,7 +622,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/5/rpm/get")
+                    .uri("/api/v0/controller/default/fan/5/rpm/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -636,7 +646,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/99/rpm/get")
+                    .uri("/api/v0/controller/default/fan/99/rpm/get")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -653,7 +663,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/rpm?value=1500")
+                    .uri("/api/v0/controller/default/fan/0/rpm?value=1500")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -671,7 +681,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/rpm?value=400")
+                    .uri("/api/v0/controller/default/fan/0/rpm?value=400")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -689,7 +699,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/rpm?value=10000")
+                    .uri("/api/v0/controller/default/fan/0/rpm?value=10000")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -708,7 +718,7 @@ mod integration_tests {
             .clone()
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/rpm?value=500")
+                    .uri("/api/v0/controller/default/fan/0/rpm?value=500")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -720,7 +730,7 @@ mod integration_tests {
         let response = app
             .oneshot(
                 Request::builder()
-                    .uri("/api/v0/fan/0/rpm?value=9000")
+                    .uri("/api/v0/controller/default/fan/0/rpm?value=9000")
                     .body(Body::empty())
                     .unwrap(),
             )

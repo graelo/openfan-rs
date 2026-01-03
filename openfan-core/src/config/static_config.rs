@@ -716,11 +716,9 @@ mod tests {
     #[test]
     fn test_static_config_controllers_serialization() {
         let mut config = StaticConfig::default();
-        config.controllers.push(ControllerConfig::new(
-            "main",
-            "/dev/ttyACM0",
-            "standard",
-        ));
+        config
+            .controllers
+            .push(ControllerConfig::new("main", "/dev/ttyACM0", "standard"));
 
         let toml_str = config.to_toml().unwrap();
         assert!(toml_str.contains("[[controllers]]"));

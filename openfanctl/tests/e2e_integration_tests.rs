@@ -1360,7 +1360,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test valid value
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=75",
+            "{}/api/v0/controller/default/fan/all/set?value=75",
             harness.server_url
         ))
         .send()
@@ -1381,7 +1381,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test another value
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=50",
+            "{}/api/v0/controller/default/fan/all/set?value=50",
             harness.server_url
         ))
         .send()
@@ -1393,7 +1393,10 @@ async fn test_e2e_fan_all_set() -> Result<()> {
 
     // Test edge case: 0%
     let response = client
-        .get(format!("{}/api/v0/fan/all/set?value=0", harness.server_url))
+        .get(format!(
+            "{}/api/v0/controller/default/fan/all/set?value=0",
+            harness.server_url
+        ))
         .send()
         .await?;
     assert!(
@@ -1404,7 +1407,7 @@ async fn test_e2e_fan_all_set() -> Result<()> {
     // Test edge case: 100%
     let response = client
         .get(format!(
-            "{}/api/v0/fan/all/set?value=100",
+            "{}/api/v0/controller/default/fan/all/set?value=100",
             harness.server_url
         ))
         .send()
@@ -1416,7 +1419,10 @@ async fn test_e2e_fan_all_set() -> Result<()> {
 
     // Test missing value parameter
     let response = client
-        .get(format!("{}/api/v0/fan/all/set", harness.server_url))
+        .get(format!(
+            "{}/api/v0/controller/default/fan/all/set",
+            harness.server_url
+        ))
         .send()
         .await?;
     assert!(
