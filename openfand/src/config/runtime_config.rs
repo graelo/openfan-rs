@@ -460,13 +460,15 @@ impl RuntimeConfig {
         }
 
         // Validate zones
+        // TODO: In multi-controller mode, validate against each controller's board info
         for (name, zone) in &zones.zones {
-            for &port_id in &zone.port_ids {
-                if port_id >= board.fan_count as u8 {
+            for fan in &zone.fans {
+                if fan.fan_id >= board.fan_count as u8 {
                     return Err(OpenFanError::Config(format!(
-                        "Zone '{}' references port {} but board '{}' only has {} fans (max ID: {})",
+                        "Zone '{}' references fan {} (controller: '{}') but board '{}' only has {} fans (max ID: {})",
                         name,
-                        port_id,
+                        fan.fan_id,
+                        fan.controller,
                         board.name,
                         board.fan_count,
                         board.fan_count - 1
@@ -616,17 +618,24 @@ mod tests {
 
     #[tokio::test]
     async fn test_runtime_config_zone_operations() {
+        use openfan_core::ZoneFan;
+
         let temp_dir = TempDir::new().unwrap();
         let config_path = create_test_config(temp_dir.path()).await;
 
         let config = RuntimeConfig::load(&config_path).await.unwrap();
 
-        // Add a zone
+        // Add a zone with cross-controller fans
+        let fans = vec![
+            ZoneFan::new("default", 0),
+            ZoneFan::new("default", 1),
+            ZoneFan::new("default", 2),
+        ];
         {
             let mut zones = config.zones_mut().await;
             zones.insert(
                 "intake".to_string(),
-                openfan_core::Zone::with_description("intake", vec![0, 1, 2], "Front intake fans"),
+                openfan_core::Zone::with_description("intake", fans, "Front intake fans"),
             );
         }
 
@@ -638,7 +647,9 @@ mod tests {
         let zones = config2.zones().await;
         assert!(zones.contains("intake"));
         let intake = zones.get("intake").unwrap();
-        assert_eq!(intake.port_ids, vec![0, 1, 2]);
+        assert_eq!(intake.fans.len(), 3);
+        assert_eq!(intake.fans[0].controller, "default");
+        assert_eq!(intake.fans[0].fan_id, 0);
         assert_eq!(intake.description, Some("Front intake fans".to_string()));
     }
 
@@ -725,6 +736,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_for_board_valid_config() {
         use openfan_core::board::BoardType;
+        use openfan_core::ZoneFan;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = create_test_config(temp_dir.path()).await;
@@ -740,10 +752,15 @@ mod tests {
             aliases.set(9, "Fan 10".to_string());
         }
         {
+            let fans = vec![
+                ZoneFan::new("default", 0),
+                ZoneFan::new("default", 1),
+                ZoneFan::new("default", 2),
+            ];
             let mut zones = config.zones_mut().await;
             zones.insert(
                 "intake".to_string(),
-                openfan_core::Zone::new("intake", vec![0, 1, 2]),
+                openfan_core::Zone::new("intake", fans),
             );
         }
         {
@@ -785,6 +802,7 @@ mod tests {
     #[tokio::test]
     async fn test_validate_for_board_invalid_zone() {
         use openfan_core::board::BoardType;
+        use openfan_core::ZoneFan;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = create_test_config(temp_dir.path()).await;
@@ -793,12 +811,13 @@ mod tests {
         // Standard board has 10 fans (IDs 0-9)
         let board = BoardType::OpenFanStandard.to_board_info();
 
-        // Add zone referencing port 15 (invalid)
+        // Add zone referencing fan 15 (invalid)
+        let fans = vec![ZoneFan::new("default", 0), ZoneFan::new("default", 15)];
         {
             let mut zones = config.zones_mut().await;
             zones.insert(
                 "invalid".to_string(),
-                openfan_core::Zone::new("invalid", vec![0, 15]),
+                openfan_core::Zone::new("invalid", fans),
             );
         }
 
@@ -808,7 +827,7 @@ mod tests {
         assert!(result
             .unwrap_err()
             .to_string()
-            .contains("Zone 'invalid' references port 15"));
+            .contains("Zone 'invalid' references fan 15"));
     }
 
     #[tokio::test]

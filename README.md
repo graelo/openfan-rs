@@ -139,6 +139,19 @@ heartbeat_interval_secs = 10      # Heartbeat check interval
 [shutdown]
 enabled = true                    # Apply safe profile before shutdown
 profile = "100% PWM"              # Profile to apply (must exist)
+
+# Multi-controller setup (optional)
+[[controllers]]
+id = "main"
+device = "/dev/ttyACM0"
+board = "standard"
+description = "Main chassis fans"
+
+[[controllers]]
+id = "gpu"
+device = "/dev/ttyUSB0"
+board = "custom:4"
+description = "GPU cooling"
 ```
 
 Hardware detection is automatic via USB VID/PID. No hardware configuration
@@ -164,21 +177,28 @@ details.
 ## CLI Commands
 
 ```bash
-openfanctl info                          # Show board and server info
-openfanctl status                        # Show all fans with RPM
+openfanctl info                            # Show board and server info
+openfanctl status                          # Show all fans with RPM
 openfanctl fan set <id> --pwm <0-100>      # Set fan PWM percentage
-openfanctl fan set <id> --rpm <500-9000>  # Set fan RPM target
-openfanctl profile list                  # List available profiles
-openfanctl profile apply <name>          # Apply a profile
-openfanctl alias set <id> <name>         # Set fan alias
-openfanctl alias list                    # List all aliases
-openfanctl completion <shell>            # Generate shell completion
+openfanctl fan set <id> --rpm <500-9000>   # Set fan RPM target
+openfanctl profile list                    # List available profiles
+openfanctl profile apply <name>            # Apply a profile
+openfanctl alias set <id> <name>           # Set fan alias
+openfanctl alias list                      # List all aliases
+
+# Multi-controller commands
+openfanctl controllers                     # List all controllers
+openfanctl controller info <id>            # Get controller details
+openfanctl controller reconnect <id>       # Reconnect specific controller
+
+openfanctl completion <shell>              # Generate shell completion
 ```
 
 Options:
 
 - `--server <url>` - Server URL (default: <http://localhost:3000>)
 - `--format <table|json>` - Output format (default: table)
+- `--controller <id>` or `-c <id>` - Specify controller for fan/profile/alias commands (required in multi-controller setups)
 
 ## REST API
 
@@ -204,6 +224,11 @@ curl "http://localhost:3000/api/v0/profiles/set?name=50%25%20PWM"
 # Aliases
 curl http://localhost:3000/api/v0/alias/all/get
 curl "http://localhost:3000/api/v0/alias/0/set?value=CPU%20Fan"
+
+# Multi-controller management
+curl http://localhost:3000/api/v0/controllers
+curl http://localhost:3000/api/v0/controller/main/info
+curl -X POST http://localhost:3000/api/v0/controller/main/reconnect
 ```
 
 See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.

@@ -309,8 +309,8 @@ mod tests {
 
         assert_eq!(board_info.name, "OpenFAN Standard");
         assert_eq!(board_info.fan_count, 10);
-        assert_eq!(board_info.usb_vid, 0x2E8A);
-        assert_eq!(board_info.usb_pid, 0x000A);
+        assert_eq!(board_info.max_pwm, 100);
+        assert_eq!(board_info.baud_rate, 115200);
     }
 
     #[test]
@@ -352,7 +352,7 @@ mod integration_tests {
             .await
             .unwrap();
         let config = RuntimeConfig::load(&config_path).await.unwrap();
-        let state = AppState::new(board_info, std::sync::Arc::new(config), None);
+        let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
         create_router(state)
     }
 
@@ -450,7 +450,7 @@ mod integration_tests {
             "OpenFAN Standard"
         );
         assert_eq!(board_info.get("fan_count").unwrap().as_u64().unwrap(), 10);
-        assert_eq!(board_info.get("usb_vid").unwrap().as_u64().unwrap(), 0x2E8A);
-        assert_eq!(board_info.get("usb_pid").unwrap().as_u64().unwrap(), 0x000A);
+        assert_eq!(board_info.get("max_pwm").unwrap().as_u64().unwrap(), 100);
+        assert_eq!(board_info.get("baud_rate").unwrap().as_u64().unwrap(), 115200);
     }
 }

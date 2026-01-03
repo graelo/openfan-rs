@@ -49,6 +49,8 @@ pub struct ConnectionManager {
     state: RwLock<ConnectionState>,
     /// Reconnection configuration
     config: ReconnectConfig,
+    /// Serial device path for reconnection
+    device_path: String,
     /// Serial communication timeout in milliseconds
     timeout_ms: u64,
     /// Enable UART debug logging
@@ -68,6 +70,7 @@ impl ConnectionManager {
     pub fn new(
         controller: DefaultFanController,
         config: ReconnectConfig,
+        device_path: String,
         timeout_ms: u64,
         debug_uart: bool,
     ) -> Self {
@@ -75,6 +78,7 @@ impl ConnectionManager {
             controller: RwLock::new(Some(controller)),
             state: RwLock::new(ConnectionState::Connected),
             config,
+            device_path,
             timeout_ms,
             debug_uart,
             pwm_cache: Mutex::new(HashMap::new()),
@@ -207,8 +211,8 @@ impl ConnectionManager {
                 delay
             );
 
-            // Try to connect
-            match connection::auto_connect(self.timeout_ms, self.debug_uart).await {
+            // Try to connect using stored device path
+            match connection::connect_to_device(&self.device_path, self.timeout_ms, self.debug_uart).await {
                 Ok(mut new_controller) => {
                     // Verify connection works
                     if connection::test_connection(&mut new_controller)

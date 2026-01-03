@@ -110,8 +110,6 @@ impl OpenFanClient {
                 board_type: openfan_core::BoardType::OpenFanStandard,
                 name: "Unknown".to_string(),
                 fan_count: 10,
-                usb_vid: 0,
-                usb_pid: 0,
                 max_pwm: 100,
                 min_target_rpm: 500,
                 max_target_rpm: 9000,
@@ -590,33 +588,34 @@ impl OpenFanClient {
     /// # Arguments
     ///
     /// * `name` - Name for the new zone
-    /// * `port_ids` - Fan port IDs to include in the zone
+    /// * `fans` - Fan references (controller + fan_id) to include in the zone
     /// * `description` - Optional description
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The zone name is empty or whitespace
-    /// - Any port ID is invalid for this board type
+    /// - Any fan ID is invalid for this board type
     pub async fn add_zone(
         &self,
         name: &str,
-        port_ids: Vec<u8>,
+        fans: Vec<openfan_core::ZoneFan>,
         description: Option<String>,
     ) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Zone name cannot be empty"));
         }
 
-        // Validate port IDs
-        for &port_id in &port_ids {
-            self.board_info.validate_fan_id(port_id)?;
+        // Validate fan IDs
+        // TODO: In multi-controller mode, validate against each controller's board info
+        for fan in &fans {
+            self.board_info.validate_fan_id(fan.fan_id)?;
         }
 
         let url = format!("{}/api/v0/zones/add", self.base_url);
         let mut request_body = HashMap::new();
         request_body.insert("name", serde_json::Value::String(name.to_string()));
-        request_body.insert("port_ids", serde_json::to_value(&port_ids)?);
+        request_body.insert("fans", serde_json::to_value(&fans)?);
         if let Some(desc) = description {
             request_body.insert("description", serde_json::Value::String(desc));
         }
@@ -641,33 +640,34 @@ impl OpenFanClient {
     /// # Arguments
     ///
     /// * `name` - Name of the zone to update
-    /// * `port_ids` - New fan port IDs for the zone
+    /// * `fans` - New fan references (controller + fan_id) for the zone
     /// * `description` - Optional new description
     ///
     /// # Errors
     ///
     /// Returns an error if:
     /// - The zone name is empty or whitespace
-    /// - Any port ID is invalid for this board type
+    /// - Any fan ID is invalid for this board type
     pub async fn update_zone(
         &self,
         name: &str,
-        port_ids: Vec<u8>,
+        fans: Vec<openfan_core::ZoneFan>,
         description: Option<String>,
     ) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow::anyhow!("Zone name cannot be empty"));
         }
 
-        // Validate port IDs
-        for &port_id in &port_ids {
-            self.board_info.validate_fan_id(port_id)?;
+        // Validate fan IDs
+        // TODO: In multi-controller mode, validate against each controller's board info
+        for fan in &fans {
+            self.board_info.validate_fan_id(fan.fan_id)?;
         }
 
         let encoded_name = name.replace(' ', "%20").replace('&', "%26");
         let url = format!("{}/api/v0/zone/{}/update", self.base_url, encoded_name);
         let mut request_body = HashMap::new();
-        request_body.insert("port_ids", serde_json::to_value(&port_ids)?);
+        request_body.insert("fans", serde_json::to_value(&fans)?);
         if let Some(desc) = description {
             request_body.insert("description", serde_json::Value::String(desc));
         }
@@ -1137,6 +1137,68 @@ impl OpenFanClient {
         }
 
         Ok(health)
+    }
+
+    // =========================================================================
+    // Controller Management (Multi-Controller Support)
+    // =========================================================================
+
+    /// List all registered controllers.
+    ///
+    /// # Returns
+    ///
+    /// Returns information about all controllers registered with the server.
+    pub async fn list_controllers(&self) -> Result<api::ControllersListResponse> {
+        let url = format!("{}/api/v0/controllers", self.base_url);
+        let endpoint = "controllers";
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Get information about a specific controller.
+    ///
+    /// # Arguments
+    ///
+    /// * `controller_id` - ID of the controller to query
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the controller does not exist.
+    pub async fn get_controller_info(&self, controller_id: &str) -> Result<api::ControllerInfo> {
+        let url = format!("{}/api/v0/controller/{}/info", self.base_url, controller_id);
+        let endpoint = &format!("controller/{}/info", controller_id);
+
+        self.execute_with_retry(endpoint, || self.client.get(&url).send())
+            .await
+    }
+
+    /// Force a reconnection attempt for a specific controller.
+    ///
+    /// # Arguments
+    ///
+    /// * `controller_id` - ID of the controller to reconnect
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The controller does not exist
+    /// - The controller is in mock mode
+    pub async fn reconnect_controller(&self, controller_id: &str) -> Result<String> {
+        let url = format!(
+            "{}/api/v0/controller/{}/reconnect",
+            self.base_url, controller_id
+        );
+        let endpoint = &format!("controller/{}/reconnect", controller_id);
+
+        let response = self
+            .client
+            .post(&url)
+            .send()
+            .await
+            .with_context(|| format!("Failed to send reconnect request to {}", endpoint))?;
+
+        Self::handle_response(response, endpoint).await
     }
 }
 

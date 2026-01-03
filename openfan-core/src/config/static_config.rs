@@ -158,6 +158,53 @@ impl Default for ShutdownConfig {
     }
 }
 
+/// Controller configuration for multi-controller setups
+///
+/// Each controller entry defines a physical fan controller device
+/// with its serial port path and board type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControllerConfig {
+    /// Unique identifier for this controller (e.g., "main", "gpu", "chassis")
+    pub id: String,
+
+    /// Serial device path (e.g., "/dev/ttyACM0", "/dev/ttyUSB0", "COM3")
+    pub device: String,
+
+    /// Board type: "standard" or "custom:N" where N is fan count 1-16
+    pub board: String,
+
+    /// Optional human-readable description
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+impl ControllerConfig {
+    /// Create a new controller configuration
+    pub fn new(id: impl Into<String>, device: impl Into<String>, board: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            device: device.into(),
+            board: board.into(),
+            description: None,
+        }
+    }
+
+    /// Create a controller configuration with a description
+    pub fn with_description(
+        id: impl Into<String>,
+        device: impl Into<String>,
+        board: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            device: device.into(),
+            board: board.into(),
+            description: Some(description.into()),
+        }
+    }
+}
+
 /// Server configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
@@ -183,6 +230,27 @@ impl Default for ServerConfig {
 ///
 /// This is loaded once at startup and remains immutable during runtime.
 /// Located at `~/.config/openfan/config.toml` by default.
+///
+/// # Multi-Controller Setup
+///
+/// Controllers can be configured via the `[[controllers]]` TOML array:
+///
+/// ```toml
+/// [[controllers]]
+/// id = "main"
+/// device = "/dev/ttyACM0"
+/// board = "standard"
+/// description = "Main chassis fans"
+///
+/// [[controllers]]
+/// id = "gpu"
+/// device = "/dev/ttyUSB0"
+/// board = "custom:4"
+/// description = "GPU cooling"
+/// ```
+///
+/// Alternatively, use CLI flags `--device` and `--board` for single-controller
+/// setups, which creates an implicit "default" controller.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticConfig {
     /// Server configuration (bind address, port, timeout)
@@ -202,6 +270,13 @@ pub struct StaticConfig {
     /// Shutdown configuration for safe boot profile
     #[serde(default)]
     pub shutdown: ShutdownConfig,
+
+    /// Controller configurations for multi-controller setups
+    ///
+    /// Each entry in this array defines a physical fan controller.
+    /// If empty, controllers must be specified via CLI flags.
+    #[serde(default)]
+    pub controllers: Vec<ControllerConfig>,
 }
 
 impl Default for StaticConfig {
@@ -211,6 +286,7 @@ impl Default for StaticConfig {
             data_dir: default_data_dir(),
             reconnect: ReconnectConfig::default(),
             shutdown: ShutdownConfig::default(),
+            controllers: Vec::new(),
         }
     }
 }
@@ -527,5 +603,129 @@ mod tests {
         let name = ProfileName::new("Test Profile");
         // Borrow<str> allows ProfileName to be used for HashMap<String, _> lookups
         assert_eq!(map.get(name.as_str()), Some(&42));
+    }
+
+    // ControllerConfig tests
+    #[test]
+    fn test_controller_config_new() {
+        let config = ControllerConfig::new("main", "/dev/ttyACM0", "standard");
+        assert_eq!(config.id, "main");
+        assert_eq!(config.device, "/dev/ttyACM0");
+        assert_eq!(config.board, "standard");
+        assert!(config.description.is_none());
+    }
+
+    #[test]
+    fn test_controller_config_with_description() {
+        let config = ControllerConfig::with_description(
+            "gpu",
+            "/dev/ttyUSB0",
+            "custom:4",
+            "GPU cooling rack",
+        );
+        assert_eq!(config.id, "gpu");
+        assert_eq!(config.device, "/dev/ttyUSB0");
+        assert_eq!(config.board, "custom:4");
+        assert_eq!(config.description, Some("GPU cooling rack".to_string()));
+    }
+
+    #[test]
+    fn test_controller_config_serialization() {
+        let config = ControllerConfig::new("main", "/dev/ttyACM0", "standard");
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"id\":\"main\""));
+        assert!(json.contains("\"device\":\"/dev/ttyACM0\""));
+        assert!(json.contains("\"board\":\"standard\""));
+        // description should be skipped when None
+        assert!(!json.contains("description"));
+    }
+
+    #[test]
+    fn test_controller_config_deserialization() {
+        let json = r#"{"id":"test","device":"/dev/ttyUSB1","board":"custom:8","description":"Test controller"}"#;
+        let config: ControllerConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(config.id, "test");
+        assert_eq!(config.device, "/dev/ttyUSB1");
+        assert_eq!(config.board, "custom:8");
+        assert_eq!(config.description, Some("Test controller".to_string()));
+    }
+
+    #[test]
+    fn test_static_config_with_controllers() {
+        let toml_str = r#"
+            data_dir = "/var/lib/openfan"
+
+            [server]
+            bind_address = "127.0.0.1"
+            port = 3000
+            communication_timeout = 1
+
+            [[controllers]]
+            id = "main"
+            device = "/dev/ttyACM0"
+            board = "standard"
+            description = "Main chassis"
+
+            [[controllers]]
+            id = "gpu"
+            device = "/dev/ttyUSB0"
+            board = "custom:4"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert_eq!(config.controllers.len(), 2);
+
+        assert_eq!(config.controllers[0].id, "main");
+        assert_eq!(config.controllers[0].device, "/dev/ttyACM0");
+        assert_eq!(config.controllers[0].board, "standard");
+        assert_eq!(
+            config.controllers[0].description,
+            Some("Main chassis".to_string())
+        );
+
+        assert_eq!(config.controllers[1].id, "gpu");
+        assert_eq!(config.controllers[1].device, "/dev/ttyUSB0");
+        assert_eq!(config.controllers[1].board, "custom:4");
+        assert!(config.controllers[1].description.is_none());
+    }
+
+    #[test]
+    fn test_static_config_empty_controllers() {
+        let toml_str = r#"
+            data_dir = "/var/lib/openfan"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert!(config.controllers.is_empty());
+    }
+
+    #[test]
+    fn test_static_config_single_controller() {
+        let toml_str = r#"
+            [[controllers]]
+            id = "default"
+            device = "/dev/ttyACM0"
+            board = "standard"
+        "#;
+
+        let config = StaticConfig::from_toml(toml_str).unwrap();
+        assert_eq!(config.controllers.len(), 1);
+        assert_eq!(config.controllers[0].id, "default");
+    }
+
+    #[test]
+    fn test_static_config_controllers_serialization() {
+        let mut config = StaticConfig::default();
+        config.controllers.push(ControllerConfig::new(
+            "main",
+            "/dev/ttyACM0",
+            "standard",
+        ));
+
+        let toml_str = config.to_toml().unwrap();
+        assert!(toml_str.contains("[[controllers]]"));
+        assert!(toml_str.contains("id = \"main\""));
+        assert!(toml_str.contains("device = \"/dev/ttyACM0\""));
+        assert!(toml_str.contains("board = \"standard\""));
     }
 }

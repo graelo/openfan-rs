@@ -76,8 +76,8 @@ pub(crate) async fn get_zone(
 /// # Validation Rules
 ///
 /// - Zone name must be non-empty and contain only alphanumeric characters, hyphens, and underscores
-/// - Port IDs must be valid for the detected board
-/// - Port IDs must not be assigned to another zone (exclusive membership)
+/// - Fan IDs must be valid for their respective controllers
+/// - Fans must not be assigned to another zone (exclusive membership)
 ///
 /// # Endpoint
 ///
@@ -88,7 +88,10 @@ pub(crate) async fn get_zone(
 /// ```json
 /// {
 ///   "name": "intake",
-///   "port_ids": [0, 1, 2],
+///   "fans": [
+///     {"controller": "default", "fan_id": 0},
+///     {"controller": "default", "fan_id": 1}
+///   ],
 ///   "description": "Front intake fans"
 /// }
 /// ```
@@ -106,18 +109,25 @@ pub(crate) async fn add_zone(
         );
     }
 
-    // Validate port IDs against board configuration
-    for &port_id in &request.port_ids {
-        if let Err(e) = state.board_info.validate_fan_id(port_id) {
-            return api_fail!(format!("Invalid port ID {}: {}", port_id, e));
+    // Validate fan IDs against board configuration
+    // TODO: In multi-controller mode, validate against the controller's board info
+    for fan in &request.fans {
+        if let Err(e) = state.board_info.validate_fan_id(fan.fan_id) {
+            return api_fail!(format!(
+                "Invalid fan ID {} for controller '{}': {}",
+                fan.fan_id, fan.controller, e
+            ));
         }
     }
 
-    // Check for duplicate port IDs in request
+    // Check for duplicate fans in request
     let mut seen = std::collections::HashSet::new();
-    for &port_id in &request.port_ids {
-        if !seen.insert(port_id) {
-            return api_fail!(format!("Duplicate port ID {} in request!", port_id));
+    for fan in &request.fans {
+        if !seen.insert((&fan.controller, fan.fan_id)) {
+            return api_fail!(format!(
+                "Duplicate fan (controller: '{}', fan_id: {}) in request!",
+                fan.controller, fan.fan_id
+            ));
         }
     }
 
@@ -131,20 +141,20 @@ pub(crate) async fn add_zone(
         }
 
         // Check for exclusive membership
-        for &port_id in &request.port_ids {
-            if let Some(existing_zone) = zones.find_zone_for_port(port_id) {
+        for fan in &request.fans {
+            if let Some(existing_zone) = zones.find_zone_for_fan(&fan.controller, fan.fan_id) {
                 return api_fail!(format!(
-                    "Port {} is already assigned to zone '{}'!",
-                    port_id, existing_zone
+                    "Fan (controller: '{}', fan_id: {}) is already assigned to zone '{}'!",
+                    fan.controller, fan.fan_id, existing_zone
                 ));
             }
         }
 
         // Create and insert the zone
         let zone = if let Some(desc) = request.description {
-            Zone::with_description(zone_name, request.port_ids, desc)
+            Zone::with_description(zone_name, request.fans, desc)
         } else {
-            Zone::new(zone_name, request.port_ids)
+            Zone::new(zone_name, request.fans)
         };
 
         zones.insert(zone_name.to_string(), zone);
@@ -167,8 +177,8 @@ pub(crate) async fn add_zone(
 /// # Validation Rules
 ///
 /// - Zone must exist
-/// - Port IDs must be valid for the detected board
-/// - Port IDs must not be assigned to another zone (exclusive membership)
+/// - Fan IDs must be valid for their respective controllers
+/// - Fans must not be assigned to another zone (exclusive membership)
 ///
 /// # Endpoint
 ///
@@ -178,7 +188,10 @@ pub(crate) async fn add_zone(
 ///
 /// ```json
 /// {
-///   "port_ids": [0, 1, 2, 3],
+///   "fans": [
+///     {"controller": "default", "fan_id": 0},
+///     {"controller": "default", "fan_id": 1}
+///   ],
 ///   "description": "Updated description"
 /// }
 /// ```
@@ -189,18 +202,25 @@ pub(crate) async fn update_zone(
 ) -> Result<Json<api::ApiResponse<()>>, ApiError> {
     debug!("Request: POST /api/v0/zone/{}/update", name);
 
-    // Validate port IDs against board configuration
-    for &port_id in &request.port_ids {
-        if let Err(e) = state.board_info.validate_fan_id(port_id) {
-            return api_fail!(format!("Invalid port ID {}: {}", port_id, e));
+    // Validate fan IDs against board configuration
+    // TODO: In multi-controller mode, validate against the controller's board info
+    for fan in &request.fans {
+        if let Err(e) = state.board_info.validate_fan_id(fan.fan_id) {
+            return api_fail!(format!(
+                "Invalid fan ID {} for controller '{}': {}",
+                fan.fan_id, fan.controller, e
+            ));
         }
     }
 
-    // Check for duplicate port IDs in request
+    // Check for duplicate fans in request
     let mut seen = std::collections::HashSet::new();
-    for &port_id in &request.port_ids {
-        if !seen.insert(port_id) {
-            return api_fail!(format!("Duplicate port ID {} in request!", port_id));
+    for fan in &request.fans {
+        if !seen.insert((&fan.controller, fan.fan_id)) {
+            return api_fail!(format!(
+                "Duplicate fan (controller: '{}', fan_id: {}) in request!",
+                fan.controller, fan.fan_id
+            ));
         }
     }
 
@@ -213,13 +233,13 @@ pub(crate) async fn update_zone(
             return Err(OpenFanError::ZoneNotFound(name).into());
         }
 
-        // Check for exclusive membership (excluding ports already in this zone)
-        for &port_id in &request.port_ids {
-            if let Some(existing_zone) = zones.find_zone_for_port(port_id) {
+        // Check for exclusive membership (excluding fans already in this zone)
+        for fan in &request.fans {
+            if let Some(existing_zone) = zones.find_zone_for_fan(&fan.controller, fan.fan_id) {
                 if existing_zone != name {
                     return api_fail!(format!(
-                        "Port {} is already assigned to zone '{}'!",
-                        port_id, existing_zone
+                        "Fan (controller: '{}', fan_id: {}) is already assigned to zone '{}'!",
+                        fan.controller, fan.fan_id, existing_zone
                     ));
                 }
             }
@@ -227,9 +247,9 @@ pub(crate) async fn update_zone(
 
         // Update the zone
         let zone = if let Some(desc) = request.description {
-            Zone::with_description(&name, request.port_ids, desc)
+            Zone::with_description(&name, request.fans, desc)
         } else {
-            Zone::new(&name, request.port_ids)
+            Zone::new(&name, request.fans)
         };
 
         zones.insert(name.clone(), zone);
@@ -343,7 +363,7 @@ pub(crate) async fn apply_zone(
         }
     };
 
-    if zone.port_ids.is_empty() {
+    if zone.fans.is_empty() {
         return api_fail!(format!("Zone '{}' has no fans assigned!", name));
     }
 
@@ -360,13 +380,15 @@ pub(crate) async fn apply_zone(
     };
 
     let value = params.value as u32;
-    let port_ids = zone.port_ids.clone();
+    // For now, in single-controller mode, we just extract the fan_ids
+    // TODO: In multi-controller mode, group fans by controller and apply to each
+    let fan_ids: Vec<u8> = zone.fans.iter().map(|f| f.fan_id).collect();
     let zone_name = name.clone();
 
     // Apply value to each fan in the zone via connection manager
     cm.with_controller(|controller| {
         Box::pin(async move {
-            for &fan_id in &port_ids {
+            for &fan_id in &fan_ids {
                 let result = match mode {
                     ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
                     ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
@@ -388,7 +410,7 @@ pub(crate) async fn apply_zone(
         "Applied {} {} to {} fans in zone '{}'",
         params.value,
         params.mode.to_uppercase(),
-        zone.port_ids.len(),
+        zone.fans.len(),
         name
     );
     api_ok!(())
@@ -473,7 +495,7 @@ communication_timeout = 1
             std::fs::write(&config_path, config_content).unwrap();
 
             let config = RuntimeConfig::load(&config_path).await.unwrap();
-            let state = AppState::new(board_info, std::sync::Arc::new(config), None);
+            let state = AppState::single_controller(board_info, std::sync::Arc::new(config), None).await;
 
             TestApp {
                 router: create_router(state),
@@ -525,7 +547,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "intake", "port_ids": [0, 1, 2]}"#))
+                    .body(Body::from(
+                        r#"{"name": "intake", "fans": [{"controller": "default", "fan_id": 0}, {"controller": "default", "fan_id": 1}, {"controller": "default", "fan_id": 2}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -546,7 +570,7 @@ communication_timeout = 1
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"name": "exhaust", "port_ids": [3, 4], "description": "Rear exhaust fans"}"#,
+                        r#"{"name": "exhaust", "fans": [{"controller": "default", "fan_id": 3}, {"controller": "default", "fan_id": 4}], "description": "Rear exhaust fans"}"#,
                     ))
                     .unwrap(),
             )
@@ -568,7 +592,7 @@ communication_timeout = 1
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
                     .body(Body::from(
-                        r#"{"name": "invalid zone name", "port_ids": [0]}"#,
+                        r#"{"name": "invalid zone name", "fans": [{"controller": "default", "fan_id": 0}]}"#,
                     ))
                     .unwrap(),
             )
@@ -589,7 +613,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "bad-zone", "port_ids": [99]}"#))
+                    .body(Body::from(
+                        r#"{"name": "bad-zone", "fans": [{"controller": "default", "fan_id": 99}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -609,7 +635,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "dup-zone", "port_ids": [0, 0, 1]}"#))
+                    .body(Body::from(
+                        r#"{"name": "dup-zone", "fans": [{"controller": "default", "fan_id": 0}, {"controller": "default", "fan_id": 0}, {"controller": "default", "fan_id": 1}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -648,7 +676,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "test-zone", "port_ids": [5, 6]}"#))
+                    .body(Body::from(
+                        r#"{"name": "test-zone", "fans": [{"controller": "default", "fan_id": 5}, {"controller": "default", "fan_id": 6}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -699,7 +729,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "to-delete", "port_ids": [7]}"#))
+                    .body(Body::from(
+                        r#"{"name": "to-delete", "fans": [{"controller": "default", "fan_id": 7}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -750,7 +782,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "mode-test", "port_ids": [8]}"#))
+                    .body(Body::from(
+                        r#"{"name": "mode-test", "fans": [{"controller": "default", "fan_id": 8}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -782,7 +816,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "pwm-test", "port_ids": [9]}"#))
+                    .body(Body::from(
+                        r#"{"name": "pwm-test", "fans": [{"controller": "default", "fan_id": 9}]}"#,
+                    ))
                     .unwrap(),
             )
             .await
@@ -814,7 +850,9 @@ communication_timeout = 1
                     .method(Method::POST)
                     .uri("/api/v0/zones/add")
                     .header("content-type", "application/json")
-                    .body(Body::from(r#"{"name": "apply-test", "port_ids": [0, 1]}"#))
+                    .body(Body::from(
+                        r#"{"name": "apply-test", "fans": [{"controller": "default", "fan_id": 0}, {"controller": "default", "fan_id": 1}]}"#,
+                    ))
                     .unwrap(),
             )
             .await

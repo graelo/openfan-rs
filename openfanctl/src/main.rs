@@ -5,9 +5,9 @@
 use anyhow::Result;
 use clap::Parser;
 use openfanctl::cli::{
-    generate_completion, handle_alias, handle_cfm, handle_config, handle_curve, handle_fan,
-    handle_health, handle_info, handle_profile, handle_status, handle_zone, Cli, Commands,
-    OutputFormat,
+    generate_completion, handle_alias, handle_cfm, handle_config, handle_controller,
+    handle_controllers_list, handle_curve, handle_fan, handle_health, handle_info, handle_profile,
+    handle_status, handle_zone, Cli, Commands, OutputFormat,
 };
 use openfanctl::client::OpenFanClient;
 use openfanctl::config::CliConfig;
@@ -103,6 +103,10 @@ async fn main() -> Result<()> {
         Commands::Info => handle_info(&client, &output_format).await,
         Commands::Status => handle_status(&client, &output_format).await,
         Commands::Health => handle_health(&client, &output_format).await,
+        Commands::Controllers => handle_controllers_list(&client, &output_format).await,
+        Commands::Controller { command } => {
+            handle_controller(&client, command, &output_format).await
+        }
         Commands::Config { command } => handle_config(command, &config, &output_format).await,
         Commands::Fan { command } => handle_fan(&client, command, &output_format).await,
         Commands::Profile { command } => handle_profile(&client, command, &output_format).await,

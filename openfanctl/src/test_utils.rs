@@ -97,7 +97,10 @@ impl Default for MockServerState {
             "cpu".to_string(),
             Zone {
                 name: "cpu".to_string(),
-                port_ids: vec![0, 1],
+                fans: vec![
+                    openfan_core::ZoneFan::new("default", 0),
+                    openfan_core::ZoneFan::new("default", 1),
+                ],
                 description: Some("CPU cooling zone".to_string()),
             },
         );
@@ -105,7 +108,10 @@ impl Default for MockServerState {
             "gpu".to_string(),
             Zone {
                 name: "gpu".to_string(),
-                port_ids: vec![2, 3],
+                fans: vec![
+                    openfan_core::ZoneFan::new("default", 2),
+                    openfan_core::ZoneFan::new("default", 3),
+                ],
                 description: Some("GPU cooling zone".to_string()),
             },
         );
@@ -567,7 +573,7 @@ async fn add_zone_handler(
 ) -> Json<api::ApiResponse<()>> {
     let zone = Zone {
         name: req.name.clone(),
-        port_ids: req.port_ids,
+        fans: req.fans,
         description: req.description,
     };
     state.zones.lock().unwrap().insert(req.name, zone);
@@ -584,7 +590,7 @@ async fn update_zone_handler(
         std::collections::hash_map::Entry::Occupied(mut entry) => {
             let zone = Zone {
                 name,
-                port_ids: req.port_ids,
+                fans: req.fans,
                 description: req.description,
             };
             entry.insert(zone);
@@ -626,14 +632,14 @@ async fn apply_zone_handler(
         match params.mode.as_str() {
             "pwm" => {
                 let mut pwms = state.pwms.lock().unwrap();
-                for port_id in &zone.port_ids {
-                    pwms.insert(port_id.to_string(), params.value as u32);
+                for fan in &zone.fans {
+                    pwms.insert(fan.fan_id.to_string(), params.value as u32);
                 }
             }
             "rpm" => {
                 let mut rpms = state.rpms.lock().unwrap();
-                for port_id in &zone.port_ids {
-                    rpms.insert(port_id.to_string(), params.value as u32);
+                for fan in &zone.fans {
+                    rpms.insert(fan.fan_id.to_string(), params.value as u32);
                 }
             }
             _ => return Err(StatusCode::BAD_REQUEST),

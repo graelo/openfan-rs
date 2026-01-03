@@ -230,82 +230,9 @@ pub fn is_disconnect_error(err: &OpenFanError) -> bool {
     }
 }
 
-/// Find the fan controller device by VID/PID
-///
-/// Searches for device matching the board's USB VID/PID
-pub fn find_fan_controller<B: BoardConfig>() -> Result<String> {
-    debug!(
-        "Searching for {} (VID:0x{:04X}, PID:0x{:04X})",
-        B::NAME,
-        B::USB_VID,
-        B::USB_PID
-    );
-
-    let ports = tokio_serial::available_ports().map_err(|e| {
-        error!("Failed to enumerate serial ports: {}", e);
-        OpenFanError::Hardware(format!("Failed to enumerate ports: {}", e))
-    })?;
-
-    for port in ports {
-        debug!("Checking port: {}", port.port_name);
-
-        if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
-            debug!("  USB Device - VID:{:04X} PID:{:04X}", info.vid, info.pid);
-
-            if info.vid == B::USB_VID && info.pid == B::USB_PID {
-                debug!("Found {} at: {}", B::NAME, port.port_name);
-                return Ok(port.port_name);
-            }
-        }
-    }
-
-    error!("{} not found", B::NAME);
-    Err(OpenFanError::DeviceNotFound)
-}
-
-/// Detect board type from USB VID/PID
-///
-/// Scans available serial ports and matches against known board USB identifiers.
-/// Currently only detects OpenFAN Standard boards via USB serial.
-///
-/// Note: Custom boards cannot be auto-detected and must be specified manually
-/// with the `--board custom:N` flag.
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - No serial ports are found
-/// - No matching OpenFAN device is detected
-/// - Serial port enumeration fails
-pub fn detect_board_from_usb() -> Result<openfan_core::BoardType> {
-    use openfan_core::BoardType;
-
-    let ports = tokio_serial::available_ports().map_err(|e| {
-        error!("Failed to enumerate serial ports: {}", e);
-        OpenFanError::Serial(format!("Failed to enumerate USB ports: {}", e))
-    })?;
-
-    for port in ports {
-        if let tokio_serial::SerialPortType::UsbPort(info) = &port.port_type {
-            // OpenFAN Standard: VID=0x2E8A (Raspberry Pi), PID=0x000A
-            if info.vid == 0x2E8A && info.pid == 0x000A {
-                debug!("Detected OpenFAN Standard at: {}", port.port_name);
-                return Ok(BoardType::OpenFanStandard);
-            }
-        }
-    }
-
-    error!("No OpenFAN device detected");
-    Err(OpenFanError::DeviceNotFound)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // Hardware-dependent tests (find_ports, find_fan_controller, detect_board_from_usb)
-    // are tested via integration tests with actual hardware or mocks.
-    // Board type tests are in openfan-core/src/board.rs.
 
     #[test]
     fn test_is_disconnect_error_device_disconnected() {
@@ -347,26 +274,5 @@ mod tests {
     fn test_is_disconnect_error_serial_normal_error() {
         let err = OpenFanError::Serial("Write failed: some other error".to_string());
         assert!(!is_disconnect_error(&err));
-    }
-
-    #[test]
-    fn test_detect_board_from_usb_returns_valid_result() {
-        // This test exercises the detect_board_from_usb function.
-        // In CI (no hardware): returns DeviceNotFound
-        // With hardware: returns Ok(BoardType::OpenFanStandard)
-        let result = detect_board_from_usb();
-
-        match result {
-            Ok(board_type) => {
-                // Hardware is present - verify it's a valid board type
-                assert_eq!(board_type.name(), "OpenFAN Standard");
-            }
-            Err(OpenFanError::DeviceNotFound) => {
-                // No hardware present - this is expected in CI
-            }
-            Err(other) => {
-                panic!("Unexpected error from detect_board_from_usb: {:?}", other);
-            }
-        }
     }
 }

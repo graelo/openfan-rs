@@ -5,7 +5,7 @@
 pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
-use crate::hardware::ConnectionManager;
+use crate::hardware::{ConnectionManager, ControllerRegistry};
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -22,36 +22,74 @@ use tracing::info;
 /// Application state shared across all handlers
 #[derive(Clone)]
 pub(crate) struct AppState {
-    /// Runtime board information
-    pub board_info: Arc<BoardInfo>,
-    /// Runtime configuration (static config + mutable data)
+    /// Controller registry managing multiple fan controllers
+    pub registry: Arc<ControllerRegistry>,
+    /// Runtime configuration (static config + global zones)
     pub config: Arc<RuntimeConfig>,
-    /// Connection manager for hardware (None in mock mode)
-    pub connection_manager: Option<Arc<ConnectionManager>>,
     /// Server start time for uptime calculation
     pub start_time: Instant,
+    /// Whether running in mock mode (no hardware)
+    pub mock_mode: bool,
+
+    // Legacy fields for single-controller backward compatibility
+    // TODO: Remove these once all handlers are updated for multi-controller
+    /// Legacy board_info for the default controller
+    pub board_info: Arc<BoardInfo>,
+    /// Legacy connection_manager for the default controller
+    pub connection_manager: Option<Arc<ConnectionManager>>,
 }
 
 impl AppState {
-    /// Create new application state
+    /// Create new application state with controller registry
+    ///
+    /// For multi-controller setups, also provide the default controller's
+    /// board_info and connection_manager for backward compatibility.
     ///
     /// # Arguments
     ///
-    /// * `board_info` - Hardware board information (wrapped in Arc internally)
+    /// * `registry` - Controller registry managing all controllers
     /// * `config` - Runtime configuration wrapped in Arc for sharing with the
     ///   shutdown handler, which needs access to shutdown settings
-    /// * `connection_manager` - Hardware connection manager wrapped in Arc for
-    ///   thread-safe access across request handlers (None in mock mode)
+    /// * `default_board_info` - Board info for the default/first controller
+    /// * `default_connection_manager` - Connection manager for the default/first controller
     pub fn new(
+        registry: Arc<ControllerRegistry>,
+        config: Arc<RuntimeConfig>,
+        default_board_info: BoardInfo,
+        default_connection_manager: Option<Arc<ConnectionManager>>,
+    ) -> Self {
+        let mock_mode = default_connection_manager.is_none();
+        Self {
+            registry,
+            config,
+            start_time: Instant::now(),
+            mock_mode,
+            board_info: Arc::new(default_board_info),
+            connection_manager: default_connection_manager,
+        }
+    }
+
+    /// Create application state for single-controller mode
+    ///
+    /// Creates a registry with a single "default" controller.
+    pub async fn single_controller(
         board_info: BoardInfo,
         config: Arc<RuntimeConfig>,
         connection_manager: Option<Arc<ConnectionManager>>,
     ) -> Self {
+        use crate::hardware::ControllerEntry;
+
+        let registry = ControllerRegistry::new();
+        let entry = ControllerEntry::new("default", board_info.clone(), connection_manager.clone());
+        registry.register(entry).await.expect("Failed to register default controller");
+
         Self {
-            board_info: Arc::new(board_info),
+            registry: Arc::new(registry),
             config,
-            connection_manager,
             start_time: Instant::now(),
+            mock_mode: connection_manager.is_none(),
+            board_info: Arc::new(board_info),
+            connection_manager,
         }
     }
 }
@@ -154,8 +192,21 @@ pub(crate) fn create_router(state: AppState) -> Router {
         )
         // System info endpoint
         .route("/api/v0/info", get(handlers::info::get_info))
-        // Manual reconnection endpoint
+        // Manual reconnection endpoint (legacy, use /api/v0/controller/{id}/reconnect instead)
         .route("/api/v0/reconnect", post(handlers::info::reconnect))
+        // Controller management endpoints
+        .route(
+            "/api/v0/controllers",
+            get(handlers::controllers::list_controllers),
+        )
+        .route(
+            "/api/v0/controller/{id}/info",
+            get(handlers::controllers::get_controller_info),
+        )
+        .route(
+            "/api/v0/controller/{id}/reconnect",
+            post(handlers::controllers::reconnect_controller),
+        )
         // Root endpoint
         .route("/", get(handlers::info::root))
         .layer(middleware_stack)
@@ -253,6 +304,15 @@ pub(crate) mod error {
                 openfan_core::OpenFanError::Hardware(msg) => Self::service_unavailable(msg),
                 openfan_core::OpenFanError::Serial(msg) => Self::service_unavailable(msg),
                 openfan_core::OpenFanError::Timeout(msg) => Self::service_unavailable(msg),
+                openfan_core::OpenFanError::ControllerNotFound(id) => {
+                    Self::new(StatusCode::NOT_FOUND, format!("Controller not found: {}", id))
+                }
+                openfan_core::OpenFanError::ControllerIdRequired => {
+                    Self::bad_request("Controller ID required")
+                }
+                openfan_core::OpenFanError::DuplicateControllerId(id) => {
+                    Self::bad_request(format!("Duplicate controller ID: {}", id))
+                }
                 _ => Self::internal_error(err.to_string()),
             }
         }
@@ -430,5 +490,34 @@ mod tests {
         assert!(api_error.message.contains("Reconnection failed"));
         assert!(api_error.message.contains("5 attempts"));
         assert!(api_error.message.contains("Device not found"));
+    }
+
+    #[test]
+    fn test_controller_not_found_error_conversion() {
+        let error = OpenFanError::ControllerNotFound("main".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::NOT_FOUND);
+        assert!(api_error.message.contains("Controller not found"));
+        assert!(api_error.message.contains("main"));
+    }
+
+    #[test]
+    fn test_controller_id_required_error_conversion() {
+        let error = OpenFanError::ControllerIdRequired;
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Controller ID required"));
+    }
+
+    #[test]
+    fn test_duplicate_controller_id_error_conversion() {
+        let error = OpenFanError::DuplicateControllerId("gpu".to_string());
+        let api_error: ApiError = error.into();
+
+        assert_eq!(api_error.status_code, StatusCode::BAD_REQUEST);
+        assert!(api_error.message.contains("Duplicate controller ID"));
+        assert!(api_error.message.contains("gpu"));
     }
 }

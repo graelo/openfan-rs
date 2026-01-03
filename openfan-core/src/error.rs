@@ -77,6 +77,18 @@ pub enum OpenFanError {
     #[error("Reconnection failed after {attempts} attempts: {reason}")]
     ReconnectionFailed { attempts: u32, reason: String },
 
+    /// Controller not found
+    #[error("Controller not found: {0}")]
+    ControllerNotFound(String),
+
+    /// Controller ID required but not provided
+    #[error("Controller ID required")]
+    ControllerIdRequired,
+
+    /// Duplicate controller ID in configuration
+    #[error("Duplicate controller ID: {0}")]
+    DuplicateControllerId(String),
+
     /// Generic error
     #[error("{0}")]
     Other(String),

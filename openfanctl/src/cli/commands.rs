@@ -27,6 +27,13 @@ pub struct Cli {
     #[arg(long)]
     pub config: Option<String>,
 
+    /// Controller ID for controller-specific commands
+    ///
+    /// Required for fan, profile, alias, curve, and CFM commands in multi-controller setups.
+    /// Zone commands are global and don't require this flag.
+    #[arg(short = 'c', long, global = true)]
+    pub controller: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -59,6 +66,15 @@ pub enum Commands {
     /// Check server connectivity and health
     Health,
 
+    /// List all controllers (multi-controller management)
+    Controllers,
+
+    /// Controller management commands
+    Controller {
+        #[command(subcommand)]
+        command: ControllerCommands,
+    },
+
     /// Show or manage CLI configuration
     Config {
         #[command(subcommand)]
@@ -83,7 +99,7 @@ pub enum Commands {
         command: AliasCommands,
     },
 
-    /// Zone management commands
+    /// Zone management commands (global, cross-controller)
     Zone {
         #[command(subcommand)]
         command: ZoneCommands,
@@ -106,6 +122,21 @@ pub enum Commands {
         /// Shell to generate completion for
         #[arg(value_enum)]
         shell: clap_complete::Shell,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ControllerCommands {
+    /// Get info for a specific controller
+    Info {
+        /// Controller ID
+        id: String,
+    },
+
+    /// Force reconnection for a controller
+    Reconnect {
+        /// Controller ID
+        id: String,
     },
 }
 
@@ -218,7 +249,10 @@ pub enum ZoneCommands {
         /// Zone name
         name: String,
 
-        /// Comma-separated port IDs
+        /// Comma-separated port specifications.
+        ///
+        /// Format: "controller:fan_id" or just "fan_id" (uses default controller).
+        /// Examples: "0,1,2" or "main:0,main:1,gpu:0"
         #[arg(short, long)]
         ports: String,
 
@@ -232,7 +266,10 @@ pub enum ZoneCommands {
         /// Zone name
         name: String,
 
-        /// Comma-separated port IDs
+        /// Comma-separated port specifications.
+        ///
+        /// Format: "controller:fan_id" or just "fan_id" (uses default controller).
+        /// Examples: "0,1,2" or "main:0,main:1,gpu:0"
         #[arg(short, long)]
         ports: String,
 
