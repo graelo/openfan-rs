@@ -5,7 +5,7 @@
 pub(crate) mod handlers;
 
 use crate::config::RuntimeConfig;
-use crate::hardware::{ConnectionManager, ControllerRegistry};
+use crate::controllers::{ConnectionManager, ControllerRegistry};
 use axum::{
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
@@ -73,7 +73,7 @@ impl AppState {
         config: Arc<RuntimeConfig>,
         connection_manager: Option<Arc<ConnectionManager>>,
     ) -> Self {
-        use crate::hardware::ControllerEntry;
+        use crate::controllers::ControllerEntry;
 
         let registry = ControllerRegistry::new();
         let entry = ControllerEntry::builder("default", board_info.clone())

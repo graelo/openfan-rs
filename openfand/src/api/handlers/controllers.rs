@@ -102,7 +102,7 @@ mod tests {
     use super::*;
     use crate::api::create_router;
     use crate::config::RuntimeConfig;
-    use crate::hardware::{ControllerEntry, ControllerRegistry};
+    use crate::controllers::{ControllerEntry, ControllerRegistry};
     use axum::{
         body::Body,
         http::{Request, StatusCode},
