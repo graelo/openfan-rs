@@ -57,7 +57,7 @@ pub(crate) async fn root() -> Result<Json<api::ApiResponse<Value>>, ApiError> {
 pub(crate) async fn get_info(
     State(state): State<AppState>,
 ) -> Result<Json<api::ApiResponse<api::InfoResponse>>, ApiError> {
-    use crate::hardware::ConnectionState;
+    use crate::controllers::ConnectionState;
 
     debug!("Request: GET /api/v0/info");
 

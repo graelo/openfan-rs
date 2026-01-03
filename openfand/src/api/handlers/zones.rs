@@ -891,7 +891,7 @@ mod multi_controller_tests {
 
     use crate::api::{create_router, AppState};
     use crate::config::RuntimeConfig;
-    use crate::hardware::{ControllerEntry, ControllerRegistry};
+    use crate::controllers::{ControllerEntry, ControllerRegistry};
 
     struct MultiControllerTestApp {
         router: Router,

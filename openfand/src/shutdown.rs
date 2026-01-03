@@ -4,7 +4,7 @@
 //! fans continue running at a safe speed when the daemon terminates.
 
 use crate::config::RuntimeConfig;
-use crate::hardware::ConnectionManager;
+use crate::controllers::ConnectionManager;
 use openfan_core::ControlMode;
 use std::sync::Arc;
 use tracing::{info, warn};

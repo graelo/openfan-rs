@@ -1,8 +1,11 @@
-//! Hardware abstraction layer for fan controller
+//! Controller lifecycle and multi-controller coordination
 //!
-//! Re-export the hardware interface from the `openfan_hardware` crate so
-//! consumers of `openfand` can access the hardware APIs without
-//! depending on the internal module layout.
+//! This module manages fan controller connections, including:
+//! - Connection lifecycle (connect, disconnect, reconnect state machine)
+//! - Multi-controller registry (register, lookup, list controllers)
+//! - Resilience features (exponential backoff, PWM state caching, heartbeat monitoring)
+//!
+//! Low-level hardware protocol is handled by the `openfan_hardware` crate.
 
 mod connection_manager;
 mod controller_registry;
@@ -14,7 +17,7 @@ pub use openfan_hardware::{FanController, SerialDriver};
 /// Type alias for the standard fan controller with default board
 pub type DefaultFanController = FanController<SerialDriver<openfan_core::DefaultBoard>>;
 
-/// Hardware initialization and connection utilities
+/// Controller initialization and connection utilities
 pub(crate) mod connection {
     use super::*;
     use openfan_core::{DefaultBoard, OpenFanError, Result};

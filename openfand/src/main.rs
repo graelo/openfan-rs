@@ -16,14 +16,14 @@
 
 mod api;
 mod config;
-mod hardware;
+mod controllers;
 mod shutdown;
 
 use anyhow::Result;
 use api::AppState;
 use clap::Parser;
 use config::RuntimeConfig;
-use hardware::{connection, ConnectionManager, ControllerEntry, ControllerRegistry};
+use controllers::{connection, ConnectionManager, ControllerEntry, ControllerRegistry};
 use openfan_core::{default_config_path, BoardInfo, BoardType};
 use std::path::PathBuf;
 use std::sync::Arc;
