@@ -3,7 +3,7 @@
 //! Provides table and JSON formatting with colors.
 
 use anyhow::Result;
-use colored::*;
+use colored::Colorize;
 use openfan_core::api::{
     AliasResponse, CfmListResponse, FanStatusResponse, InfoResponse, ProfileResponse,
 };
