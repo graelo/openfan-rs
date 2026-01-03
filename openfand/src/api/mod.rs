@@ -29,11 +29,9 @@ pub(crate) struct AppState {
     /// Server start time for uptime calculation
     pub start_time: Instant,
 
-    // Legacy fields for single-controller backward compatibility
-    // TODO: Remove these once all handlers are updated for multi-controller
-    /// Legacy board_info for the default controller
+    /// Board info for the default controller (used by system info and zone handlers)
     pub board_info: Arc<BoardInfo>,
-    /// Legacy connection_manager for the default controller
+    /// Connection manager for the default controller (used by system info and zone handlers)
     pub connection_manager: Option<Arc<ConnectionManager>>,
 }
 

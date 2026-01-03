@@ -5,23 +5,20 @@
 
 use openfan_core::{
     config::{AliasData, CfmMappingData, ProfileData, ThermalCurveData},
-    BoardInfo, OpenFanError, Result,
+    OpenFanError, Result,
 };
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tokio::sync::RwLock;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Per-controller mutable data storage
 ///
 /// Manages aliases, profiles, thermal curves, and CFM mappings for a single
 /// controller. Each controller has its own data directory.
 pub struct ControllerData {
-    /// Controller ID
+    /// Controller ID (used for logging)
     id: String,
-
-    /// Board information for validation
-    board_info: BoardInfo,
 
     /// Path to this controller's data directory
     data_path: PathBuf,
@@ -43,11 +40,7 @@ impl ControllerData {
     /// Load or create controller data from a directory
     ///
     /// Creates the directory structure if it doesn't exist.
-    pub async fn load(
-        id: impl Into<String>,
-        board_info: BoardInfo,
-        base_data_dir: &Path,
-    ) -> Result<Self> {
+    pub async fn load(id: impl Into<String>, base_data_dir: &Path) -> Result<Self> {
         let id = id.into();
         let data_path = base_data_dir.join("controllers").join(&id);
 
@@ -77,28 +70,12 @@ impl ControllerData {
 
         Ok(Self {
             id,
-            board_info,
             data_path,
             aliases: RwLock::new(aliases),
             profiles: RwLock::new(profiles),
             thermal_curves: RwLock::new(thermal_curves),
             cfm_mappings: RwLock::new(cfm_mappings),
         })
-    }
-
-    /// Get the controller ID
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    /// Get the board info for this controller
-    pub fn board_info(&self) -> &BoardInfo {
-        &self.board_info
-    }
-
-    /// Get the data directory path
-    pub fn data_path(&self) -> &Path {
-        &self.data_path
     }
 
     /// Ensure data directory exists and is writable
@@ -350,130 +327,26 @@ impl ControllerData {
         );
         Ok(())
     }
-
-    // =========================================================================
-    // Board validation
-    // =========================================================================
-
-    /// Validate data against the controller's board
-    ///
-    /// Checks that profiles, aliases, and CFM mappings are compatible with the board's fan count.
-    pub async fn validate(&self) -> Result<()> {
-        let profiles = self.profiles.read().await;
-        let aliases = self.aliases.read().await;
-        let cfm_mappings = self.cfm_mappings.read().await;
-
-        // Validate profiles
-        for (name, profile) in &profiles.profiles {
-            if profile.values.len() > self.board_info.fan_count {
-                return Err(OpenFanError::Config(format!(
-                    "Controller '{}': Profile '{}' has {} values but board '{}' only supports {} fans",
-                    self.id,
-                    name,
-                    profile.values.len(),
-                    self.board_info.name,
-                    self.board_info.fan_count
-                )));
-            }
-            if profile.values.len() < self.board_info.fan_count {
-                warn!(
-                    "Controller '{}': Profile '{}' has {} values but board has {} fans (will use defaults for extra fans)",
-                    self.id, name, profile.values.len(), self.board_info.fan_count
-                );
-            }
-        }
-
-        // Validate aliases
-        if let Some(&max_id) = aliases.aliases.keys().max() {
-            if max_id >= self.board_info.fan_count as u8 {
-                return Err(OpenFanError::Config(format!(
-                    "Controller '{}': Alias exists for fan {} but board '{}' only has {} fans (max ID: {})",
-                    self.id,
-                    max_id,
-                    self.board_info.name,
-                    self.board_info.fan_count,
-                    self.board_info.fan_count - 1
-                )));
-            }
-        }
-
-        // Validate CFM mappings
-        if let Some(&max_port) = cfm_mappings.mappings.keys().max() {
-            if max_port >= self.board_info.fan_count as u8 {
-                return Err(OpenFanError::Config(format!(
-                    "Controller '{}': CFM mapping exists for port {} but board '{}' only has {} fans (max ID: {})",
-                    self.id,
-                    max_port,
-                    self.board_info.name,
-                    self.board_info.fan_count,
-                    self.board_info.fan_count - 1
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Fill missing defaults for the controller's board
-    ///
-    /// Ensures aliases exist for all fans on the board.
-    pub async fn fill_defaults(&self) -> Result<()> {
-        let mut modified = false;
-
-        {
-            let mut aliases = self.aliases.write().await;
-            for i in 0..self.board_info.fan_count as u8 {
-                if !aliases.aliases.contains_key(&i) {
-                    debug!(
-                        "Controller '{}': Adding missing alias for fan {}",
-                        self.id, i
-                    );
-                    aliases.set(i, format!("Fan #{}", i + 1));
-                    modified = true;
-                }
-            }
-        }
-
-        if modified {
-            self.save_aliases().await?;
-            info!(
-                "Controller '{}': Added missing default aliases for {}",
-                self.id, self.board_info.name
-            );
-        }
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openfan_core::board::BoardType;
     use tempfile::TempDir;
-
-    fn mock_board_info() -> BoardInfo {
-        BoardType::OpenFanStandard.to_board_info()
-    }
 
     #[tokio::test]
     async fn test_controller_data_load_creates_directory() {
         let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let _data = ControllerData::load("main", temp_dir.path()).await.unwrap();
 
         // Check directory was created
         assert!(temp_dir.path().join("controllers").join("main").exists());
-        assert_eq!(data.id(), "main");
     }
 
     #[tokio::test]
     async fn test_controller_data_load_creates_default_files() {
         let temp_dir = TempDir::new().unwrap();
-        let _ = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let _ = ControllerData::load("main", temp_dir.path()).await.unwrap();
 
         let controller_dir = temp_dir.path().join("controllers").join("main");
         assert!(controller_dir.join("aliases.toml").exists());
@@ -485,9 +358,7 @@ mod tests {
     #[tokio::test]
     async fn test_controller_data_alias_operations() {
         let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let data = ControllerData::load("main", temp_dir.path()).await.unwrap();
 
         // Set an alias
         {
@@ -499,9 +370,7 @@ mod tests {
         data.save_aliases().await.unwrap();
 
         // Reload and verify
-        let data2 = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let data2 = ControllerData::load("main", temp_dir.path()).await.unwrap();
         let aliases = data2.aliases().await;
         assert_eq!(aliases.get(0), "CPU Fan");
     }
@@ -509,9 +378,7 @@ mod tests {
     #[tokio::test]
     async fn test_controller_data_profile_operations() {
         let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let data = ControllerData::load("main", temp_dir.path()).await.unwrap();
 
         // Should have default profiles
         let profiles = data.profiles().await;
@@ -520,78 +387,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_controller_data_validate_valid() {
-        let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
-
-        // Valid aliases (within 10 fan limit)
-        {
-            let mut aliases = data.aliases_mut().await;
-            aliases.set(0, "Fan 1".to_string());
-            aliases.set(9, "Fan 10".to_string());
-        }
-
-        assert!(data.validate().await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_controller_data_validate_invalid_alias() {
-        let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
-
-        // Invalid alias (fan 10 doesn't exist on 10-fan board, max ID is 9)
-        {
-            let mut aliases = data.aliases_mut().await;
-            aliases.set(10, "Invalid Fan".to_string());
-        }
-
-        let result = data.validate().await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Alias exists for fan 10"));
-    }
-
-    #[tokio::test]
-    async fn test_controller_data_fill_defaults() {
-        let temp_dir = TempDir::new().unwrap();
-        let data = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
-
-        // Clear aliases
-        {
-            let mut aliases = data.aliases_mut().await;
-            aliases.aliases.clear();
-        }
-        data.save_aliases().await.unwrap();
-
-        // Fill defaults
-        data.fill_defaults().await.unwrap();
-
-        // Should have 10 aliases for standard board
-        let aliases = data.aliases().await;
-        assert_eq!(aliases.aliases.len(), 10);
-        assert_eq!(aliases.get(0), "Fan #1");
-        assert_eq!(aliases.get(9), "Fan #10");
-    }
-
-    #[tokio::test]
     async fn test_multiple_controllers() {
         let temp_dir = TempDir::new().unwrap();
 
         // Create two controllers
-        let main = ControllerData::load("main", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
-        let gpu = ControllerData::load("gpu", mock_board_info(), temp_dir.path())
-            .await
-            .unwrap();
+        let main = ControllerData::load("main", temp_dir.path()).await.unwrap();
+        let gpu = ControllerData::load("gpu", temp_dir.path()).await.unwrap();
 
         // Set different aliases
         {

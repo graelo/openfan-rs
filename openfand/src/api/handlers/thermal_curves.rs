@@ -82,18 +82,15 @@ pub(crate) async fn list_controller_curves(
         controller_id
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let curves = controller_data.thermal_curves().await;
     let curve_map = curves.curves.clone();
@@ -123,8 +120,8 @@ pub(crate) async fn add_controller_curve(
         controller_id
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
@@ -144,10 +141,7 @@ pub(crate) async fn add_controller_curve(
     }
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Add curve
     {
@@ -195,18 +189,15 @@ pub(crate) async fn get_controller_curve(
         controller_id, name
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let curves = controller_data.thermal_curves().await;
 
@@ -236,8 +227,8 @@ pub(crate) async fn update_controller_curve(
         controller_id, name
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
@@ -249,10 +240,7 @@ pub(crate) async fn update_controller_curve(
     }
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Update curve
     {
@@ -306,18 +294,15 @@ pub(crate) async fn delete_controller_curve(
         controller_id, name
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Remove curve
     {
@@ -358,18 +343,15 @@ pub(crate) async fn interpolate_controller_curve(
         controller_id, name, params.temp
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let curves = controller_data.thermal_curves().await;
 

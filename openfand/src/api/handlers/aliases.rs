@@ -58,18 +58,15 @@ pub(crate) async fn get_all_controller_aliases(
         controller_id
     );
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let alias_data = controller_data.aliases().await;
     let aliases = alias_data.aliases.clone();
@@ -110,10 +107,7 @@ pub(crate) async fn get_controller_alias(
     entry.board_info().validate_fan_id(fan_index)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let alias_data = controller_data.aliases().await;
     let alias = alias_data.get(fan_index);
@@ -172,10 +166,7 @@ pub(crate) async fn set_controller_alias(
     }
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Update configuration
     {
@@ -228,10 +219,7 @@ pub(crate) async fn delete_controller_alias(
     entry.board_info().validate_fan_id(fan_index)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Remove alias from configuration
     {

@@ -123,40 +123,10 @@ impl ControllerRegistry {
             .ok_or_else(|| OpenFanError::ControllerNotFound(id.to_string()))
     }
 
-    /// List all controller IDs
-    pub async fn ids(&self) -> Vec<String> {
-        let controllers = self.controllers.read().await;
-        controllers.keys().cloned().collect()
-    }
-
     /// List all controller entries
     pub async fn list(&self) -> Vec<Arc<ControllerEntry>> {
         let controllers = self.controllers.read().await;
         controllers.values().cloned().collect()
-    }
-
-    /// Get the number of registered controllers
-    pub async fn len(&self) -> usize {
-        let controllers = self.controllers.read().await;
-        controllers.len()
-    }
-
-    /// Check if the registry is empty
-    pub async fn is_empty(&self) -> bool {
-        let controllers = self.controllers.read().await;
-        controllers.is_empty()
-    }
-
-    /// Check if any controller is in mock mode
-    pub async fn has_mock_controllers(&self) -> bool {
-        let controllers = self.controllers.read().await;
-        controllers.values().any(|e| e.is_mock())
-    }
-
-    /// Check if all controllers are in mock mode
-    pub async fn all_mock(&self) -> bool {
-        let controllers = self.controllers.read().await;
-        controllers.values().all(|e| e.is_mock())
     }
 }
 
@@ -178,8 +148,7 @@ mod tests {
     #[tokio::test]
     async fn test_registry_new_is_empty() {
         let registry = ControllerRegistry::new();
-        assert!(registry.is_empty().await);
-        assert_eq!(registry.len().await, 0);
+        assert!(registry.list().await.is_empty());
     }
 
     #[tokio::test]
@@ -189,8 +158,7 @@ mod tests {
 
         registry.register(entry).await.unwrap();
 
-        assert!(!registry.is_empty().await);
-        assert_eq!(registry.len().await, 1);
+        assert_eq!(registry.list().await.len(), 1);
     }
 
     #[tokio::test]
@@ -217,8 +185,8 @@ mod tests {
         registry.register(entry).await.unwrap();
 
         let retrieved = registry.get("main").await.unwrap();
-        assert_eq!(retrieved.id, "main");
-        assert_eq!(retrieved.description, Some("Main chassis".to_string()));
+        assert_eq!(retrieved.id(), "main");
+        assert_eq!(retrieved.description(), Some("Main chassis"));
     }
 
     #[tokio::test]
@@ -253,41 +221,9 @@ mod tests {
         let list = registry.list().await;
         assert_eq!(list.len(), 2);
 
-        let ids: Vec<_> = list.iter().map(|e| e.id.as_str()).collect();
+        let ids: Vec<_> = list.iter().map(|e| e.id()).collect();
         assert!(ids.contains(&"main"));
         assert!(ids.contains(&"gpu"));
-    }
-
-    #[tokio::test]
-    async fn test_ids() {
-        let registry = ControllerRegistry::new();
-        registry
-            .register(ControllerEntry::new("main", mock_board_info(), None))
-            .await
-            .unwrap();
-        registry
-            .register(ControllerEntry::new("gpu", mock_board_info(), None))
-            .await
-            .unwrap();
-
-        let ids = registry.ids().await;
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&"main".to_string()));
-        assert!(ids.contains(&"gpu".to_string()));
-    }
-
-    #[tokio::test]
-    async fn test_mock_mode_detection() {
-        let registry = ControllerRegistry::new();
-
-        // All mock controllers
-        registry
-            .register(ControllerEntry::new("main", mock_board_info(), None))
-            .await
-            .unwrap();
-
-        assert!(registry.has_mock_controllers().await);
-        assert!(registry.all_mock().await);
     }
 
     #[tokio::test]

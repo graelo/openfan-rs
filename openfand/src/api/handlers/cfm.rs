@@ -22,18 +22,15 @@ pub(crate) async fn list_controller_cfm(
 ) -> Result<Json<api::ApiResponse<api::CfmListResponse>>, ApiError> {
     debug!("Request: GET /api/v0/controller/{}/cfm/list", controller_id);
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let cfm_data = controller_data.cfm_mappings().await;
     let mappings = cfm_data.mappings.clone();
@@ -78,10 +75,7 @@ pub(crate) async fn get_controller_cfm(
     entry.board_info().validate_fan_id(port_id)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let cfm_data = controller_data.cfm_mappings().await;
 
@@ -133,10 +127,7 @@ pub(crate) async fn set_controller_cfm(
     }
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Update configuration
     {
@@ -189,10 +180,7 @@ pub(crate) async fn delete_controller_cfm(
     entry.board_info().validate_fan_id(port_id)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Check if mapping exists
     let existed = {

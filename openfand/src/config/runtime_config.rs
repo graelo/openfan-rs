@@ -31,8 +31,7 @@ pub(crate) struct RuntimeConfig {
     /// Key is controller ID, value is the controller's data
     controller_data: RwLock<HashMap<String, Arc<ControllerData>>>,
 
-    // Legacy global data for backward compatibility
-    // TODO: Remove these once all handlers use per-controller data
+    // Global data (used by default controller and legacy single-controller mode)
     /// Alias data with independent locking
     aliases: RwLock<AliasData>,
 
@@ -41,9 +40,6 @@ pub(crate) struct RuntimeConfig {
 
     /// Zone data with independent locking (zones are cross-controller)
     zones: RwLock<ZoneData>,
-
-    /// Thermal curve data with independent locking
-    thermal_curves: RwLock<ThermalCurveData>,
 
     /// CFM mapping data with independent locking
     cfm_mappings: RwLock<CfmMappingData>,
@@ -68,15 +64,16 @@ impl RuntimeConfig {
         let aliases = Self::load_aliases(&static_config.data_dir).await?;
         let profiles = Self::load_profiles(&static_config.data_dir).await?;
         let zones = Self::load_zones(&static_config.data_dir).await?;
-        let thermal_curves = Self::load_thermal_curves(&static_config.data_dir).await?;
         let cfm_mappings = Self::load_cfm_mappings(&static_config.data_dir).await?;
 
+        // Ensure thermal_curves.toml exists (for per-controller data compatibility)
+        Self::ensure_thermal_curves_file(&static_config.data_dir).await?;
+
         info!(
-            "Configuration loaded: {} profiles, {} aliases, {} zones, {} thermal curves, {} CFM mappings",
+            "Configuration loaded: {} profiles, {} aliases, {} zones, {} CFM mappings",
             profiles.profiles.len(),
             aliases.aliases.len(),
             zones.zones.len(),
-            thermal_curves.curves.len(),
             cfm_mappings.len()
         );
 
@@ -86,7 +83,6 @@ impl RuntimeConfig {
             aliases: RwLock::new(aliases),
             profiles: RwLock::new(profiles),
             zones: RwLock::new(zones),
-            thermal_curves: RwLock::new(thermal_curves),
             cfm_mappings: RwLock::new(cfm_mappings),
         })
     }
@@ -215,24 +211,20 @@ impl RuntimeConfig {
             .map_err(|e| OpenFanError::Config(format!("Failed to parse zones file: {}", e)))
     }
 
-    /// Load thermal curves from TOML file, creating with defaults if missing.
-    async fn load_thermal_curves(data_dir: &Path) -> Result<ThermalCurveData> {
+    /// Ensure thermal curves file exists with defaults (for backward compatibility).
+    ///
+    /// Thermal curves are now per-controller via ControllerData, but we still
+    /// create the global file for migration purposes.
+    async fn ensure_thermal_curves_file(data_dir: &Path) -> Result<()> {
         let path = data_dir.join("thermal_curves.toml");
 
         if !path.exists() {
             debug!("Thermal curves file not found. Creating with defaults.");
             let data = ThermalCurveData::with_defaults();
             Self::write_toml(&path, &data.to_toml().unwrap()).await?;
-            return Ok(data);
         }
 
-        let content = fs::read_to_string(&path).await.map_err(|e| {
-            OpenFanError::Config(format!("Failed to read thermal curves file: {}", e))
-        })?;
-
-        ThermalCurveData::from_toml(&content).map_err(|e| {
-            OpenFanError::Config(format!("Failed to parse thermal curves file: {}", e))
-        })
+        Ok(())
     }
 
     /// Load CFM mappings from TOML file, creating empty if missing.
@@ -295,12 +287,7 @@ impl RuntimeConfig {
     /// # Arguments
     ///
     /// * `controller_id` - Unique identifier for the controller
-    /// * `board_info` - Board information for validation (required for new controllers)
-    pub async fn controller_data(
-        &self,
-        controller_id: &str,
-        board_info: &BoardInfo,
-    ) -> Result<Arc<ControllerData>> {
+    pub async fn controller_data(&self, controller_id: &str) -> Result<Arc<ControllerData>> {
         // First try to get existing data with read lock
         {
             let data = self.controller_data.read().await;
@@ -310,7 +297,7 @@ impl RuntimeConfig {
         }
 
         // Need to create new controller data
-        let cd = ControllerData::load(controller_id, board_info.clone(), self.data_dir()).await?;
+        let cd = ControllerData::load(controller_id, self.data_dir()).await?;
         let cd = Arc::new(cd);
 
         // Store in cache
@@ -326,51 +313,8 @@ impl RuntimeConfig {
         Ok(cd)
     }
 
-    /// Get controller data if it exists, without creating it.
-    ///
-    /// Returns None if the controller data hasn't been loaded yet.
-    pub async fn get_controller_data(&self, controller_id: &str) -> Option<Arc<ControllerData>> {
-        let data = self.controller_data.read().await;
-        data.get(controller_id).cloned()
-    }
-
-    /// Check if controller data exists for the given controller ID.
-    pub async fn has_controller_data(&self, controller_id: &str) -> bool {
-        let data = self.controller_data.read().await;
-        data.contains_key(controller_id)
-    }
-
     // =========================================================================
-    // Alias access and modification (legacy global)
-    // =========================================================================
-
-    /// Get read lock on alias data.
-    pub async fn aliases(&self) -> tokio::sync::RwLockReadGuard<'_, AliasData> {
-        self.aliases.read().await
-    }
-
-    /// Get write lock on alias data.
-    pub async fn aliases_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, AliasData> {
-        self.aliases.write().await
-    }
-
-    /// Save alias data to disk.
-    pub async fn save_aliases(&self) -> Result<()> {
-        let aliases = self.aliases.read().await;
-        let path = self.static_config.data_dir.join("aliases.toml");
-
-        let content = aliases
-            .to_toml()
-            .map_err(|e| OpenFanError::Config(format!("Failed to serialize aliases: {}", e)))?;
-
-        Self::write_toml(&path, &content).await?;
-
-        debug!("Saved aliases to {}", path.display());
-        Ok(())
-    }
-
-    // =========================================================================
-    // Profile access and modification
+    // Profile access (used by shutdown handler)
     // =========================================================================
 
     /// Get read lock on profile data.
@@ -378,28 +322,8 @@ impl RuntimeConfig {
         self.profiles.read().await
     }
 
-    /// Get write lock on profile data.
-    pub async fn profiles_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, ProfileData> {
-        self.profiles.write().await
-    }
-
-    /// Save profile data to disk.
-    pub async fn save_profiles(&self) -> Result<()> {
-        let profiles = self.profiles.read().await;
-        let path = self.static_config.data_dir.join("profiles.toml");
-
-        let content = profiles
-            .to_toml()
-            .map_err(|e| OpenFanError::Config(format!("Failed to serialize profiles: {}", e)))?;
-
-        Self::write_toml(&path, &content).await?;
-
-        debug!("Saved profiles to {}", path.display());
-        Ok(())
-    }
-
     // =========================================================================
-    // Zone access and modification
+    // Zone access and modification (zones are global, cross-controller)
     // =========================================================================
 
     /// Get read lock on zone data.
@@ -428,60 +352,21 @@ impl RuntimeConfig {
     }
 
     // =========================================================================
-    // Thermal curve access and modification
+    // Internal save methods
     // =========================================================================
 
-    /// Get read lock on thermal curve data.
-    pub async fn thermal_curves(&self) -> tokio::sync::RwLockReadGuard<'_, ThermalCurveData> {
-        self.thermal_curves.read().await
-    }
+    /// Save alias data to disk (used internally by fill_defaults_for_board).
+    async fn save_aliases(&self) -> Result<()> {
+        let aliases = self.aliases.read().await;
+        let path = self.static_config.data_dir.join("aliases.toml");
 
-    /// Get write lock on thermal curve data.
-    pub async fn thermal_curves_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, ThermalCurveData> {
-        self.thermal_curves.write().await
-    }
-
-    /// Save thermal curve data to disk.
-    pub async fn save_thermal_curves(&self) -> Result<()> {
-        let curves = self.thermal_curves.read().await;
-        let path = self.static_config.data_dir.join("thermal_curves.toml");
-
-        let content = curves.to_toml().map_err(|e| {
-            OpenFanError::Config(format!("Failed to serialize thermal curves: {}", e))
-        })?;
+        let content = aliases
+            .to_toml()
+            .map_err(|e| OpenFanError::Config(format!("Failed to serialize aliases: {}", e)))?;
 
         Self::write_toml(&path, &content).await?;
 
-        debug!("Saved thermal curves to {}", path.display());
-        Ok(())
-    }
-
-    // =========================================================================
-    // CFM mapping access and modification
-    // =========================================================================
-
-    /// Get read lock on CFM mapping data.
-    pub async fn cfm_mappings(&self) -> tokio::sync::RwLockReadGuard<'_, CfmMappingData> {
-        self.cfm_mappings.read().await
-    }
-
-    /// Get write lock on CFM mapping data.
-    pub async fn cfm_mappings_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, CfmMappingData> {
-        self.cfm_mappings.write().await
-    }
-
-    /// Save CFM mapping data to disk.
-    pub async fn save_cfm_mappings(&self) -> Result<()> {
-        let mappings = self.cfm_mappings.read().await;
-        let path = self.static_config.data_dir.join("cfm_mappings.toml");
-
-        let content = mappings.to_toml().map_err(|e| {
-            OpenFanError::Config(format!("Failed to serialize CFM mappings: {}", e))
-        })?;
-
-        Self::write_toml(&path, &content).await?;
-
-        debug!("Saved CFM mappings to {}", path.display());
+        debug!("Saved aliases to {}", path.display());
         Ok(())
     }
 
@@ -628,63 +513,6 @@ mod tests {
         assert!(profiles.contains("50% PWM"));
         assert!(profiles.contains("100% PWM"));
         assert!(profiles.contains("1000 RPM"));
-
-        // Should have default thermal curves
-        let curves = config.thermal_curves().await;
-        assert!(curves.contains("Balanced"));
-        assert!(curves.contains("Silent"));
-        assert!(curves.contains("Aggressive"));
-    }
-
-    #[tokio::test]
-    async fn test_runtime_config_alias_operations() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Modify alias
-        {
-            let mut aliases = config.aliases_mut().await;
-            aliases.set(0, "CPU Intake".to_string());
-        }
-
-        // Save
-        config.save_aliases().await.unwrap();
-
-        // Reload and verify
-        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
-        let aliases = config2.aliases().await;
-        assert_eq!(aliases.get(0), "CPU Intake");
-    }
-
-    #[tokio::test]
-    async fn test_runtime_config_profile_operations() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Add a profile
-        {
-            let mut profiles = config.profiles_mut().await;
-            profiles.insert(
-                "Custom".to_string(),
-                openfan_core::FanProfile::new(
-                    openfan_core::ControlMode::Pwm,
-                    vec![42; openfan_core::board::MAX_FANS],
-                ),
-            );
-        }
-
-        // Save
-        config.save_profiles().await.unwrap();
-
-        // Reload and verify
-        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
-        let profiles = config2.profiles().await;
-        assert!(profiles.contains("Custom"));
-        assert_eq!(profiles.get("Custom").unwrap().values[0], 42);
     }
 
     #[tokio::test]
@@ -725,87 +553,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_runtime_config_thermal_curve_operations() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Should have default curves
-        {
-            let curves = config.thermal_curves().await;
-            assert!(curves.contains("Balanced"));
-            assert!(curves.contains("Silent"));
-            assert!(curves.contains("Aggressive"));
-        }
-
-        // Add a custom curve
-        {
-            let mut curves = config.thermal_curves_mut().await;
-            curves.insert(
-                "Custom".to_string(),
-                openfan_core::ThermalCurve::with_description(
-                    "Custom",
-                    vec![
-                        openfan_core::CurvePoint::new(25.0, 20),
-                        openfan_core::CurvePoint::new(60.0, 60),
-                        openfan_core::CurvePoint::new(80.0, 100),
-                    ],
-                    "Custom test curve",
-                ),
-            );
-        }
-
-        // Save
-        config.save_thermal_curves().await.unwrap();
-
-        // Reload and verify
-        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
-        let curves = config2.thermal_curves().await;
-        assert!(curves.contains("Custom"));
-        let custom = curves.get("Custom").unwrap();
-        assert_eq!(custom.points.len(), 3);
-        assert_eq!(custom.description, Some("Custom test curve".to_string()));
-
-        // Test interpolation
-        assert_eq!(custom.interpolate(25.0), 20);
-        assert_eq!(custom.interpolate(80.0), 100);
-    }
-
-    #[tokio::test]
-    async fn test_runtime_config_cfm_mapping_operations() {
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Should start empty
-        {
-            let cfm = config.cfm_mappings().await;
-            assert!(cfm.is_empty());
-        }
-
-        // Add CFM mappings
-        {
-            let mut cfm = config.cfm_mappings_mut().await;
-            cfm.set(0, 45.0);
-            cfm.set(1, 60.0);
-        }
-
-        // Save
-        config.save_cfm_mappings().await.unwrap();
-
-        // Reload and verify
-        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
-        let cfm = config2.cfm_mappings().await;
-        assert_eq!(cfm.len(), 2);
-        assert_eq!(cfm.get(0), Some(45.0));
-        assert_eq!(cfm.get(1), Some(60.0));
-        assert_eq!(cfm.calculate_cfm(0, 50), Some(22.5));
-    }
-
-    #[tokio::test]
-    async fn test_validate_for_board_valid_config() {
+    async fn test_validate_for_board_valid_zone() {
         use openfan_core::board::BoardType;
         use openfan_core::ZoneFan;
 
@@ -816,12 +564,7 @@ mod tests {
         // Standard board has 10 fans
         let board = BoardType::OpenFanStandard.to_board_info();
 
-        // Add valid config items (all within 10-fan limit)
-        {
-            let mut aliases = config.aliases_mut().await;
-            aliases.set(0, "Fan 1".to_string());
-            aliases.set(9, "Fan 10".to_string());
-        }
+        // Add valid zone (all fans within 10-fan limit)
         {
             let fans = vec![
                 ZoneFan::new("default", 0),
@@ -834,40 +577,9 @@ mod tests {
                 openfan_core::Zone::new("intake", fans),
             );
         }
-        {
-            let mut cfm = config.cfm_mappings_mut().await;
-            cfm.set(0, 45.0);
-            cfm.set(9, 60.0);
-        }
 
         // Validation should pass
         assert!(config.validate_for_board(&board).await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_validate_for_board_invalid_alias() {
-        use openfan_core::board::BoardType;
-
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Standard board has 10 fans (IDs 0-9)
-        let board = BoardType::OpenFanStandard.to_board_info();
-
-        // Add alias for fan 10 (invalid - max is 9)
-        {
-            let mut aliases = config.aliases_mut().await;
-            aliases.set(10, "Invalid Fan".to_string());
-        }
-
-        // Validation should fail
-        let result = config.validate_for_board(&board).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Alias exists for fan 10"));
     }
 
     #[tokio::test]
@@ -899,99 +611,5 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Zone 'invalid' references fan 15"));
-    }
-
-    #[tokio::test]
-    async fn test_validate_for_board_invalid_cfm() {
-        use openfan_core::board::BoardType;
-
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Standard board has 10 fans (IDs 0-9)
-        let board = BoardType::OpenFanStandard.to_board_info();
-
-        // Add CFM mapping for port 20 (invalid)
-        {
-            let mut cfm = config.cfm_mappings_mut().await;
-            cfm.set(20, 45.0);
-        }
-
-        // Validation should fail
-        let result = config.validate_for_board(&board).await;
-        assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("CFM mapping exists for port 20"));
-    }
-
-    #[tokio::test]
-    async fn test_fill_defaults_for_board() {
-        use openfan_core::board::BoardType;
-
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        // Standard board has 10 fans
-        let board = BoardType::OpenFanStandard.to_board_info();
-
-        // Clear any existing aliases first
-        {
-            let mut aliases = config.aliases_mut().await;
-            aliases.aliases.clear();
-        }
-        config.save_aliases().await.unwrap();
-
-        // Now aliases should be empty
-        {
-            let aliases = config.aliases().await;
-            assert!(aliases.aliases.is_empty());
-        }
-
-        // Fill defaults
-        config.fill_defaults_for_board(&board).await.unwrap();
-
-        // Should now have aliases for all 10 fans
-        {
-            let aliases = config.aliases().await;
-            assert_eq!(aliases.aliases.len(), 10);
-            assert_eq!(aliases.get(0), "Fan #1");
-            assert_eq!(aliases.get(9), "Fan #10");
-        }
-
-        // Reload and verify persistence
-        let config2 = RuntimeConfig::load(&config_path).await.unwrap();
-        let aliases = config2.aliases().await;
-        assert_eq!(aliases.aliases.len(), 10);
-    }
-
-    #[tokio::test]
-    async fn test_fill_defaults_preserves_existing() {
-        use openfan_core::board::BoardType;
-
-        let temp_dir = TempDir::new().unwrap();
-        let config_path = create_test_config(temp_dir.path()).await;
-        let config = RuntimeConfig::load(&config_path).await.unwrap();
-
-        let board = BoardType::OpenFanStandard.to_board_info();
-
-        // Set a custom alias for fan 0
-        {
-            let mut aliases = config.aliases_mut().await;
-            aliases.set(0, "CPU Fan".to_string());
-        }
-        config.save_aliases().await.unwrap();
-
-        // Fill defaults
-        config.fill_defaults_for_board(&board).await.unwrap();
-
-        // Fan 0 should keep custom name, others get defaults
-        let aliases = config.aliases().await;
-        assert_eq!(aliases.get(0), "CPU Fan");
-        assert_eq!(aliases.get(1), "Fan #2");
-        assert_eq!(aliases.get(9), "Fan #10");
     }
 }

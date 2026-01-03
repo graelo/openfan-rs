@@ -42,18 +42,15 @@ pub(crate) async fn list_controller_profiles(
         controller_id
     );
 
-    // Get controller from registry to get board_info
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     let profiles = controller_data.profiles().await;
     let fan_profiles = profiles.profiles.clone();
@@ -135,10 +132,7 @@ pub(crate) async fn add_controller_profile(
     }
 
     // Get controller data and add profile
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, board_info)
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     {
         let mut profiles = controller_data.profiles_mut().await;
@@ -179,18 +173,15 @@ pub(crate) async fn remove_controller_profile(
         return api_fail!("Name cannot be empty!");
     };
 
-    // Get controller from registry
-    let entry = state
+    // Validate controller exists in registry
+    let _ = state
         .registry
         .get_or_err(&controller_id)
         .await
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Remove from configuration
     let removed = {
@@ -247,10 +238,7 @@ pub(crate) async fn set_controller_profile(
         .map_err(ApiError::from)?;
 
     // Get controller data
-    let controller_data = state
-        .config
-        .controller_data(&controller_id, entry.board_info())
-        .await?;
+    let controller_data = state.config.controller_data(&controller_id).await?;
 
     // Get profile from configuration
     let profile = {

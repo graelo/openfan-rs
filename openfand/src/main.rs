@@ -234,7 +234,7 @@ async fn main() -> Result<()> {
 
     info!(
         "Controller registry initialized: {} controller(s)",
-        registry.len().await
+        registry.list().await.len()
     );
 
     // Step 3: Validate global zones against all controllers
