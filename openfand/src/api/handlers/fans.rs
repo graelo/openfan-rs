@@ -324,8 +324,6 @@ pub(crate) async fn set_controller_fan_rpm(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_target_rpm_validation_valid_range() {
         use openfan_core::BoardType;
@@ -396,33 +394,6 @@ mod tests {
     }
 
     #[test]
-    fn test_fan_control_query_deserialization() {
-        // Test that FanControlQuery can be deserialized from query params
-        let json_with_value = r#"{"value": 50.0}"#;
-        let query: FanControlQuery = serde_json::from_str(json_with_value).unwrap();
-        assert_eq!(query.value, Some(50.0));
-
-        let json_without_value = r#"{}"#;
-        let query: FanControlQuery = serde_json::from_str(json_without_value).unwrap();
-        assert!(query.value.is_none());
-    }
-
-    #[test]
-    fn test_fan_control_query_with_float_value() {
-        let json = r#"{"value": 75.5}"#;
-        let query: FanControlQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.value, Some(75.5));
-    }
-
-    #[test]
-    fn test_fan_control_query_with_integer_value() {
-        // Integers should parse as f64
-        let json = r#"{"value": 100}"#;
-        let query: FanControlQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.value, Some(100.0));
-    }
-
-    #[test]
     fn test_fan_id_board_validation() {
         use openfan_core::BoardType;
 
@@ -440,22 +411,6 @@ mod tests {
         // Invalid fan ID (10 and above)
         assert!(board_info.validate_fan_id(10).is_err());
         assert!(board_info.validate_fan_id(255).is_err());
-    }
-
-    #[test]
-    fn test_fan_control_query_negative_value() {
-        let json = r#"{"value": -50.0}"#;
-        let query: FanControlQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.value, Some(-50.0));
-        // Note: Negative values are clamped to 0 in the handler
-    }
-
-    #[test]
-    fn test_fan_control_query_large_value() {
-        let json = r#"{"value": 9999.0}"#;
-        let query: FanControlQuery = serde_json::from_str(json).unwrap();
-        assert_eq!(query.value, Some(9999.0));
-        // Note: For PWM, this is clamped to 100; for RPM, this fails validation
     }
 }
 
@@ -731,6 +686,197 @@ mod integration_tests {
             .oneshot(
                 Request::builder()
                     .uri("/api/v0/controller/default/fan/0/rpm?value=9000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_missing_value() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/0/rpm")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = body_string(response.into_body()).await;
+        assert!(body.contains("Missing"));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_non_numeric_fan_id() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/abc/pwm?value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = body_string(response.into_body()).await;
+        assert!(body.contains("Invalid fan ID"));
+    }
+
+    #[tokio::test]
+    async fn test_get_fan_rpm_non_numeric_fan_id() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/xyz/rpm/get")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = body_string(response.into_body()).await;
+        assert!(body.contains("Invalid fan ID"));
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_rpm_non_numeric_fan_id() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/foo/rpm?value=1500")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = body_string(response.into_body()).await;
+        assert!(body.contains("Invalid fan ID"));
+    }
+
+    #[tokio::test]
+    async fn test_fan_status_controller_not_found() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/nonexistent/fan/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fans_controller_not_found() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/nonexistent/fan/all/set?value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_set_fan_pwm_controller_not_found() {
+        let app = create_test_app().await;
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/nonexistent/fan/0/pwm?value=50")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_pwm_value_clamping() {
+        let app = create_test_app().await;
+
+        // Test value above 100 - should be clamped and succeed
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/0/pwm?value=150")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test negative value - should be clamped to 0 and succeed
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/0/pwm?value=-10")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_set_all_fans_pwm_clamping() {
+        let app = create_test_app().await;
+
+        // Test value above 100 - should be clamped and succeed
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/all/set?value=200")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test negative value - should be clamped to 0 and succeed
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v0/controller/default/fan/all/set?value=-50")
                     .body(Body::empty())
                     .unwrap(),
             )

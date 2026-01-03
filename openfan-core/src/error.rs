@@ -102,3 +102,66 @@ impl From<serde_json::Error> for OpenFanError {
         OpenFanError::Serialization(err.to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serde_json_error_conversion() {
+        // Create a serde_json error by trying to parse invalid JSON
+        let json_err = serde_json::from_str::<serde_json::Value>("invalid json").unwrap_err();
+        let openfan_err: OpenFanError = json_err.into();
+
+        match openfan_err {
+            OpenFanError::Serialization(msg) => {
+                assert!(!msg.is_empty());
+            }
+            _ => panic!("Expected Serialization error"),
+        }
+    }
+
+    #[test]
+    fn test_io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let openfan_err: OpenFanError = io_err.into();
+
+        match openfan_err {
+            OpenFanError::Io(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+            }
+            _ => panic!("Expected Io error"),
+        }
+    }
+
+    #[test]
+    fn test_error_display() {
+        // Test Display implementation for various error types
+        let err = OpenFanError::Config("test config error".to_string());
+        assert_eq!(format!("{}", err), "Configuration error: test config error");
+
+        let err = OpenFanError::Hardware("test hardware error".to_string());
+        assert_eq!(format!("{}", err), "Hardware error: test hardware error");
+
+        let err = OpenFanError::InvalidFanId {
+            fan_id: 15,
+            max_fans: 10,
+        };
+        assert_eq!(format!("{}", err), "Fan ID out of range: 15 (must be 0-9)");
+
+        let err = OpenFanError::DeviceNotFound;
+        assert_eq!(format!("{}", err), "Device not found");
+
+        let err = OpenFanError::Reconnecting;
+        assert_eq!(format!("{}", err), "Reconnection in progress");
+
+        let err = OpenFanError::ReconnectionFailed {
+            attempts: 5,
+            reason: "timeout".to_string(),
+        };
+        assert_eq!(
+            format!("{}", err),
+            "Reconnection failed after 5 attempts: timeout"
+        );
+    }
+}
