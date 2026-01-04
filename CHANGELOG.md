@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved test coverage (183 integration tests, 75.21% code coverage)
     - Added integration tests for edge cases in fan handlers (non-numeric IDs, missing controllers, PWM clamping)
     - Added error conversion and Display trait tests in openfan-core
+  - Version strings now use `env!("CARGO_PKG_VERSION")` for consistency
+    - Replaced hardcoded version strings in production code
+    - Test fixtures also use CARGO_PKG_VERSION with "-test" suffix for mock server
 - **Module rename**: Renamed `openfand/src/hardware/` to `openfand/src/controllers/` for better alignment with multi-controller architecture
 
 ### Changed
