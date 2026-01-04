@@ -5,8 +5,13 @@ version: '3.8'
 
 services:
   # OpenFAN Server (Production)
+  # To build with correct version: VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') docker-compose build
+  # Or use: make docker
   openfand:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     container_name: openfand
     restart: unless-stopped
     ports:
@@ -40,7 +45,10 @@ services:
 
   # OpenFAN Server (Mock Mode for Testing)
   openfand-mock:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     container_name: openfand-mock
     restart: unless-stopped
     ports:
