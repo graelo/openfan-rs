@@ -724,7 +724,7 @@ The `/api/v0/info` endpoint includes connection status fields:
 ```json
 {
   "data": {
-    "version": "1.0.0",
+    "version": "0.1.0",
     "hardware_connected": true,
     "connection_status": "connected",
     "reconnect_count": 2,

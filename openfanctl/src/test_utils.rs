@@ -78,7 +78,7 @@ impl Default for MockServerState {
 
         let board_info = openfan_core::BoardType::OpenFanStandard.to_board_info();
         let info = api::InfoResponse {
-            version: "1.0.0-test".to_string(),
+            version: concat!(env!("CARGO_PKG_VERSION"), "-test").to_string(),
             board_info,
             hardware_connected: true,
             connection_status: "connected".to_string(),
@@ -86,7 +86,7 @@ impl Default for MockServerState {
             reconnection_enabled: true,
             time_since_disconnect_secs: None,
             uptime: 3600,
-            software: "OpenFAN Server v1.0.0-test\r\nBuild: test".to_string(),
+            software: concat!("OpenFAN Server v", env!("CARGO_PKG_VERSION"), "-test").to_string(),
             hardware: Some("Mock Hardware Controller v2.1\r\nSerial: MHC001234".to_string()),
             firmware: Some("Mock Firmware v1.5.2\r\nBuild: 2024-10-01".to_string()),
         };
@@ -357,7 +357,7 @@ async fn root_handler() -> Json<api::ApiResponse<serde_json::Value>> {
     let data = serde_json::json!({
         "service": "OpenFAN Controller API Server",
         "status": "ok",
-        "version": "1.0.0-test"
+        "version": concat!(env!("CARGO_PKG_VERSION"), "-test")
     });
     Json(api::ApiResponse::success(data))
 }
@@ -880,7 +880,7 @@ mod tests {
 
         match json {
             api::ApiResponse::Success { data } => {
-                assert_eq!(data.version, "1.0.0-test");
+                assert_eq!(data.version, concat!(env!("CARGO_PKG_VERSION"), "-test"));
                 assert!(data.hardware_connected);
             }
             _ => panic!("Expected success response"),
