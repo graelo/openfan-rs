@@ -6,8 +6,9 @@
 [![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
 [![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
 
-A Rust-based controller for OpenFAN hardware - manage your fans via REST API or
-CLI.
+A Rust-based controller for [OpenFAN
+hardware](https://sasakaranovic.com/projects/openfan-controller/) - manage your
+fans via REST API or CLI.
 
 ## Overview
 
@@ -198,7 +199,8 @@ Options:
 
 - `--server <url>` - Server URL (default: <http://localhost:3000>)
 - `--format <table|json>` - Output format (default: table)
-- `--controller <id>` or `-c <id>` - Specify controller for fan/profile/alias commands (required in multi-controller setups)
+- `--controller <id>` or `-c <id>` - Specify controller for fan/profile/alias
+  commands (required in multi-controller setups)
 
 ## REST API
 
