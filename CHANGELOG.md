@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Makefile**: Convenience commands for building, testing, and Docker operations
+  - `make docker` automatically extracts version from Cargo.toml and builds Docker image
+  - `make docker-multiplatform` for multi-architecture builds (amd64/arm64)
+  - `make build`, `make test`, `make clean` for standard Rust operations
 - **CONTRIBUTING.md**: Developer onboarding documentation with development setup,
   testing guide, commit conventions, and PR process
 - Added specific error variants for better error handling: `ZoneNotFound`,
@@ -52,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Replaced hardcoded version strings in production code
     - Test fixtures also use CARGO_PKG_VERSION with "-test" suffix for mock server
 - **Module rename**: Renamed `openfand/src/hardware/` to `openfand/src/controllers/` for better alignment with multi-controller architecture
+- **Docker version automation**:
+  - Dockerfile now extracts version from Cargo.toml instead of hardcoding
+  - docker-compose.yml passes VERSION build arg automatically
+  - Docker image labels include accurate version metadata
 
 ### Changed
 

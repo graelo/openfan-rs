@@ -235,6 +235,25 @@ See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.
 
 ## Docker
 
+### Building Docker Images
+
+```bash
+# Build with automatic version from Cargo.toml (recommended)
+make docker
+
+# Or manually with docker build
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+docker build --build-arg VERSION=$VERSION -t openfan:latest .
+
+# Multi-platform build (amd64/arm64)
+make docker-multiplatform
+
+# Using docker-compose
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') docker-compose build
+```
+
+### Running Docker Containers
+
 ```bash
 # Mock mode (for testing)
 docker run -p 3000:3000 graelo/openfan:latest openfand --mock --board standard
@@ -244,6 +263,9 @@ docker run -p 3000:3000 \
   --device=/dev/ttyUSB0 \
   -v /etc/openfan:/etc/openfan:ro \
   graelo/openfan:latest
+
+# Using docker-compose
+docker-compose up
 ```
 
 ## Systemd Service
