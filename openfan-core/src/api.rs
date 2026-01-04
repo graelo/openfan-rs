@@ -501,7 +501,7 @@ mod tests {
     fn test_info_response() {
         let board_info = crate::BoardType::OpenFanStandard.to_board_info();
         let response = InfoResponse {
-            version: "1.0.0".to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
             board_info,
             hardware_connected: true,
             connection_status: "connected".to_string(),
@@ -509,13 +509,13 @@ mod tests {
             reconnection_enabled: true,
             time_since_disconnect_secs: None,
             uptime: 3600,
-            software: "OpenFAN Server v1.0.0".to_string(),
+            software: format!("OpenFAN Server v{}", env!("CARGO_PKG_VERSION")),
             hardware: Some("Hardware v1.0".to_string()),
             firmware: Some("Firmware v1.0".to_string()),
         };
 
         let json = serde_json::to_string(&response).unwrap();
-        assert!(json.contains("1.0.0"));
+        assert!(json.contains(env!("CARGO_PKG_VERSION")));
         assert!(json.contains("true"));
         assert!(json.contains("3600"));
         assert!(json.contains("connected"));
