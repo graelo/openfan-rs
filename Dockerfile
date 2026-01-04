@@ -6,7 +6,6 @@ FROM rust:1.91-alpine AS builder
 
 # Use Docker's automatic platform detection
 ARG TARGETPLATFORM
-ARG VERSION=0.1.0
 
 # Install build dependencies
 # Note: libc6-compat removed - not needed for musl builds and causes QEMU issues on ARM64
@@ -25,6 +24,9 @@ COPY openfan-core/ ./openfan-core/
 COPY openfan-hardware/ ./openfan-hardware/
 COPY openfand/ ./openfand/
 COPY openfanctl/ ./openfanctl/
+
+# Extract version from Cargo.toml for use in labels and runtime
+RUN grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/' > /tmp/version
 
 # Determine Rust target based on Docker platform
 RUN case "$TARGETPLATFORM" in \
@@ -65,6 +67,9 @@ RUN mkdir -p /opt/openfan/bin \
 COPY --from=builder /usr/src/openfan/target/*/release/openfand /opt/openfan/bin/
 COPY --from=builder /usr/src/openfan/target/*/release/openfanctl /usr/local/bin/
 
+# Copy version file for runtime version queries
+COPY --from=builder /tmp/version /opt/openfan/VERSION
+
 # Copy configuration
 COPY config.toml /etc/openfan/
 
@@ -95,7 +100,9 @@ ENV OPENFAN_SERVER_CONFIG=/etc/openfan/config.toml
 CMD ["/opt/openfan/bin/openfand", "--config", "/etc/openfan/config.toml", "--mock", "--board", "standard"]
 
 # Labels
-ARG VERSION
+# VERSION is passed via --build-arg or docker-compose (extracted from Cargo.toml)
+# For manual builds: docker build --build-arg VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') .
+ARG VERSION=dev
 LABEL maintainer="OpenFAN Contributors" \
     description="OpenFAN Controller - Fan Management System" \
     version="${VERSION}" \

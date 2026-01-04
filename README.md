@@ -6,8 +6,9 @@
 [![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
 [![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
 
-A Rust-based controller for OpenFAN hardware - manage your fans via REST API or
-CLI.
+A Rust-based controller for [OpenFAN
+hardware](https://sasakaranovic.com/projects/openfan-controller/) - manage your
+fans via REST API or CLI.
 
 ## Overview
 
@@ -198,7 +199,8 @@ Options:
 
 - `--server <url>` - Server URL (default: <http://localhost:3000>)
 - `--format <table|json>` - Output format (default: table)
-- `--controller <id>` or `-c <id>` - Specify controller for fan/profile/alias commands (required in multi-controller setups)
+- `--controller <id>` or `-c <id>` - Specify controller for fan/profile/alias
+  commands (required in multi-controller setups)
 
 ## REST API
 
@@ -235,6 +237,25 @@ See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.
 
 ## Docker
 
+### Building Docker Images
+
+```bash
+# Build with automatic version from Cargo.toml (recommended)
+make docker
+
+# Or manually with docker build
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+docker build --build-arg VERSION=$VERSION -t openfan:latest .
+
+# Multi-platform build (amd64/arm64)
+make docker-multiplatform
+
+# Using docker-compose
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') docker-compose build
+```
+
+### Running Docker Containers
+
 ```bash
 # Mock mode (for testing)
 docker run -p 3000:3000 graelo/openfan:latest openfand --mock --board standard
@@ -244,6 +265,9 @@ docker run -p 3000:3000 \
   --device=/dev/ttyUSB0 \
   -v /etc/openfan:/etc/openfan:ro \
   graelo/openfan:latest
+
+# Using docker-compose
+docker-compose up
 ```
 
 ## Systemd Service

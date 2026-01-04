@@ -9,6 +9,7 @@ guidelines to help you get started.
 
 - **Rust**: Install via [rustup](https://rustup.rs/) (stable toolchain)
 - **Git**: For version control
+- **Docker** (optional): For container builds and testing
 
 ### Getting Started
 
@@ -19,9 +20,13 @@ cd openfan-rs
 
 # Build all crates
 cargo build
+# Or use make
+make build
 
 # Run tests to verify setup
 cargo test --workspace
+# Or use make
+make test
 ```
 
 ### Project Structure
@@ -61,6 +66,8 @@ cargo run -p openfand -- --device /dev/ttyACM0 --board custom:4
 ```bash
 # Run all tests (481 tests total)
 cargo test --workspace
+# Or use make
+make test
 
 # Run tests for a specific crate
 cargo test -p openfan-core
@@ -78,6 +85,22 @@ cargo test --workspace -- --nocapture
 # Note: Use --skip-clean to prevent tarpaulin from cleaning build artifacts
 # (needed for E2E tests that depend on compiled binaries)
 cargo tarpaulin --verbose --skip-clean -p openfand -p openfan-core -p openfan-hardware --timeout 120
+```
+
+## Docker Development
+
+```bash
+# Build Docker image with version from Cargo.toml
+make docker
+
+# Build for multiple platforms (amd64/arm64)
+make docker-multiplatform
+
+# Test in Docker mock mode
+docker run -p 3000:3000 openfan:latest openfand --mock --board standard
+
+# Using docker-compose
+VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') docker-compose up
 ```
 
 ## Code Style Guidelines
