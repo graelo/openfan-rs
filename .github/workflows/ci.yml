@@ -44,6 +44,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -54,13 +57,16 @@ jobs:
         run: cargo build --workspace
 
       - name: Run unit tests
-        run: cargo test --lib --workspace
+        run: cargo nextest run --lib --workspace
+
+      - name: Run doctests
+        run: cargo test --doc --workspace
 
       - name: Build release binaries
         run: cargo build --release --workspace
 
       - name: Run end-to-end tests (mock mode)
-        run: cargo test --test e2e_integration_tests
+        run: cargo nextest run --test e2e_integration_tests
 
       - name: Test CLI help output
         run: |

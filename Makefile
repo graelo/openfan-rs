@@ -27,7 +27,8 @@ build:
 	cargo build --release
 
 test:
-	cargo test --all
+	cargo build --workspace
+	cargo nextest run --workspace
 
 clean:
 	cargo clean

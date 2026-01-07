@@ -101,10 +101,13 @@ run_tests() {
     print_status "Running test suite..."
 
     # Run unit tests
-    cargo test --lib --release
+    cargo nextest run --lib --release
 
     # Run integration tests
-    cargo test --test simple_integration_tests --release
+    cargo nextest run --test simple_integration_tests --release
+
+    # Run doctests (not supported by cargo-nextest)
+    cargo test --doc --release
 
     print_success "All tests passed"
 }
