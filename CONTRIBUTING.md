@@ -23,8 +23,8 @@ cargo build
 # Or use make
 make build
 
-# Run tests to verify setup
-cargo test --workspace
+# Run tests to verify setup (requires cargo-nextest: cargo install cargo-nextest --locked)
+cargo nextest run --workspace
 # Or use make
 make test
 ```
@@ -63,23 +63,27 @@ cargo run -p openfand -- --device /dev/ttyACM0 --board custom:4
 
 ## Running Tests
 
+This project uses [cargo-nextest](https://nexte.st/) for running tests. Install
+it with `cargo install cargo-nextest --locked`.
+
 ```bash
-# Run all tests (481 tests total)
-cargo test --workspace
-# Or use make
+# Run all tests (build first for e2e tests that use pre-built binaries)
+cargo build --workspace
+cargo nextest run --workspace
+# Or use make (builds automatically)
 make test
 
 # Run tests for a specific crate
-cargo test -p openfan-core
+cargo nextest run -p openfan-core
 
 # Run unit tests only
-cargo test --lib
+cargo nextest run --lib
 
 # Run end-to-end tests
-cargo test --test e2e_integration_tests
+cargo nextest run --test e2e_integration_tests
 
-# Run with output
-cargo test --workspace -- --nocapture
+# Run doctests (cargo-nextest doesn't support doctests)
+cargo test --doc --workspace
 
 # Generate code coverage report
 # Note: Use --skip-clean to prevent tarpaulin from cleaning build artifacts
@@ -164,7 +168,8 @@ chore: update dependencies
 3. **Test your changes**:
 
    ```bash
-   cargo test --workspace
+   cargo nextest run --workspace
+   cargo test --doc --workspace  # doctests not supported by nextest
    cargo clippy --workspace --all-targets
    cargo fmt --check
    ```
