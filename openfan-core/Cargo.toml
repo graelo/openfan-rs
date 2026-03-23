@@ -1,20 +1,19 @@
 [package]
 name = "openfan-core"
-description = "Core types, models, and configuration for OpenFAN fan controllers"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
-license.workspace = true
+description = "Core types, models, and configuration for OpenFAN fan controllers"
 repository.workspace = true
-keywords = ["fan-control", "pwm", "hardware", "embedded", "controller"]
-categories = ["hardware-support", "embedded"]
+license.workspace = true
+keywords = ["controller", "embedded", "fan-control", "hardware", "pwm"]
+categories = ["embedded", "hardware-support"]
 
 [dependencies]
+dirs.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
-dirs.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

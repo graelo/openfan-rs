@@ -1,18 +1,17 @@
 [package]
 name = "openfan-hardware"
-description = "Serial communication driver for OpenFAN hardware"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
-license.workspace = true
+description = "Serial communication driver for OpenFAN hardware"
 repository.workspace = true
-keywords = ["fan-control", "serial", "usb", "hardware", "pwm"]
-categories = ["hardware-support", "embedded"]
+license.workspace = true
+keywords = ["fan-control", "hardware", "pwm", "serial", "usb"]
+categories = ["embedded", "hardware-support"]
 
 [dependencies]
+async-trait.workspace = true
 openfan-core = { path = "../openfan-core" }
+thiserror.workspace = true
 tokio.workspace = true
 tokio-serial.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
-async-trait.workspace = true

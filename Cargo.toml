@@ -1,38 +1,37 @@
 [workspace]
-members = ["openfan-core", "openfand", "openfanctl", "openfan-hardware"]
 resolver = "2"
+members = ["openfan-core", "openfan-hardware", "openfanctl", "openfand"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-authors = ["OpenFAN Contributors"]
-license = "MIT"
 repository = "https://github.com/graelo/openfan-rs"
+license = "MIT"
 
 [workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
 # Shared dependencies
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["full"] }
 thiserror = "2"
-anyhow = "1"
-async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
 
 # Server dependencies
 axum = "0.8"
-tokio-serial = "5"
 serde_yaml = "0.9"
+tokio-serial = "5"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-tower-http = { version = "0.6", features = ["cors", "trace"] }
-tower = "0.5"
 
 # CLI dependencies
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+colored = "3"
+dirs = "6"
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
 tabled = "0.20"
-colored = "3"
-clap_complete = "4"
-toml = "0.9"
+toml = "1.1"
 urlencoding = "2"
-dirs = "6"

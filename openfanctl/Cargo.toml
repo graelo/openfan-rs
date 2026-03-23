@@ -1,11 +1,10 @@
 [package]
 name = "openfanctl"
-description = "CLI client for OpenFAN fan controllers"
 version.workspace = true
 edition.workspace = true
-authors.workspace = true
-license.workspace = true
+description = "CLI client for OpenFAN fan controllers"
 repository.workspace = true
+license.workspace = true
 publish = false
 
 [[bin]]
@@ -28,23 +27,23 @@ serde.workspace = true
 serde_json.workspace = true
 toml.workspace = true
 
+colored.workspace = true
 # Output formatting
 tabled.workspace = true
-colored.workspace = true
 
+anyhow.workspace = true
 # Error handling
 thiserror.workspace = true
-anyhow.workspace = true
 
 # Async runtime
 tokio.workspace = true
 
 # For test utilities (mock server)
 axum.workspace = true
-rand = "0.9"
+rand = "0.10"
 
 [dev-dependencies]
-tokio-test = "0.4"
-tempfile = "3"
-urlencoding.workspace = true
 serial_test = "3.0"
+tempfile = "3"
+tokio-test = "0.4"
+urlencoding.workspace = true
