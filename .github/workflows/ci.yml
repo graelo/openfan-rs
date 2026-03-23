@@ -256,17 +256,11 @@ jobs:
         uses: actions/download-artifact@v8
 
       - name: Create release
-        uses: softprops/action-gh-release@v1
+        uses: ncipollo/release-action@v1
         with:
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-          files: |
-            **/*.tar.gz
-            **/*.zip
-            **/*.deb
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: '**/*.tar.gz, **/*.zip, **/*.deb'
+          generateReleaseNotes: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   docker_amd64:
     name: Build Docker Image (AMD64)
