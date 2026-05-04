@@ -14,7 +14,9 @@ NC='\033[0m' # No Color
 # Configuration
 PACKAGE_NAME="openfan-controller"
 VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-ARCHITECTURE="amd64"
+# Architecture: override with `ARCH=arm64 ./deploy/create-deb.sh` (defaults to amd64).
+# When cross-compiling, ensure target/release/openfand{,ctl} were built for the matching arch.
+ARCHITECTURE="${ARCH:-amd64}"
 PACKAGE_DIR="debian-package"
 DEB_DIR="$PACKAGE_DIR/DEBIAN"
 

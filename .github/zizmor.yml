@@ -1,0 +1,7 @@
+rules:
+  superfluous-actions:
+    ignore:
+      - _cargo-audit.yml
+      - ci-essentials.yml
+      - ci-coverage.yml
+      - release.yml
