@@ -39,9 +39,9 @@ struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
 
-    /// Server bind address
-    #[arg(short, long, default_value = "127.0.0.1")]
-    bind: String,
+    /// Server bind address (overrides `server.bind_address` from config file)
+    #[arg(short, long)]
+    bind: Option<String>,
 
     /// Server port
     #[arg(short, long)]
@@ -97,7 +97,11 @@ async fn main() -> Result<()> {
     // Get server config
     let server_config = &runtime_config.static_config().server;
     let port = args.port.unwrap_or(server_config.port);
-    let bind_addr = format!("{}:{}", args.bind, port);
+    let bind_host = args
+        .bind
+        .as_deref()
+        .unwrap_or(server_config.bind_address.as_str());
+    let bind_addr = format!("{}:{}", bind_host, port);
     let timeout_ms = server_config.communication_timeout * 1000;
     let reconnect_config = runtime_config.static_config().reconnect.clone();
 

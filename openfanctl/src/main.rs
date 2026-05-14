@@ -89,6 +89,12 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Apply -c/--controller override for controller-scoped routes.
+    let client = match cli.controller.as_deref() {
+        Some(id) => client.with_controller(id),
+        None => client,
+    };
+
     if verbose {
         eprintln!("Successfully connected to server");
         eprintln!(
