@@ -266,8 +266,7 @@ impl OpenFanClient {
     pub async fn get_fan_status(&self) -> Result<api::FanStatusResponse> {
         let url = format!(
             "{}/api/v0/controller/{}/fan/status",
-            self.base_url,
-            self.controller_id
+            self.base_url, self.controller_id
         );
         let endpoint = &format!("controller/{}/fan/status", self.controller_id);
 
@@ -286,8 +285,7 @@ impl OpenFanClient {
     pub async fn get_fan_status_by_id(&self, _fan_id: u8) -> Result<api::FanStatusResponse> {
         let url = format!(
             "{}/api/v0/controller/{}/fan/status",
-            self.base_url,
-            self.controller_id
+            self.base_url, self.controller_id
         );
         let endpoint = &format!("controller/{}/fan/status", self.controller_id);
 
