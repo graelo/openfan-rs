@@ -1800,7 +1800,7 @@ async fn test_e2e_zone_with_controller_format() -> Result<()> {
 }
 
 // =============================================================================
-// Regression tests
+// Regression tests for issues #67 (bind from config) and #68 (controller flag)
 // =============================================================================
 
 /// Pick a unique port for a standalone test that does not use `E2ETestHarness`.
@@ -1820,6 +1820,30 @@ fn pick_unique_port(base: u16) -> u16 {
         .unwrap()
         .subsec_nanos();
     base + ((process_id + thread_num + nanos) % 1000) as u16
+}
+
+/// Poll an HTTP endpoint until it returns 2xx or the timeout expires.
+async fn wait_for_server(probe_url: &str) -> Result<()> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(3))
+        .build()?;
+
+    let deadline = std::time::Instant::now() + SERVER_STARTUP_TIMEOUT;
+    let mut interval = Duration::from_millis(100);
+    while std::time::Instant::now() < deadline {
+        if let Ok(resp) = client.get(probe_url).send().await
+            && resp.status().is_success()
+        {
+            return Ok(());
+        }
+        sleep(interval).await;
+        interval = std::cmp::min(interval * 2, Duration::from_millis(500));
+    }
+    anyhow::bail!(
+        "Server at {} failed to respond within {:?}",
+        probe_url,
+        SERVER_STARTUP_TIMEOUT
+    );
 }
 
 /// Regression test for issue #67.
@@ -1898,3 +1922,127 @@ communication_timeout = 1
     Ok(())
 }
 
+/// Regression test for issue #68.
+///
+/// In multi-controller setups the CLI must honor `-c/--controller`. The bug
+/// hardcoded the controller path segment to `default`, so commands always
+/// targeted the wrong (non-existent) controller. We exercise this against
+/// a mock server with two non-default controllers: `controller-1` and
+/// `controller-2`.
+#[tokio::test]
+async fn test_e2e_cli_controller_flag_targets_specified_controller() -> Result<()> {
+    let temp_dir = tempfile::TempDir::new()?;
+    let server_port = pick_unique_port(31000);
+    let server_url = format!("http://127.0.0.1:{}", server_port);
+
+    let data_dir = temp_dir.path().join("data");
+    std::fs::create_dir_all(&data_dir)?;
+    let config_path = temp_dir.path().join("config.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"data_dir = "{}"
+
+[server]
+bind_address = "127.0.0.1"
+port = {}
+communication_timeout = 1
+
+[[controllers]]
+id = "controller-1"
+device = "/dev/null"
+board = "standard"
+
+[[controllers]]
+id = "controller-2"
+device = "/dev/null"
+board = "standard"
+"#,
+            data_dir.display(),
+            server_port,
+        ),
+    )?;
+
+    let mut child = Command::new(get_server_binary())
+        .args(["--mock", "--config", config_path.to_str().unwrap()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()?;
+
+    // Wait for the server (in mock + multi-controller mode) to be reachable.
+    let probe_url = format!("{}/api/v0/info", server_url);
+    if let Err(e) = wait_for_server(&probe_url).await {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(e);
+    }
+
+    let cli_binary = get_cli_binary();
+    let run_cli = |args: &[&str]| -> Result<std::process::Output> {
+        let mut full_args: Vec<&str> = vec!["--server", server_url.as_str(), "--no-config"];
+        full_args.extend(args.iter().copied());
+        Ok(Command::new(&cli_binary)
+            .args(&full_args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()?)
+    };
+
+    // 1. `-c controller-1 fan rpm 0` must succeed and emit RPM output.
+    let ok = run_cli(&["-c", "controller-1", "fan", "rpm", "0"])?;
+    let ok_stdout = String::from_utf8_lossy(&ok.stdout);
+    let ok_stderr = String::from_utf8_lossy(&ok.stderr);
+    assert!(
+        ok.status.success(),
+        "Expected -c controller-1 to succeed. stderr={}, stdout={}",
+        ok_stderr,
+        ok_stdout
+    );
+    assert!(
+        ok_stdout.contains("Fan 0 RPM"),
+        "Expected RPM output for controller-1, got: {}",
+        ok_stdout
+    );
+
+    // 2. Without -c the CLI must fall back to "default", which does not exist
+    //    in this multi-controller config, so the request must fail and the
+    //    error must surface the "default" path segment (the bug would have
+    //    *masked* the issue by silently hitting an unrelated controller).
+    let no_flag = run_cli(&["fan", "rpm", "0"])?;
+    assert!(
+        !no_flag.status.success(),
+        "Expected request without -c to fail in multi-controller setup"
+    );
+    let no_flag_err = format!(
+        "{}{}",
+        String::from_utf8_lossy(&no_flag.stdout),
+        String::from_utf8_lossy(&no_flag.stderr),
+    );
+    assert!(
+        no_flag_err.contains("controller/default"),
+        "Error should reference the 'default' controller path: {}",
+        no_flag_err
+    );
+
+    // 3. `-c bogus` must fail with the supplied id in the error path,
+    //    proving the flag value (not the constant "default") shapes the URL.
+    let bogus = run_cli(&["-c", "bogus", "fan", "rpm", "0"])?;
+    assert!(
+        !bogus.status.success(),
+        "Expected -c bogus to fail (controller does not exist)"
+    );
+    let bogus_err = format!(
+        "{}{}",
+        String::from_utf8_lossy(&bogus.stdout),
+        String::from_utf8_lossy(&bogus.stderr),
+    );
+    assert!(
+        bogus_err.contains("controller/bogus") || bogus_err.contains("bogus"),
+        "Error should reference the supplied controller id 'bogus': {}",
+        bogus_err
+    );
+
+    let _ = child.kill();
+    let _ = child.wait();
+    Ok(())
+}

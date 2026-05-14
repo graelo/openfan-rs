@@ -11,19 +11,16 @@ use crate::format::format_success;
 
 use super::commands::*;
 
-/// Default controller ID used when controller is not specified in port format.
-const DEFAULT_CONTROLLER_ID: &str = "default";
-
 /// Error message when neither --pwm nor --rpm is specified.
 const ERR_PWM_OR_RPM_REQUIRED: &str = "Must specify either --pwm or --rpm";
 
 /// Parse zone port specifications into ZoneFan entries.
 ///
 /// Supports two formats:
-/// - Simple: "0,1,2" (uses "default" controller)
+/// - Simple: "0,1,2" (uses `default_controller` for unqualified ports)
 /// - Controller-qualified: "main:0,main:1,gpu:0"
-/// - Mixed: "0,1,gpu:2" (plain numbers use "default" controller)
-fn parse_zone_ports(ports: &str) -> Result<Vec<ZoneFan>> {
+/// - Mixed: "0,1,gpu:2" (plain numbers use `default_controller`)
+fn parse_zone_ports(ports: &str, default_controller: &str) -> Result<Vec<ZoneFan>> {
     let mut fans = Vec::new();
 
     for part in ports.split(',') {
@@ -39,11 +36,11 @@ fn parse_zone_ports(ports: &str) -> Result<Vec<ZoneFan>> {
                 .map_err(|_| anyhow::anyhow!("Invalid fan ID '{}' in '{}'", fan_id_str, part))?;
             fans.push(ZoneFan::new(controller, fan_id));
         } else {
-            // Simple format: just a number, uses default controller
+            // Simple format: just a number, uses the default controller
             let fan_id: u8 = part
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid port specification '{}'", part))?;
-            fans.push(ZoneFan::new(DEFAULT_CONTROLLER_ID, fan_id));
+            fans.push(ZoneFan::new(default_controller, fan_id));
         }
     }
 
@@ -430,7 +427,7 @@ pub async fn handle_zone(
             ports,
             description,
         } => {
-            let fans = parse_zone_ports(&ports)?;
+            let fans = parse_zone_ports(&ports, client.controller_id())?;
             client.add_zone(&name, fans, description).await?;
             println!("{}", format_success(&format!("Added zone: {}", name)));
         }
@@ -439,7 +436,7 @@ pub async fn handle_zone(
             ports,
             description,
         } => {
-            let fans = parse_zone_ports(&ports)?;
+            let fans = parse_zone_ports(&ports, client.controller_id())?;
             client.update_zone(&name, fans, description).await?;
             println!("{}", format_success(&format!("Updated zone: {}", name)));
         }
@@ -1326,7 +1323,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_simple_format() {
-        let result = super::parse_zone_ports("0,1,2").unwrap();
+        let result = super::parse_zone_ports("0,1,2", "default").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].controller, "default");
         assert_eq!(result[0].fan_id, 0);
@@ -1338,7 +1335,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_qualified_format() {
-        let result = super::parse_zone_ports("main:0,main:1,gpu:0").unwrap();
+        let result = super::parse_zone_ports("main:0,main:1,gpu:0", "default").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].controller, "main");
         assert_eq!(result[0].fan_id, 0);
@@ -1350,7 +1347,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_mixed_format() {
-        let result = super::parse_zone_ports("0,gpu:2,1").unwrap();
+        let result = super::parse_zone_ports("0,gpu:2,1", "default").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].controller, "default");
         assert_eq!(result[0].fan_id, 0);
@@ -1362,7 +1359,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_with_whitespace() {
-        let result = super::parse_zone_ports(" 0 , 1 , main:2 ").unwrap();
+        let result = super::parse_zone_ports(" 0 , 1 , main:2 ", "default").unwrap();
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].controller, "default");
         assert_eq!(result[0].fan_id, 0);
@@ -1373,8 +1370,21 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_zone_ports_uses_supplied_default_controller() {
+        // Unqualified ports honor the supplied default (e.g. set via -c).
+        let result = super::parse_zone_ports("0,1,gpu:2", "main").unwrap();
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].controller, "main");
+        assert_eq!(result[0].fan_id, 0);
+        assert_eq!(result[1].controller, "main");
+        assert_eq!(result[1].fan_id, 1);
+        assert_eq!(result[2].controller, "gpu");
+        assert_eq!(result[2].fan_id, 2);
+    }
+
+    #[test]
     fn test_parse_zone_ports_empty_fails() {
-        let result = super::parse_zone_ports("");
+        let result = super::parse_zone_ports("", "default");
         assert!(result.is_err());
         assert!(
             result
@@ -1386,7 +1396,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_invalid_number_fails() {
-        let result = super::parse_zone_ports("0,abc,2");
+        let result = super::parse_zone_ports("0,abc,2", "default");
         assert!(result.is_err());
         assert!(
             result
@@ -1398,7 +1408,7 @@ mod tests {
 
     #[test]
     fn test_parse_zone_ports_invalid_qualified_format_fails() {
-        let result = super::parse_zone_ports("main:abc");
+        let result = super::parse_zone_ports("main:abc", "default");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Invalid fan ID"));
     }
