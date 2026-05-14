@@ -44,14 +44,9 @@ cargo nextest run --locked $NEXTEST_PROFILE --workspace
 cargo test --locked --doc --workspace
 
 # CLI smoke tests (release binaries). CARGO_BUILD_TARGET (set in the compat
-# matrix) redirects output to target/<target>/release; Git Bash on Windows
-# reports OSTYPE=msys.
+# matrix) redirects output to target/<target>/release.
 cargo build --locked --release --workspace
 
 BIN_DIR="target/${CARGO_BUILD_TARGET:+${CARGO_BUILD_TARGET}/}release"
-EXT=""
-case "${OSTYPE:-}" in
-  msys*|cygwin*) EXT=".exe" ;;
-esac
-"${BIN_DIR}/openfanctl${EXT}" --help
-"${BIN_DIR}/openfand${EXT}" --help
+"${BIN_DIR}/openfanctl" --help
+"${BIN_DIR}/openfand" --help

@@ -50,11 +50,11 @@ curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-c
 sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
-**Other Linux** (standalone binaries — use `aarch64-unknown-linux-gnu` on ARM64):
+**Other Linux** (statically-linked musl binaries — use `aarch64-unknown-linux-musl` on ARM64):
 
 ```bash
 BASE=https://github.com/graelo/openfan-rs/releases/latest/download
-TARGET=x86_64-unknown-linux-gnu
+TARGET=x86_64-unknown-linux-musl
 curl -L "${BASE}/openfand-${TARGET}"   -o openfand
 curl -L "${BASE}/openfanctl-${TARGET}" -o openfanctl
 sudo install -m 755 openfand openfanctl /usr/local/bin/

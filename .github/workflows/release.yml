@@ -31,25 +31,13 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            archive_ext: tar.xz
-            suffix: ''
+            target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            archive_ext: tar.xz
-            suffix: ''
+            target: aarch64-unknown-linux-musl
           - os: macos-latest
             target: aarch64-apple-darwin
-            archive_ext: tar.xz
-            suffix: ''
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            archive_ext: tar.xz
-            suffix: ''
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            archive_ext: zip
-            suffix: .exe
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -63,6 +51,12 @@ jobs:
           toolchain: stable
           targets: ${{ matrix.target }}
 
+      - name: Install musl-tools (Linux)
+        if: contains(matrix.target, 'linux-musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - name: Build (release)
         env:
           TARGET: ${{ matrix.target }}
@@ -71,17 +65,15 @@ jobs:
       - name: Stage binary and archive
         env:
           TARGET: ${{ matrix.target }}
-          SUFFIX: ${{ matrix.suffix }}
-          ARCHIVE_EXT: ${{ matrix.archive_ext }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          SRC_OPENFAND="target/${TARGET}/release/openfand${SUFFIX}"
-          SRC_OPENFANCTL="target/${TARGET}/release/openfanctl${SUFFIX}"
+          SRC_OPENFAND="target/${TARGET}/release/openfand"
+          SRC_OPENFANCTL="target/${TARGET}/release/openfanctl"
 
           # Standalone binaries — unversioned for stable download URLs.
-          STANDALONE_OPENFAND="openfand-${TARGET}${SUFFIX}"
-          STANDALONE_OPENFANCTL="openfanctl-${TARGET}${SUFFIX}"
+          STANDALONE_OPENFAND="openfand-${TARGET}"
+          STANDALONE_OPENFANCTL="openfanctl-${TARGET}"
           cp "${SRC_OPENFAND}" "${STANDALONE_OPENFAND}"
           cp "${SRC_OPENFANCTL}" "${STANDALONE_OPENFANCTL}"
 
@@ -92,13 +84,8 @@ jobs:
           cp "${SRC_OPENFANCTL}" "${PKG_DIR}/"
           cp README.md LICENSE-MIT LICENSE-APACHE "${PKG_DIR}/"
 
-          if [[ "${ARCHIVE_EXT}" == "zip" ]]; then
-            ARCHIVE_FILE="${PKG_DIR}.zip"
-            7z a "${ARCHIVE_FILE}" "${PKG_DIR}" >/dev/null
-          else
-            ARCHIVE_FILE="${PKG_DIR}.tar.xz"
-            tar -cJf "${ARCHIVE_FILE}" "${PKG_DIR}"
-          fi
+          ARCHIVE_FILE="${PKG_DIR}.tar.xz"
+          tar -cJf "${ARCHIVE_FILE}" "${PKG_DIR}"
 
           {
             echo "STANDALONE_OPENFAND=${STANDALONE_OPENFAND}"
