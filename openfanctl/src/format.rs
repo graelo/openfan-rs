@@ -9,7 +9,7 @@ use openfan_core::api::{
 };
 use std::collections::HashMap;
 
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, settings::Style};
 
 /// Output format options
 #[derive(Debug, Clone)]
@@ -290,8 +290,8 @@ pub fn format_success(message: &str) -> String {
 mod tests {
     use super::*;
     use openfan_core::{
-        types::{ControlMode, FanProfile},
         BoardConfig, DefaultBoard,
+        types::{ControlMode, FanProfile},
     };
     use std::collections::HashMap;
 

@@ -1,11 +1,11 @@
 //! Fan handlers for status and control endpoints
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use openfan_core::api;
 use serde::Deserialize;
@@ -418,15 +418,15 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
-    use openfan_core::{config::StaticConfig, BoardType};
+    use openfan_core::{BoardType, config::StaticConfig};
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     /// Create a test app with mock mode (no hardware)

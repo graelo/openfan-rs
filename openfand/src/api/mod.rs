@@ -7,10 +7,10 @@ pub(crate) mod handlers;
 use crate::config::RuntimeConfig;
 use crate::controllers::{ConnectionManager, ControllerRegistry};
 use axum::{
+    Router,
     extract::DefaultBodyLimit,
     http::{HeaderValue, Method},
     routing::{get, post},
-    Router,
 };
 use openfan_core::BoardInfo;
 use std::sync::Arc;
@@ -268,9 +268,9 @@ pub(crate) fn create_router(state: AppState) -> Router {
 /// Error handling utilities
 pub(crate) mod error {
     use axum::{
+        Json,
         http::StatusCode,
         response::{IntoResponse, Response},
-        Json,
     };
     use openfan_core::api::ApiResponse;
 

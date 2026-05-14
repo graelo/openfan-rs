@@ -23,8 +23,8 @@ use anyhow::Result;
 use api::AppState;
 use clap::Parser;
 use config::RuntimeConfig;
-use controllers::{connection, ConnectionManager, ControllerEntry, ControllerRegistry};
-use openfan_core::{default_config_path, BoardInfo, BoardType};
+use controllers::{ConnectionManager, ControllerEntry, ControllerRegistry, connection};
+use openfan_core::{BoardInfo, BoardType, default_config_path};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::signal;
@@ -353,7 +353,7 @@ async fn shutdown_signal() {
 
 /// Initialize tracing subscriber for logging
 fn init_tracing(verbose: bool) {
-    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
     let filter = if verbose {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("debug"))

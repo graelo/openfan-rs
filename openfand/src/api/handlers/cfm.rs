@@ -1,14 +1,14 @@
 //! CFM mapping handlers for display-only airflow information
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use openfan_core::config::CfmMappingData;
-use openfan_core::{api, OpenFanError};
+use openfan_core::{OpenFanError, api};
 use tracing::{debug, info};
 
 /// List all CFM mappings for a specific controller.
@@ -358,16 +358,16 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
     use openfan_core::BoardType;
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     /// Test harness that keeps the config directory alive for the duration of the test.

@@ -1,7 +1,7 @@
 //! HTTP client for communicating with the OpenFAN server.
 
 use anyhow::{Context, Result};
-use openfan_core::{api, types::FanProfile, BoardInfo, CurvePoint};
+use openfan_core::{BoardInfo, CurvePoint, api, types::FanProfile};
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;

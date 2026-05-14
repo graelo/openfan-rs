@@ -5,14 +5,14 @@
 
 use anyhow::Result;
 use axum::{
+    Router,
     extract::{Path, Query},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
 use openfan_core::types::{ControlMode, FanProfile};
-use openfan_core::{api, BoardConfig, CurvePoint, DefaultBoard, ThermalCurve, Zone};
+use openfan_core::{BoardConfig, CurvePoint, DefaultBoard, ThermalCurve, Zone, api};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

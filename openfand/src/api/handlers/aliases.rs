@@ -1,11 +1,11 @@
 //! Alias handlers for fan alias management
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use openfan_core::api;
 use serde::Deserialize;
@@ -289,16 +289,16 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
     use openfan_core::BoardType;
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     struct TestApp {

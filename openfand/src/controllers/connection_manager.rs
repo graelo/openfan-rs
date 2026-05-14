@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use openfan_core::{OpenFanError, ReconnectConfig, Result};
@@ -16,8 +16,8 @@ use tokio::sync::{Mutex, RwLock};
 use tokio::time::sleep;
 use tracing::{debug, error, info, warn};
 
-use super::connection;
 use super::DefaultFanController;
+use super::connection;
 
 /// Connection state machine states
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

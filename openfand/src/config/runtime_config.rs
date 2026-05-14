@@ -4,8 +4,8 @@
 //! thread-safe access and independent save operations.
 
 use openfan_core::{
-    config::{AliasData, CfmMappingData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
     BoardInfo, OpenFanError, Result,
+    config::{AliasData, CfmMappingData, ProfileData, StaticConfig, ThermalCurveData, ZoneData},
 };
 use std::collections::HashMap;
 use std::path::Path;
@@ -418,22 +418,24 @@ impl RuntimeConfig {
             if profile.values.len() < board.fan_count {
                 warn!(
                     "Profile '{}' has {} values but board has {} fans (will use defaults for extra fans)",
-                    name, profile.values.len(), board.fan_count
+                    name,
+                    profile.values.len(),
+                    board.fan_count
                 );
             }
         }
 
         // Validate aliases
-        if let Some(&max_id) = aliases.aliases.keys().max() {
-            if max_id >= board.fan_count as u8 {
-                return Err(OpenFanError::Config(format!(
-                    "Alias exists for fan {} but board '{}' only has {} fans (max ID: {})",
-                    max_id,
-                    board.name,
-                    board.fan_count,
-                    board.fan_count - 1
-                )));
-            }
+        if let Some(&max_id) = aliases.aliases.keys().max()
+            && max_id >= board.fan_count as u8
+        {
+            return Err(OpenFanError::Config(format!(
+                "Alias exists for fan {} but board '{}' only has {} fans (max ID: {})",
+                max_id,
+                board.name,
+                board.fan_count,
+                board.fan_count - 1
+            )));
         }
 
         // Validate zones
@@ -455,16 +457,16 @@ impl RuntimeConfig {
         }
 
         // Validate CFM mappings
-        if let Some(&max_port) = cfm_mappings.mappings.keys().max() {
-            if max_port >= board.fan_count as u8 {
-                return Err(OpenFanError::Config(format!(
-                    "CFM mapping exists for port {} but board '{}' only has {} fans (max ID: {})",
-                    max_port,
-                    board.name,
-                    board.fan_count,
-                    board.fan_count - 1
-                )));
-            }
+        if let Some(&max_port) = cfm_mappings.mappings.keys().max()
+            && max_port >= board.fan_count as u8
+        {
+            return Err(OpenFanError::Config(format!(
+                "CFM mapping exists for port {} but board '{}' only has {} fans (max ID: {})",
+                max_port,
+                board.name,
+                board.fan_count,
+                board.fan_count - 1
+            )));
         }
 
         Ok(())
@@ -575,8 +577,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_for_board_valid_zone() {
-        use openfan_core::board::BoardType;
         use openfan_core::ZoneFan;
+        use openfan_core::board::BoardType;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = create_test_config(temp_dir.path()).await;
@@ -605,8 +607,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_for_board_invalid_zone() {
-        use openfan_core::board::BoardType;
         use openfan_core::ZoneFan;
+        use openfan_core::board::BoardType;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = create_test_config(temp_dir.path()).await;
@@ -628,9 +630,11 @@ mod tests {
         // Validation should fail
         let result = config.validate_for_board(&board).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Zone 'invalid' references fan 15"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Zone 'invalid' references fan 15")
+        );
     }
 }

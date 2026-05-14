@@ -109,7 +109,7 @@ VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/') docke
 
 ## Code Style Guidelines
 
-- **Edition**: Rust 2021
+- **Edition**: Rust 2024
 - **Formatting**: Use `cargo fmt` before committing
 - **Linting**: Run `cargo clippy` and address warnings
 - **Style**: Follow idiomatic Rust patterns

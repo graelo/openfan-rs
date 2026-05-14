@@ -12,9 +12,9 @@ pub mod types;
 // Re-export commonly used types
 pub use board::*;
 pub use config::{
-    default_config_path, default_data_dir, parse_points, AliasData, ControllerConfig, CurvePoint,
-    ProfileData, ProfileName, ReconnectConfig, ShutdownConfig, StaticConfig, ThermalCurve,
-    ThermalCurveData, Zone, ZoneData, ZoneFan, DEFAULT_SAFE_BOOT_PROFILE,
+    AliasData, ControllerConfig, CurvePoint, DEFAULT_SAFE_BOOT_PROFILE, ProfileData, ProfileName,
+    ReconnectConfig, ShutdownConfig, StaticConfig, ThermalCurve, ThermalCurveData, Zone, ZoneData,
+    ZoneFan, default_config_path, default_data_dir, parse_points,
 };
 pub use error::*;
 pub use types::*;

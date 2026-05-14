@@ -1,11 +1,11 @@
 //! Info handlers for system information and root endpoint
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use openfan_core::api;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use tracing::{debug, warn};
 
 /// Handle the root endpoint.
@@ -292,15 +292,15 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
-    use openfan_core::{config::StaticConfig, BoardType};
+    use openfan_core::{BoardType, config::StaticConfig};
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     async fn create_test_app() -> Router {

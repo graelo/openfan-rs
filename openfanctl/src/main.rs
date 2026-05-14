@@ -5,9 +5,9 @@
 use anyhow::Result;
 use clap::Parser;
 use openfanctl::cli::{
-    generate_completion, handle_alias, handle_cfm, handle_config, handle_controller,
-    handle_controllers_list, handle_curve, handle_fan, handle_health, handle_info, handle_profile,
-    handle_status, handle_zone, Cli, Commands, OutputFormat,
+    Cli, Commands, OutputFormat, generate_completion, handle_alias, handle_cfm, handle_config,
+    handle_controller, handle_controllers_list, handle_curve, handle_fan, handle_health,
+    handle_info, handle_profile, handle_status, handle_zone,
 };
 use openfanctl::client::OpenFanClient;
 use openfanctl::config::CliConfig;

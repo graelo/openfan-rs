@@ -3,7 +3,7 @@
 [![release](https://img.shields.io/github/v/release/graelo/openfan-rs)](https://github.com/graelo/openfan-rs/releases/latest)
 [![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci-essentials.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci-essentials.yml)
 [![codecov](https://codecov.io/gh/graelo/openfan-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/graelo/openfan-rs)
-[![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
+[![rust 2024 edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 A Rust-based controller for [OpenFAN

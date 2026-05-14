@@ -32,8 +32,8 @@ pub use cfm_mappings::CfmMappingData;
 pub use paths::{default_config_path, default_data_dir};
 pub use profiles::ProfileData;
 pub use static_config::{
-    ControllerConfig, ProfileName, ReconnectConfig, ServerConfig, ShutdownConfig, StaticConfig,
-    DEFAULT_SAFE_BOOT_PROFILE,
+    ControllerConfig, DEFAULT_SAFE_BOOT_PROFILE, ProfileName, ReconnectConfig, ServerConfig,
+    ShutdownConfig, StaticConfig,
 };
-pub use thermal_curves::{parse_points, CurvePoint, ThermalCurve, ThermalCurveData};
+pub use thermal_curves::{CurvePoint, ThermalCurve, ThermalCurveData, parse_points};
 pub use zones::{Zone, ZoneData, ZoneFan};
