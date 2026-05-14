@@ -15,6 +15,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
+use tokio::io::{AsyncBufReadExt, BufReader as TokioBufReader};
+use tokio::process::Command as TokioCommand;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, timeout};
 
@@ -1796,3 +1798,103 @@ async fn test_e2e_zone_with_controller_format() -> Result<()> {
     harness.stop_server().await?;
     Ok(())
 }
+
+// =============================================================================
+// Regression tests
+// =============================================================================
+
+/// Pick a unique port for a standalone test that does not use `E2ETestHarness`.
+///
+/// Uses the same recipe as the harness: combine process id, thread id, and
+/// the current nanosecond to spread tests apart even when run in parallel.
+fn pick_unique_port(base: u16) -> u16 {
+    let process_id = std::process::id();
+    let thread_id = std::thread::current().id();
+    let thread_hash = format!("{:?}", thread_id)
+        .chars()
+        .filter(|c| c.is_ascii_digit())
+        .collect::<String>();
+    let thread_num = thread_hash.parse::<u32>().unwrap_or(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .subsec_nanos();
+    base + ((process_id + thread_num + nanos) % 1000) as u16
+}
+
+/// Regression test for issue #67.
+///
+/// When `--bind` is omitted on the CLI, the server must honor `bind_address`
+/// from the config file. We verify this by reading the server's own
+/// "listening on …" log line from stderr and asserting it reports the
+/// config-supplied address. Inspecting the log avoids relying on aliased
+/// loopback addresses (e.g. 127.0.0.2), which are not portable across
+/// macOS and Linux.
+#[tokio::test]
+async fn test_e2e_bind_address_from_config_when_no_cli_flag() -> Result<()> {
+    let temp_dir = tempfile::TempDir::new()?;
+    let server_port = pick_unique_port(30000);
+    // Anything other than clap's old default ("127.0.0.1") distinguishes the
+    // fixed behavior from the bug. "0.0.0.0" is portable across OSes.
+    let bind_address = "0.0.0.0";
+
+    let data_dir = temp_dir.path().join("data");
+    std::fs::create_dir_all(&data_dir)?;
+    let config_path = temp_dir.path().join("config.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"data_dir = "{}"
+
+[server]
+bind_address = "{}"
+port = {}
+communication_timeout = 1
+"#,
+            data_dir.display(),
+            bind_address,
+            server_port,
+        ),
+    )?;
+
+    // Spawn the server WITHOUT --bind so the config's bind_address governs.
+    // The tracing-subscriber default writer is stdout, so we capture stdout
+    // and scan it for the "listening on …" line emitted by the server.
+    let mut child = TokioCommand::new(get_server_binary())
+        .args(["--mock", "--config", config_path.to_str().unwrap()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()?;
+
+    let stdout = child.stdout.take().expect("stdout piped");
+    let mut lines = TokioBufReader::new(stdout).lines();
+
+    let listening_line = timeout(SERVER_STARTUP_TIMEOUT, async {
+        while let Ok(Some(line)) = lines.next_line().await {
+            if line.contains("OpenFAN API Server listening on") {
+                return Some(line);
+            }
+        }
+        None
+    })
+    .await;
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+
+    let line = listening_line
+        .map_err(|_| anyhow::anyhow!("timed out waiting for 'listening on' log line"))?
+        .ok_or_else(|| anyhow::anyhow!("server exited before logging 'listening on'"))?;
+
+    let expected = format!("{}:{}", bind_address, server_port);
+    assert!(
+        line.contains(&expected),
+        "expected server to bind to {} (from config), but log line was: {}",
+        expected,
+        line
+    );
+
+    Ok(())
+}
+
