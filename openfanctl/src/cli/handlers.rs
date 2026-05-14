@@ -1,9 +1,9 @@
 //! Command execution handlers
 
 use anyhow::Result;
+use openfan_core::ZoneFan;
 use openfan_core::parse_points;
 use openfan_core::types::{ControlMode, FanProfile};
-use openfan_core::ZoneFan;
 
 use crate::client::OpenFanClient;
 use crate::config::CliConfig;
@@ -797,10 +797,12 @@ mod tests {
         };
         let result = handle_fan(&client, command, &OutputFormat::Table).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Must specify either --pwm or --rpm"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Must specify either --pwm or --rpm")
+        );
     }
 
     #[tokio::test]
@@ -1060,10 +1062,12 @@ mod tests {
         };
         let result = handle_zone(&client, command, &OutputFormat::Table).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Must specify either --pwm or --rpm"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Must specify either --pwm or --rpm")
+        );
     }
 
     // ==================== handle_curve tests ====================
@@ -1276,10 +1280,12 @@ mod tests {
         };
         let result = handle_config(command, &config, &OutputFormat::Table).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Unknown config key"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Unknown config key")
+        );
     }
 
     #[tokio::test]
@@ -1291,10 +1297,12 @@ mod tests {
         };
         let result = handle_config(command, &config, &OutputFormat::Table).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid output format"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid output format")
+        );
     }
 
     #[tokio::test]
@@ -1306,10 +1314,12 @@ mod tests {
         };
         let result = handle_config(command, &config, &OutputFormat::Table).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid timeout value"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid timeout value")
+        );
     }
 
     // ==================== parse_zone_ports tests ====================
@@ -1366,20 +1376,24 @@ mod tests {
     fn test_parse_zone_ports_empty_fails() {
         let result = super::parse_zone_ports("");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("No valid port specifications"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("No valid port specifications")
+        );
     }
 
     #[test]
     fn test_parse_zone_ports_invalid_number_fails() {
         let result = super::parse_zone_ports("0,abc,2");
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Invalid port specification"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Invalid port specification")
+        );
     }
 
     #[test]

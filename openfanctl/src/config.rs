@@ -156,39 +156,32 @@ impl ConfigBuilder {
     /// Apply environment variable overrides
     pub fn with_env_overrides(mut self) -> Self {
         // Only apply env vars if values weren't already set (preserving priority)
-        if self.server_url.is_none() {
-            if let Ok(server_url) = std::env::var("OPENFAN_SERVER") {
-                // Validate before applying
-                if Self::validate_url(&server_url).is_ok() {
-                    self.server_url = Some(server_url);
-                }
-            }
+        if self.server_url.is_none()
+            && let Ok(server_url) = std::env::var("OPENFAN_SERVER")
+            && Self::validate_url(&server_url).is_ok()
+        {
+            self.server_url = Some(server_url);
         }
 
-        if self.output_format.is_none() {
-            if let Ok(format) = std::env::var("OPENFAN_FORMAT") {
-                // Validate before applying
-                if Self::validate_output_format(&format).is_ok() {
-                    self.output_format = Some(format);
-                }
-            }
+        if self.output_format.is_none()
+            && let Ok(format) = std::env::var("OPENFAN_FORMAT")
+            && Self::validate_output_format(&format).is_ok()
+        {
+            self.output_format = Some(format);
         }
 
-        if self.verbose.is_none() {
-            if let Ok(verbose) = std::env::var("OPENFAN_VERBOSE") {
-                self.verbose = Some(verbose.to_lowercase() == "true" || verbose == "1");
-            }
+        if self.verbose.is_none()
+            && let Ok(verbose) = std::env::var("OPENFAN_VERBOSE")
+        {
+            self.verbose = Some(verbose.to_lowercase() == "true" || verbose == "1");
         }
 
-        if self.timeout.is_none() {
-            if let Ok(timeout) = std::env::var("OPENFAN_TIMEOUT") {
-                if let Ok(timeout) = timeout.parse() {
-                    // Validate before applying
-                    if Self::validate_timeout(timeout).is_ok() {
-                        self.timeout = Some(timeout);
-                    }
-                }
-            }
+        if self.timeout.is_none()
+            && let Ok(timeout) = std::env::var("OPENFAN_TIMEOUT")
+            && let Ok(timeout) = timeout.parse()
+            && Self::validate_timeout(timeout).is_ok()
+        {
+            self.timeout = Some(timeout);
         }
 
         self
@@ -317,17 +310,23 @@ mod tests {
         assert!(ConfigBuilder::new().with_server_url("").is_err());
 
         // Invalid protocol
-        assert!(ConfigBuilder::new()
-            .with_server_url("ftp://example.com")
-            .is_err());
+        assert!(
+            ConfigBuilder::new()
+                .with_server_url("ftp://example.com")
+                .is_err()
+        );
 
         // Valid URLs
-        assert!(ConfigBuilder::new()
-            .with_server_url("http://localhost:3000")
-            .is_ok());
-        assert!(ConfigBuilder::new()
-            .with_server_url("https://example.com")
-            .is_ok());
+        assert!(
+            ConfigBuilder::new()
+                .with_server_url("http://localhost:3000")
+                .is_ok()
+        );
+        assert!(
+            ConfigBuilder::new()
+                .with_server_url("https://example.com")
+                .is_ok()
+        );
     }
 
     #[test]
@@ -341,20 +340,37 @@ mod tests {
         assert!(ConfigBuilder::new().with_output_format("json").is_ok());
     }
 
+    // SAFETY for the env helpers below: every caller is annotated with
+    // `#[serial]`, so no other thread touches the process environment for
+    // the duration of the test.
+    fn unset_env(keys: &[&str]) {
+        for k in keys {
+            unsafe { std::env::remove_var(k) };
+        }
+    }
+
+    fn set_env(pairs: &[(&str, &str)]) {
+        for (k, v) in pairs {
+            unsafe { std::env::set_var(k, v) };
+        }
+    }
+
     #[test]
     #[serial]
     fn test_builder_with_env_overrides() {
-        // Clean environment first
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_FORMAT");
-        std::env::remove_var("OPENFAN_VERBOSE");
-        std::env::remove_var("OPENFAN_TIMEOUT");
-
-        // Set env vars
-        std::env::set_var("OPENFAN_SERVER", "http://env.example.com:9000");
-        std::env::set_var("OPENFAN_FORMAT", "json");
-        std::env::set_var("OPENFAN_VERBOSE", "true");
-        std::env::set_var("OPENFAN_TIMEOUT", "25");
+        let keys = [
+            "OPENFAN_SERVER",
+            "OPENFAN_FORMAT",
+            "OPENFAN_VERBOSE",
+            "OPENFAN_TIMEOUT",
+        ];
+        unset_env(&keys);
+        set_env(&[
+            ("OPENFAN_SERVER", "http://env.example.com:9000"),
+            ("OPENFAN_FORMAT", "json"),
+            ("OPENFAN_VERBOSE", "true"),
+            ("OPENFAN_TIMEOUT", "25"),
+        ]);
 
         let config = ConfigBuilder::new().with_env_overrides().build().unwrap();
 
@@ -363,23 +379,18 @@ mod tests {
         assert!(config.verbose);
         assert_eq!(config.timeout, 25);
 
-        // Clean up
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_FORMAT");
-        std::env::remove_var("OPENFAN_VERBOSE");
-        std::env::remove_var("OPENFAN_TIMEOUT");
+        unset_env(&keys);
     }
 
     #[test]
     #[serial]
     fn test_builder_priority_chain() {
-        // Clean environment
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_TIMEOUT");
-
-        // Set env vars
-        std::env::set_var("OPENFAN_SERVER", "http://env.example.com:9000");
-        std::env::set_var("OPENFAN_TIMEOUT", "25");
+        let keys = ["OPENFAN_SERVER", "OPENFAN_TIMEOUT"];
+        unset_env(&keys);
+        set_env(&[
+            ("OPENFAN_SERVER", "http://env.example.com:9000"),
+            ("OPENFAN_TIMEOUT", "25"),
+        ]);
 
         // CLI args should override env vars
         let config = ConfigBuilder::new()
@@ -394,39 +405,37 @@ mod tests {
         // Env var applies for timeout
         assert_eq!(config.timeout, 25);
 
-        // Clean up
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_TIMEOUT");
+        unset_env(&keys);
     }
 
     #[test]
     #[serial]
     fn test_builder_env_priority_over_defaults() {
-        // Clean environment
-        std::env::remove_var("OPENFAN_VERBOSE");
-
-        std::env::set_var("OPENFAN_VERBOSE", "true");
+        unset_env(&["OPENFAN_VERBOSE"]);
+        set_env(&[("OPENFAN_VERBOSE", "true")]);
 
         let config = ConfigBuilder::new().with_env_overrides().build().unwrap();
 
         // Env var overrides default (false)
         assert!(config.verbose);
 
-        std::env::remove_var("OPENFAN_VERBOSE");
+        unset_env(&["OPENFAN_VERBOSE"]);
     }
 
     #[test]
     #[serial]
     fn test_builder_invalid_env_values_ignored() {
-        // Clean environment first to avoid interference from other tests
-        std::env::remove_var("OPENFAN_SERVER");
-        std::env::remove_var("OPENFAN_FORMAT");
-        std::env::remove_var("OPENFAN_VERBOSE");
-        std::env::remove_var("OPENFAN_TIMEOUT");
-
-        // Set invalid values
-        std::env::set_var("OPENFAN_TIMEOUT", "invalid");
-        std::env::set_var("OPENFAN_FORMAT", "xml"); // Invalid format
+        let keys = [
+            "OPENFAN_SERVER",
+            "OPENFAN_FORMAT",
+            "OPENFAN_VERBOSE",
+            "OPENFAN_TIMEOUT",
+        ];
+        unset_env(&keys);
+        set_env(&[
+            ("OPENFAN_TIMEOUT", "invalid"),
+            ("OPENFAN_FORMAT", "xml"), // Invalid format
+        ]);
 
         let config = ConfigBuilder::new().with_env_overrides().build().unwrap();
 
@@ -434,8 +443,6 @@ mod tests {
         assert_eq!(config.timeout, 10);
         assert_eq!(config.output_format, "table");
 
-        // Clean up
-        std::env::remove_var("OPENFAN_TIMEOUT");
-        std::env::remove_var("OPENFAN_FORMAT");
+        unset_env(&["OPENFAN_TIMEOUT", "OPENFAN_FORMAT"]);
     }
 }

@@ -1,14 +1,18 @@
 # OpenFAN Controller
 
 [![release](https://img.shields.io/github/v/release/graelo/openfan-rs)](https://github.com/graelo/openfan-rs/releases/latest)
-[![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci.yml)
+[![build status](https://github.com/graelo/openfan-rs/actions/workflows/ci-essentials.yml/badge.svg)](https://github.com/graelo/openfan-rs/actions/workflows/ci-essentials.yml)
 [![codecov](https://codecov.io/gh/graelo/openfan-rs/branch/main/graph/badge.svg)](https://codecov.io/gh/graelo/openfan-rs)
-[![rust 2021 edition](https://img.shields.io/badge/edition-2021-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2021/index.html)
-[![license](https://img.shields.io/github/license/graelo/openfan-rs)](LICENSE)
+[![rust 2024 edition](https://img.shields.io/badge/edition-2024-blue.svg)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
+[![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
 A Rust-based controller for [OpenFAN
 hardware](https://sasakaranovic.com/projects/openfan-controller/) - manage your
 fans via REST API or CLI.
+
+> [!WARNING]
+> **Alpha-quality software — do not use yet.** Interfaces, configuration
+> formats, and on-disk layouts may change without notice.
 
 ## Overview
 
@@ -46,12 +50,14 @@ curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-c
 sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
-**Other Linux:**
+**Other Linux** (statically-linked musl binaries — use `aarch64-unknown-linux-musl` on ARM64):
 
 ```bash
-curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-linux-x86_64.tar.gz
-tar xzf openfan-linux-x86_64.tar.gz
-sudo ./openfan-linux-x86_64/deploy/install.sh
+BASE=https://github.com/graelo/openfan-rs/releases/latest/download
+TARGET=x86_64-unknown-linux-musl
+curl -L "${BASE}/openfand-${TARGET}"   -o openfand
+curl -L "${BASE}/openfanctl-${TARGET}" -o openfanctl
+sudo install -m 755 openfand openfanctl /usr/local/bin/
 ```
 
 ### Build from Source
@@ -335,4 +341,18 @@ contribution guidelines.
 
 ## License
 
-MIT
+Licensed under either of:
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+  <https://www.apache.org/licenses/LICENSE-2.0>)
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or
+  <https://opensource.org/licenses/MIT>)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.

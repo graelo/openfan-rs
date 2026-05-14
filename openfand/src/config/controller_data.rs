@@ -4,8 +4,8 @@
 //! and CFM mappings stored in a separate directory under the data directory.
 
 use openfan_core::{
-    config::{AliasData, CfmMappingData, ProfileData, ThermalCurveData},
     OpenFanError, Result,
+    config::{AliasData, CfmMappingData, ProfileData, ThermalCurveData},
 };
 use std::path::{Path, PathBuf};
 use tokio::fs;

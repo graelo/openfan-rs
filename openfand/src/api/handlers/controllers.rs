@@ -3,13 +3,13 @@
 //! Endpoints for listing and managing multiple fan controllers.
 
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use openfan_core::api::{ApiResponse, ControllerInfo, ControllersListResponse};
 use tracing::{info, warn};
 
-use crate::api::{error::ApiError, AppState};
+use crate::api::{AppState, error::ApiError};
 
 /// GET /api/v0/controllers
 ///

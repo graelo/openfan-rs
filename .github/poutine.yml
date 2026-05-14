@@ -1,0 +1,14 @@
+skip:
+  - rule: github_action_from_unverified_creator_used
+    purl:
+      - pkg:githubactions/dtolnay/rust-toolchain
+      - pkg:githubactions/dorny/paths-filter
+      - pkg:githubactions/zizmorcore/zizmor-action
+      - pkg:githubactions/boostsecurityio/poutine-action
+      - pkg:githubactions/renovatebot/github-action
+      - pkg:githubactions/taiki-e/install-action
+      - pkg:githubactions/codecov/codecov-action
+      - pkg:githubactions/docker/setup-buildx-action
+      - pkg:githubactions/docker/login-action
+      - pkg:githubactions/docker/build-push-action
+      - pkg:githubactions/docker/metadata-action

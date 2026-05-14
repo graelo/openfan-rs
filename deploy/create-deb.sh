@@ -14,9 +14,13 @@ NC='\033[0m' # No Color
 # Configuration
 PACKAGE_NAME="openfan-controller"
 VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-ARCHITECTURE="amd64"
+# Architecture: override with `ARCH=arm64 ./deploy/create-deb.sh` (defaults to amd64).
+# When cross-compiling, set CARGO_BUILD_TARGET (e.g. aarch64-unknown-linux-musl)
+# so the script picks up the binaries from target/<target>/release/.
+ARCHITECTURE="${ARCH:-amd64}"
 PACKAGE_DIR="debian-package"
 DEB_DIR="$PACKAGE_DIR/DEBIAN"
+BIN_DIR="target/${CARGO_BUILD_TARGET:+${CARGO_BUILD_TARGET}/}release"
 
 # Print colored output
 print_status() {
@@ -52,8 +56,8 @@ check_requirements() {
     exit 1
   fi
 
-  if [[ ! -f "target/release/openfand" ]] || [[ ! -f "target/release/openfanctl" ]]; then
-    print_error "Release binaries not found. Please run 'cargo build --release' first"
+  if [[ ! -f "$BIN_DIR/openfand" ]] || [[ ! -f "$BIN_DIR/openfanctl" ]]; then
+    print_error "Release binaries not found at $BIN_DIR/. Please run 'cargo build --release' first"
     exit 1
   fi
 
@@ -91,8 +95,8 @@ copy_files() {
   print_status "Copying files..."
 
   # Copy binaries
-  cp target/release/openfand "$PACKAGE_DIR/opt/openfan/bin/"
-  cp target/release/openfanctl "$PACKAGE_DIR/usr/local/bin/"
+  cp "$BIN_DIR/openfand" "$PACKAGE_DIR/opt/openfan/bin/"
+  cp "$BIN_DIR/openfanctl" "$PACKAGE_DIR/usr/local/bin/"
 
   # Copy configuration
   cp config.toml "$PACKAGE_DIR/etc/openfan/"
@@ -104,7 +108,7 @@ copy_files() {
   cp README.md "$PACKAGE_DIR/usr/share/doc/$PACKAGE_NAME/"
 
   # Generate bash completion
-  target/release/openfanctl completion bash > "$PACKAGE_DIR/etc/bash_completion.d/openfanctl" || true
+  "$BIN_DIR/openfanctl" completion bash > "$PACKAGE_DIR/etc/bash_completion.d/openfanctl" || true
 
   print_success "Files copied"
 }

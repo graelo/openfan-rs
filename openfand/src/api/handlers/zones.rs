@@ -1,13 +1,13 @@
 //! Zone handlers for CRUD operations and coordinated fan control
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
-use openfan_core::{api, ControlMode, OpenFanError, Zone};
+use openfan_core::{ControlMode, OpenFanError, Zone, api};
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -235,13 +235,13 @@ pub(crate) async fn update_zone(
 
         // Check for exclusive membership (excluding fans already in this zone)
         for fan in &request.fans {
-            if let Some(existing_zone) = zones.find_zone_for_fan(&fan.controller, fan.fan_id) {
-                if existing_zone != name {
-                    return api_fail!(format!(
-                        "Fan (controller: '{}', fan_id: {}) is already assigned to zone '{}'!",
-                        fan.controller, fan.fan_id, existing_zone
-                    ));
-                }
+            if let Some(existing_zone) = zones.find_zone_for_fan(&fan.controller, fan.fan_id)
+                && existing_zone != name
+            {
+                return api_fail!(format!(
+                    "Fan (controller: '{}', fan_id: {}) is already assigned to zone '{}'!",
+                    fan.controller, fan.fan_id, existing_zone
+                ));
             }
         }
 
@@ -386,23 +386,21 @@ pub(crate) async fn apply_zone(
     let zone_name = name.clone();
 
     // Apply value to each fan in the zone via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            for &fan_id in &fan_ids {
-                let result = match mode {
-                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-                };
+    cm.with_controller(async |controller| {
+        for &fan_id in &fan_ids {
+            let result = match mode {
+                ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+            };
 
-                if let Err(e) = result {
-                    warn!(
-                        "Failed to set fan {} in zone '{}': {}",
-                        fan_id, zone_name, e
-                    );
-                }
+            if let Err(e) = result {
+                warn!(
+                    "Failed to set fan {} in zone '{}': {}",
+                    fan_id, zone_name, e
+                );
             }
-            Ok(())
-        })
+        }
+        Ok(())
     })
     .await?;
 
@@ -454,16 +452,16 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
     use openfan_core::BoardType;
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     struct TestApp {
@@ -879,9 +877,9 @@ communication_timeout = 1
 #[cfg(test)]
 mod multi_controller_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
     use openfan_core::BoardType;
@@ -889,7 +887,7 @@ mod multi_controller_tests {
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
     use crate::controllers::{ControllerEntry, ControllerRegistry};
 

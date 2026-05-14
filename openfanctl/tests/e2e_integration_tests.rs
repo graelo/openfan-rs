@@ -327,10 +327,10 @@ communication_timeout = 1
 impl Drop for E2ETestHarness {
     fn drop(&mut self) {
         // Ensure server process is killed on drop
-        if let Ok(mut guard) = self.server_process.try_lock() {
-            if let Some(mut child) = guard.take() {
-                let _ = child.kill();
-            }
+        if let Ok(mut guard) = self.server_process.try_lock()
+            && let Some(mut child) = guard.take()
+        {
+            let _ = child.kill();
         }
         // The temp_dir will be automatically cleaned up when it goes out of scope
     }

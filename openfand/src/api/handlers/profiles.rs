@@ -1,13 +1,13 @@
 //! Profile handlers for CRUD operations
 
-use crate::api::error::ApiError;
 use crate::api::AppState;
+use crate::api::error::ApiError;
 use crate::{api_fail, api_ok};
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
-use openfan_core::{api, ControlMode, FanProfile};
+use openfan_core::{ControlMode, FanProfile, api};
 use serde::Deserialize;
 
 use tracing::{debug, info, warn};
@@ -273,25 +273,23 @@ pub(crate) async fn set_controller_profile(
     let cid = controller_id.clone();
 
     // Apply profile values to each fan via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            for (fan_id, &value) in profile_values.iter().enumerate() {
-                let fan_id = fan_id as u8;
+    cm.with_controller(async |controller| {
+        for (fan_id, &value) in profile_values.iter().enumerate() {
+            let fan_id = fan_id as u8;
 
-                let result = match control_mode {
-                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-                };
+            let result = match control_mode {
+                ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+            };
 
-                if let Err(e) = result {
-                    warn!(
-                        "Controller '{}': Failed to set fan {} while applying profile '{}': {}",
-                        cid, fan_id, pname, e
-                    );
-                }
+            if let Err(e) = result {
+                warn!(
+                    "Controller '{}': Failed to set fan {} while applying profile '{}': {}",
+                    cid, fan_id, pname, e
+                );
             }
-            Ok(())
-        })
+        }
+        Ok(())
     })
     .await?;
 
@@ -318,7 +316,7 @@ mod tests {
 
         // Verify that the validation would catch this
         assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
-        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 100);
+        let invalid_value = profile.values.iter().enumerate().find(|&(_, &v)| v > 100);
         assert!(invalid_value.is_some(), "Should find PWM value > 100");
         assert_eq!(
             invalid_value.unwrap().0,
@@ -339,7 +337,7 @@ mod tests {
 
         // Verify that the validation would catch this
         assert_eq!(profile.values.len(), DefaultBoard::FAN_COUNT);
-        let invalid_value = profile.values.iter().enumerate().find(|(_, &v)| v > 16000);
+        let invalid_value = profile.values.iter().enumerate().find(|&(_, &v)| v > 16000);
         assert!(invalid_value.is_some(), "Should find RPM value > 16000");
         assert_eq!(
             invalid_value.unwrap().0,
@@ -414,16 +412,16 @@ mod tests {
 #[cfg(test)]
 mod integration_tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use http_body_util::BodyExt;
     use openfan_core::BoardType;
     use tempfile::TempDir;
     use tower::ServiceExt;
 
-    use crate::api::{create_router, AppState};
+    use crate::api::{AppState, create_router};
     use crate::config::RuntimeConfig;
 
     struct TestApp {

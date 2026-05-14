@@ -58,23 +58,21 @@ pub async fn apply_safe_boot_profile(
 
     info!("Applying safe boot profile '{}'...", profile_name);
 
+    let values = profile.values.clone();
+    let mode = profile.control_mode;
     let result = cm
-        .with_controller(|controller| {
-            let values = profile.values.clone();
-            let mode = profile.control_mode;
-            Box::pin(async move {
-                for (fan_id, &value) in values.iter().enumerate() {
-                    let fan_id = fan_id as u8;
-                    let res = match mode {
-                        ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-                        ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-                    };
-                    if let Err(e) = res {
-                        warn!("Failed to set fan {} during shutdown: {}", fan_id, e);
-                    }
+        .with_controller(async |controller| {
+            for (fan_id, &value) in values.iter().enumerate() {
+                let fan_id = fan_id as u8;
+                let res = match mode {
+                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+                };
+                if let Err(e) = res {
+                    warn!("Failed to set fan {} during shutdown: {}", fan_id, e);
                 }
-                Ok(())
-            })
+            }
+            Ok(())
         })
         .await;
 
