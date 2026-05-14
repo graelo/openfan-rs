@@ -3,7 +3,7 @@
 set -e
 
 CRATE=openfan
-MSRV=1.91
+MSRV=1.95
 
 get_rust_version() {
   local array=($(rustc --version));
