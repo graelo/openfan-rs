@@ -119,13 +119,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+    env:
+      CARGO_BUILD_TARGET: ${{ matrix.target }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             arch: amd64
+            target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
             arch: arm64
+            target: aarch64-unknown-linux-musl
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -137,11 +141,12 @@ jobs:
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
           toolchain: stable
+          targets: ${{ matrix.target }}
 
-      - name: Setup – install dpkg-dev
+      - name: Install musl-tools (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install -y dpkg-dev
+          sudo apt-get install -y musl-tools dpkg-dev
 
       - name: Build (release)
         run: cargo build --locked --release --workspace
