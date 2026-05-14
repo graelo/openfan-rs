@@ -37,13 +37,15 @@ set -x
 # build the workspace (dev profile)
 cargo build --locked --workspace
 
-# Point the openfanctl e2e tests at the openfand binary we just built.
+# Point the openfanctl e2e tests at the binaries we just built.
 # CARGO_BUILD_TARGET (set in the compat matrix) redirects build output to
-# target/<target>/{debug,release}; without this export the e2e tests look
-# for target/debug/openfand and fail. Must be absolute — nextest sets CWD
-# to the test's package directory, not the workspace root.
+# target/<target>/{debug,release}; without these exports the e2e tests
+# look for target/debug/{openfand,openfanctl} and fail. Paths must be
+# absolute — nextest sets CWD to the test's package directory, not the
+# workspace root.
 DEBUG_DIR="$PWD/target/${CARGO_BUILD_TARGET:+${CARGO_BUILD_TARGET}/}debug"
 export OPENFAND_BINARY="${DEBUG_DIR}/openfand"
+export OPENFANCTL_BINARY="${DEBUG_DIR}/openfanctl"
 
 # unit + integration tests across the workspace
 cargo nextest run --locked $NEXTEST_PROFILE --workspace
