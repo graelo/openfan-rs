@@ -273,25 +273,23 @@ pub(crate) async fn set_controller_profile(
     let cid = controller_id.clone();
 
     // Apply profile values to each fan via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            for (fan_id, &value) in profile_values.iter().enumerate() {
-                let fan_id = fan_id as u8;
+    cm.with_controller(async |controller| {
+        for (fan_id, &value) in profile_values.iter().enumerate() {
+            let fan_id = fan_id as u8;
 
-                let result = match control_mode {
-                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-                };
+            let result = match control_mode {
+                ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+            };
 
-                if let Err(e) = result {
-                    warn!(
-                        "Controller '{}': Failed to set fan {} while applying profile '{}': {}",
-                        cid, fan_id, pname, e
-                    );
-                }
+            if let Err(e) = result {
+                warn!(
+                    "Controller '{}': Failed to set fan {} while applying profile '{}': {}",
+                    cid, fan_id, pname, e
+                );
             }
-            Ok(())
-        })
+        }
+        Ok(())
     })
     .await?;
 

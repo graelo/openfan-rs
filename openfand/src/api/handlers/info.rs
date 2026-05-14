@@ -87,32 +87,30 @@ pub(crate) async fn get_info(
         // Try to get hardware and firmware info if connected
         let (hw, fw) = if is_connected {
             let result = cm
-                .with_controller(|controller| {
-                    Box::pin(async move {
-                        let hw = match controller.get_hw_info().await {
-                            Ok(info) => {
-                                debug!("Retrieved hardware info: {}", info);
-                                Some(info)
-                            }
-                            Err(e) => {
-                                warn!("Failed to retrieve hardware info: {}", e);
-                                None
-                            }
-                        };
+                .with_controller(async |controller| {
+                    let hw = match controller.get_hw_info().await {
+                        Ok(info) => {
+                            debug!("Retrieved hardware info: {}", info);
+                            Some(info)
+                        }
+                        Err(e) => {
+                            warn!("Failed to retrieve hardware info: {}", e);
+                            None
+                        }
+                    };
 
-                        let fw = match controller.get_fw_info().await {
-                            Ok(info) => {
-                                debug!("Retrieved firmware info: {}", info);
-                                Some(info)
-                            }
-                            Err(e) => {
-                                warn!("Failed to retrieve firmware info: {}", e);
-                                None
-                            }
-                        };
+                    let fw = match controller.get_fw_info().await {
+                        Ok(info) => {
+                            debug!("Retrieved firmware info: {}", info);
+                            Some(info)
+                        }
+                        Err(e) => {
+                            warn!("Failed to retrieve firmware info: {}", e);
+                            None
+                        }
+                    };
 
-                        Ok((hw, fw))
-                    })
+                    Ok((hw, fw))
                 })
                 .await;
 

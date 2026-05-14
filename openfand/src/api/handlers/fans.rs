@@ -65,18 +65,16 @@ pub(crate) async fn get_controller_fan_status(
 
     // Get RPM and PWM data from hardware via connection manager
     let status = cm
-        .with_controller(|controller| {
-            Box::pin(async move {
-                let rpm_map = controller.get_all_fan_rpm().await?;
-                let pwm_map = controller.get_all_fan_pwm();
-                debug!(
-                    "Fan status retrieved - RPM: {:?}, PWM: {:?}",
-                    rpm_map, pwm_map
-                );
-                Ok(api::FanStatusResponse {
-                    rpms: rpm_map,
-                    pwms: pwm_map,
-                })
+        .with_controller(async |controller| {
+            let rpm_map = controller.get_all_fan_rpm().await?;
+            let pwm_map = controller.get_all_fan_pwm();
+            debug!(
+                "Fan status retrieved - RPM: {:?}, PWM: {:?}",
+                rpm_map, pwm_map
+            );
+            Ok(api::FanStatusResponse {
+                rpms: rpm_map,
+                pwms: pwm_map,
             })
         })
         .await?;
@@ -128,12 +126,10 @@ pub(crate) async fn set_controller_all_fans(
     };
 
     // Send command to hardware via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            let response = controller.set_all_fan_pwm(pwm_value).await?;
-            debug!("Set all fans response: {}", response);
-            Ok(())
-        })
+    cm.with_controller(async |controller| {
+        let response = controller.set_all_fan_pwm(pwm_value).await?;
+        debug!("Set all fans response: {}", response);
+        Ok(())
     })
     .await?;
 
@@ -192,12 +188,10 @@ pub(crate) async fn set_controller_fan_pwm(
     };
 
     // Send command to hardware via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            let response = controller.set_fan_pwm(fan_index, pwm_value).await?;
-            debug!("Set fan {} PWM response: {}", fan_index, response);
-            Ok(())
-        })
+    cm.with_controller(async |controller| {
+        let response = controller.set_fan_pwm(fan_index, pwm_value).await?;
+        debug!("Set fan {} PWM response: {}", fan_index, response);
+        Ok(())
     })
     .await?;
 
@@ -245,12 +239,10 @@ pub(crate) async fn get_controller_fan_rpm(
 
     // Get single fan RPM from hardware via connection manager
     let rpm = cm
-        .with_controller(|controller| {
-            Box::pin(async move {
-                let rpm = controller.get_single_fan_rpm(fan_index).await?;
-                debug!("Fan {} RPM: {}", fan_index, rpm);
-                Ok(rpm)
-            })
+        .with_controller(async |controller| {
+            let rpm = controller.get_single_fan_rpm(fan_index).await?;
+            debug!("Fan {} RPM: {}", fan_index, rpm);
+            Ok(rpm)
         })
         .await?;
 
@@ -310,12 +302,10 @@ pub(crate) async fn set_controller_fan_rpm(
     };
 
     // Send command to hardware via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            let response = controller.set_fan_rpm(fan_index, rpm_value).await?;
-            debug!("Set fan {} RPM response: {}", fan_index, response);
-            Ok(())
-        })
+    cm.with_controller(async |controller| {
+        let response = controller.set_fan_rpm(fan_index, rpm_value).await?;
+        debug!("Set fan {} RPM response: {}", fan_index, response);
+        Ok(())
     })
     .await?;
 

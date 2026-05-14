@@ -386,23 +386,21 @@ pub(crate) async fn apply_zone(
     let zone_name = name.clone();
 
     // Apply value to each fan in the zone via connection manager
-    cm.with_controller(|controller| {
-        Box::pin(async move {
-            for &fan_id in &fan_ids {
-                let result = match mode {
-                    ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
-                    ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
-                };
+    cm.with_controller(async |controller| {
+        for &fan_id in &fan_ids {
+            let result = match mode {
+                ControlMode::Pwm => controller.set_fan_pwm(fan_id, value).await,
+                ControlMode::Rpm => controller.set_fan_rpm(fan_id, value).await,
+            };
 
-                if let Err(e) = result {
-                    warn!(
-                        "Failed to set fan {} in zone '{}': {}",
-                        fan_id, zone_name, e
-                    );
-                }
+            if let Err(e) = result {
+                warn!(
+                    "Failed to set fan {} in zone '{}': {}",
+                    fan_id, zone_name, e
+                );
             }
-            Ok(())
-        })
+        }
+        Ok(())
     })
     .await?;
 

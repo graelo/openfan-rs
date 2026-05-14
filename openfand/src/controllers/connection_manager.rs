@@ -4,8 +4,6 @@
 //! device disconnections and automatic reconnection with exponential backoff.
 
 use std::collections::HashMap;
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
@@ -99,18 +97,12 @@ impl ConnectionManager {
     ///
     /// # Usage
     ///
-    /// The closure must return a boxed future. Use `Box::pin(async move { ... })`:
-    ///
     /// ```ignore
-    /// cm.with_controller(|ctrl| Box::pin(async move {
-    ///     ctrl.get_all_fan_rpm().await
-    /// })).await
+    /// cm.with_controller(async |ctrl| ctrl.get_all_fan_rpm().await).await
     /// ```
     pub async fn with_controller<F, T>(&self, f: F) -> Result<T>
     where
-        F: for<'a> FnOnce(
-            &'a mut DefaultFanController,
-        ) -> Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>,
+        F: AsyncFnOnce(&mut DefaultFanController) -> Result<T>,
     {
         // Check current state
         let state = *self.state.read().await;
@@ -314,7 +306,7 @@ impl ConnectionManager {
                 // Perform health check
                 debug!("Performing heartbeat check");
                 let result = self
-                    .with_controller(|ctrl| Box::pin(async move { ctrl.get_fw_info().await }))
+                    .with_controller(async |ctrl| ctrl.get_fw_info().await)
                     .await;
 
                 match result {
