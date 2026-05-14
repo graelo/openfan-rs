@@ -10,6 +10,10 @@ A Rust-based controller for [OpenFAN
 hardware](https://sasakaranovic.com/projects/openfan-controller/) - manage your
 fans via REST API or CLI.
 
+> [!WARNING]
+> **Alpha-quality software — do not use yet.** Interfaces, configuration
+> formats, and on-disk layouts may change without notice.
+
 ## Overview
 
 OpenFAN is a fan controller system consisting of:
