@@ -46,12 +46,14 @@ curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-c
 sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
-**Other Linux:**
+**Other Linux** (standalone binaries — use `aarch64-unknown-linux-gnu` on ARM64):
 
 ```bash
-curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-linux-x86_64.tar.gz
-tar xzf openfan-linux-x86_64.tar.gz
-sudo ./openfan-linux-x86_64/deploy/install.sh
+BASE=https://github.com/graelo/openfan-rs/releases/latest/download
+TARGET=x86_64-unknown-linux-gnu
+curl -L "${BASE}/openfand-${TARGET}"   -o openfand
+curl -L "${BASE}/openfanctl-${TARGET}" -o openfanctl
+sudo install -m 755 openfand openfanctl /usr/local/bin/
 ```
 
 ### Build from Source
