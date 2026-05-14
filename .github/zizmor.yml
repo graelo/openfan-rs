@@ -3,5 +3,6 @@ rules:
     ignore:
       - _cargo-audit.yml
       - ci-essentials.yml
+      - ci-compatibility-matrix.yml
       - ci-coverage.yml
       - release.yml
