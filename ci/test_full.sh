@@ -35,10 +35,23 @@ fi
 set -x
 
 # build the workspace
-cargo build --workspace
+cargo build --locked --workspace
 
 # unit + integration tests across the workspace
-cargo nextest run $NEXTEST_PROFILE --workspace
+cargo nextest run --locked $NEXTEST_PROFILE --workspace
 
 # doc tests (not supported by nextest)
-cargo test --doc --workspace
+cargo test --locked --doc --workspace
+
+# CLI smoke tests (release binaries). CARGO_BUILD_TARGET (set in the compat
+# matrix) redirects output to target/<target>/release; Git Bash on Windows
+# reports OSTYPE=msys.
+cargo build --locked --release --workspace
+
+BIN_DIR="target/${CARGO_BUILD_TARGET:+${CARGO_BUILD_TARGET}/}release"
+EXT=""
+case "${OSTYPE:-}" in
+  msys*|cygwin*) EXT=".exe" ;;
+esac
+"${BIN_DIR}/openfanctl${EXT}" --help
+"${BIN_DIR}/openfand${EXT}" --help
