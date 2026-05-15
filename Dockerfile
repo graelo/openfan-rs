@@ -2,7 +2,7 @@
 # Multi-stage build for optimized container size
 
 # Build stage
-FROM rust:1.91-alpine AS builder
+FROM rust:1.95-alpine AS builder
 
 # Use Docker's automatic platform detection
 ARG TARGETPLATFORM
@@ -42,7 +42,7 @@ RUN rustup target add $(cat /tmp/rust-target)
 RUN cargo build --release --target $(cat /tmp/rust-target)
 
 # Runtime stage
-FROM alpine:3.22
+FROM alpine:3.23
 
 # Install runtime dependencies
 RUN apk add --no-cache \
