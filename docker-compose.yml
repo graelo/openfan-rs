@@ -92,7 +92,7 @@ services:
 
   # Log aggregator (optional)
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:2.9.17
     container_name: openfan-loki
     restart: unless-stopped
     ports:
