@@ -19,7 +19,6 @@ concurrency:
 
 jobs:
   prepare-artifacts:
-    name: ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -115,7 +114,6 @@ jobs:
           retention-days: 1
 
   prepare-deb:
-    name: Build Debian package
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
@@ -164,7 +162,6 @@ jobs:
           retention-days: 1
 
   prepare-docker:
-    name: Build Docker image (${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
     environment: release
     permissions:
