@@ -42,7 +42,7 @@ RUN rustup target add $(cat /tmp/rust-target)
 RUN cargo build --release --target $(cat /tmp/rust-target)
 
 # Runtime stage
-FROM alpine:3.23
+FROM alpine:3.24
 
 # Install runtime dependencies
 RUN apk add --no-cache \
