@@ -9,8 +9,8 @@ use openfan_core::api::{
 };
 use std::collections::HashMap;
 
-use comfy_table::{Table, ContentArrangement};
 use comfy_table::presets::UTF8_FULL;
+use comfy_table::{ContentArrangement, Table};
 
 /// Output format options
 #[derive(Debug, Clone)]
@@ -110,12 +110,7 @@ pub fn format_fan_status_with_cfm(
                 table
                     .set_content_arrangement(ContentArrangement::Dynamic)
                     .load_preset(UTF8_FULL)
-                    .set_header(vec![
-                        "Fan ID",
-                        "RPM",
-                        "PWM %",
-                        "CFM",
-                    ]);
+                    .set_header(vec!["Fan ID", "RPM", "PWM %", "CFM"]);
 
                 let cfm_data = cfm_mappings.unwrap();
 
@@ -153,12 +148,7 @@ pub fn format_fan_status_with_cfm(
                         "0%".dimmed().to_string()
                     };
 
-                    table.add_row(vec![
-                        format!("{}", fan_id),
-                        rpm_str,
-                        pwm_str,
-                        cfm_str,
-                    ]);
+                    table.add_row(vec![format!("{}", fan_id), rpm_str, pwm_str, cfm_str]);
                 }
 
                 Ok(format!("{}\n{}", "Fan Status:".bold(), table))
@@ -196,11 +186,7 @@ pub fn format_fan_status_with_cfm(
                         "0%".dimmed().to_string()
                     };
 
-                    table.add_row(vec![
-                        format!("{}", fan_id),
-                        rpm_str,
-                        pwm_str,
-                    ]);
+                    table.add_row(vec![format!("{}", fan_id), rpm_str, pwm_str]);
                 }
 
                 Ok(format!("{}\n{}", "Fan Status:".bold(), table))
@@ -260,10 +246,7 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
                     .cloned()
                     .unwrap_or_else(|| format!("Fan #{}", fan_id));
 
-                table.add_row(vec![
-                    format!("{}", fan_id),
-                    alias.green().to_string(),
-                ]);
+                table.add_row(vec![format!("{}", fan_id), alias.green().to_string()]);
             }
 
             Ok(format!("{}\n{}", "Fan Aliases:".bold(), table))
