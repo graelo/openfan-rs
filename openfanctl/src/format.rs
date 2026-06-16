@@ -9,7 +9,8 @@ use openfan_core::api::{
 };
 use std::collections::HashMap;
 
-use tabled::{Table, Tabled, settings::Style};
+use comfy_table::presets::UTF8_FULL;
+use comfy_table::{ContentArrangement, Table};
 
 /// Output format options
 #[derive(Debug, Clone)]
@@ -104,20 +105,14 @@ pub fn format_fan_status_with_cfm(
                 .unwrap_or(false);
 
             if has_cfm {
-                #[derive(Tabled)]
-                struct FanRowWithCfm {
-                    #[tabled(rename = "Fan ID")]
-                    fan_id: String,
-                    #[tabled(rename = "RPM")]
-                    rpm: String,
-                    #[tabled(rename = "PWM %")]
-                    pwm: String,
-                    #[tabled(rename = "CFM")]
-                    cfm: String,
-                }
+                // Define the table structure for fan status with CFM
+                let mut table = Table::new();
+                table
+                    .set_content_arrangement(ContentArrangement::Dynamic)
+                    .load_preset(UTF8_FULL)
+                    .set_header(vec!["Fan ID", "RPM", "PWM %", "CFM"]);
 
                 let cfm_data = cfm_mappings.unwrap();
-                let mut rows = Vec::new();
 
                 // Collect all fan IDs from both rpms and pwms maps
                 let mut fan_ids: Vec<u8> = status
@@ -141,37 +136,29 @@ pub fn format_fan_status_with_cfm(
                         "-".dimmed().to_string()
                     };
 
-                    rows.push(FanRowWithCfm {
-                        fan_id: format!("{}", fan_id),
-                        rpm: if *rpm > 0 {
-                            format!("{}", rpm).green().to_string()
-                        } else {
-                            "0".red().to_string()
-                        },
-                        pwm: if *pwm > 0 {
-                            format!("{}%", pwm).cyan().to_string()
-                        } else {
-                            "0%".dimmed().to_string()
-                        },
-                        cfm: cfm_str,
-                    });
+                    let rpm_str = if *rpm > 0 {
+                        format!("{}", rpm).green().to_string()
+                    } else {
+                        "0".red().to_string()
+                    };
+
+                    let pwm_str = if *pwm > 0 {
+                        format!("{}%", pwm).cyan().to_string()
+                    } else {
+                        "0%".dimmed().to_string()
+                    };
+
+                    table.add_row(vec![format!("{}", fan_id), rpm_str, pwm_str, cfm_str]);
                 }
 
-                let table = Table::new(rows).with(Style::rounded()).to_string();
                 Ok(format!("{}\n{}", "Fan Status:".bold(), table))
             } else {
                 // No CFM mappings, use simple format
-                #[derive(Tabled)]
-                struct FanRow {
-                    #[tabled(rename = "Fan ID")]
-                    fan_id: String,
-                    #[tabled(rename = "RPM")]
-                    rpm: String,
-                    #[tabled(rename = "PWM %")]
-                    pwm: String,
-                }
-
-                let mut rows = Vec::new();
+                let mut table = Table::new();
+                table
+                    .set_content_arrangement(ContentArrangement::Dynamic)
+                    .load_preset(UTF8_FULL)
+                    .set_header(vec!["Fan ID", "RPM", "PWM %"]);
 
                 // Collect all fan IDs from both rpms and pwms maps
                 let mut fan_ids: Vec<u8> = status
@@ -187,22 +174,21 @@ pub fn format_fan_status_with_cfm(
                     let rpm = status.rpms.get(&fan_id).unwrap_or(&0);
                     let pwm = status.pwms.get(&fan_id).unwrap_or(&0);
 
-                    rows.push(FanRow {
-                        fan_id: format!("{}", fan_id),
-                        rpm: if *rpm > 0 {
-                            format!("{}", rpm).green().to_string()
-                        } else {
-                            "0".red().to_string()
-                        },
-                        pwm: if *pwm > 0 {
-                            format!("{}%", pwm).cyan().to_string()
-                        } else {
-                            "0%".dimmed().to_string()
-                        },
-                    });
+                    let rpm_str = if *rpm > 0 {
+                        format!("{}", rpm).green().to_string()
+                    } else {
+                        "0".red().to_string()
+                    };
+
+                    let pwm_str = if *pwm > 0 {
+                        format!("{}%", pwm).cyan().to_string()
+                    } else {
+                        "0%".dimmed().to_string()
+                    };
+
+                    table.add_row(vec![format!("{}", fan_id), rpm_str, pwm_str]);
                 }
 
-                let table = Table::new(rows).with(Style::rounded()).to_string();
                 Ok(format!("{}\n{}", "Fan Status:".bold(), table))
             }
         }
@@ -214,31 +200,25 @@ pub fn format_profiles(profiles: &ProfileResponse, format: &OutputFormat) -> Res
     match format {
         OutputFormat::Json => Ok(serde_json::to_string_pretty(profiles)?),
         OutputFormat::Table => {
-            #[derive(Tabled)]
-            struct ProfileRow {
-                #[tabled(rename = "Profile Name")]
-                name: String,
-                #[tabled(rename = "Mode")]
-                mode: String,
-                #[tabled(rename = "Values")]
-                values: String,
-            }
+            let mut table = Table::new();
+            table
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .load_preset(UTF8_FULL)
+                .set_header(vec!["Profile Name", "Mode", "Values"]);
 
-            let mut rows = Vec::new();
             for (name, profile) in &profiles.profiles {
-                rows.push(ProfileRow {
-                    name: name.clone().cyan().to_string(),
-                    mode: format!("{:?}", profile.control_mode).yellow().to_string(),
-                    values: profile
+                table.add_row(vec![
+                    name.clone().cyan().to_string(),
+                    format!("{:?}", profile.control_mode).yellow().to_string(),
+                    profile
                         .values
                         .iter()
                         .map(|v| v.to_string())
                         .collect::<Vec<_>>()
                         .join(", "),
-                });
+                ]);
             }
 
-            let table = Table::new(rows).with(Style::rounded()).to_string();
             Ok(format!("{}\n{}", "Available Profiles:".bold(), table))
         }
     }
@@ -249,15 +229,12 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
     match format {
         OutputFormat::Json => Ok(serde_json::to_string_pretty(aliases)?),
         OutputFormat::Table => {
-            #[derive(Tabled)]
-            struct AliasRow {
-                #[tabled(rename = "Fan ID")]
-                fan_id: String,
-                #[tabled(rename = "Alias")]
-                alias: String,
-            }
+            let mut table = Table::new();
+            table
+                .set_content_arrangement(ContentArrangement::Dynamic)
+                .load_preset(UTF8_FULL)
+                .set_header(vec!["Fan ID", "Alias"]);
 
-            let mut rows = Vec::new();
             // Get all fan IDs from the aliases map and sort them
             let mut fan_ids: Vec<&u8> = aliases.aliases.keys().collect();
             fan_ids.sort_unstable();
@@ -269,13 +246,9 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
                     .cloned()
                     .unwrap_or_else(|| format!("Fan #{}", fan_id));
 
-                rows.push(AliasRow {
-                    fan_id: format!("{}", fan_id),
-                    alias: alias.green().to_string(),
-                });
+                table.add_row(vec![format!("{}", fan_id), alias.green().to_string()]);
             }
 
-            let table = Table::new(rows).with(Style::rounded()).to_string();
             Ok(format!("{}\n{}", "Fan Aliases:".bold(), table))
         }
     }

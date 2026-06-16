@@ -30,8 +30,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 colored = "3"
+comfy-table = "7"
 dirs = "6"
 reqwest = { version = "0.13", default-features = false, features = ["json"] }
-tabled = "0.21"
 toml = "1.1"
 urlencoding = "2"

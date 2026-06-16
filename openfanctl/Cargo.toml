@@ -29,7 +29,7 @@ toml.workspace = true
 
 colored.workspace = true
 # Output formatting
-tabled.workspace = true
+comfy-table.workspace = true
 
 anyhow.workspace = true
 # Error handling
