@@ -2,7 +2,7 @@
 # Multi-stage build for optimized container size
 
 # Build stage
-FROM rust:1.96-alpine AS builder
+FROM rust:1.97-alpine AS builder
 
 # Use Docker's automatic platform detection
 ARG TARGETPLATFORM
