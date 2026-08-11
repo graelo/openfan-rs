@@ -109,7 +109,7 @@ pub fn format_fan_status_with_cfm(
                 let mut table = Table::new();
                 table
                     .set_content_arrangement(ContentArrangement::Dynamic)
-                    .load_preset(UTF8_FULL)
+                    .load_style(UTF8_FULL)
                     .set_header(vec!["Fan ID", "RPM", "PWM %", "CFM"]);
 
                 let cfm_data = cfm_mappings.unwrap();
@@ -157,7 +157,7 @@ pub fn format_fan_status_with_cfm(
                 let mut table = Table::new();
                 table
                     .set_content_arrangement(ContentArrangement::Dynamic)
-                    .load_preset(UTF8_FULL)
+                    .load_style(UTF8_FULL)
                     .set_header(vec!["Fan ID", "RPM", "PWM %"]);
 
                 // Collect all fan IDs from both rpms and pwms maps
@@ -203,7 +203,7 @@ pub fn format_profiles(profiles: &ProfileResponse, format: &OutputFormat) -> Res
             let mut table = Table::new();
             table
                 .set_content_arrangement(ContentArrangement::Dynamic)
-                .load_preset(UTF8_FULL)
+                .load_style(UTF8_FULL)
                 .set_header(vec!["Profile Name", "Mode", "Values"]);
 
             for (name, profile) in &profiles.profiles {
@@ -232,7 +232,7 @@ pub fn format_aliases(aliases: &AliasResponse, format: &OutputFormat) -> Result<
             let mut table = Table::new();
             table
                 .set_content_arrangement(ContentArrangement::Dynamic)
-                .load_preset(UTF8_FULL)
+                .load_style(UTF8_FULL)
                 .set_header(vec!["Fan ID", "Alias"]);
 
             // Get all fan IDs from the aliases map and sort them
