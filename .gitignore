@@ -3,7 +3,6 @@ target/
 coverage/
 cobertura.xml
 
-AGENTS.md
 CLAUDE.md
 memory-bank/
 .claude/

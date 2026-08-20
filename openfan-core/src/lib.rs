@@ -1,8 +1,3 @@
-//! OpenFAN Core Library
-//!
-//! Shared types, models, and utilities for the OpenFAN Controller project.
-//! This crate is used by both the server and CLI components.
-
 pub mod api;
 pub mod board;
 pub mod config;

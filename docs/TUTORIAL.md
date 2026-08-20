@@ -45,14 +45,14 @@ openfand --device /dev/ttyACM0 --board custom:4
 
 OpenFAN uses XDG-compliant paths by default:
 
-| File | Location | Purpose |
-|------|----------|---------|
-| Static config | `~/.config/openfan/config.toml` | Server settings |
-| Aliases | `~/.local/share/openfan/aliases.toml` | Fan names |
-| Profiles | `~/.local/share/openfan/profiles.toml` | Saved profiles |
-| Zones | `~/.local/share/openfan/zones.toml` | Fan groups |
+| File           | Location                                     | Purpose                |
+| -------------- | -------------------------------------------- | ---------------------- |
+| Static config  | `~/.config/openfan/config.toml`              | Server settings        |
+| Aliases        | `~/.local/share/openfan/aliases.toml`        | Fan names              |
+| Profiles       | `~/.local/share/openfan/profiles.toml`       | Saved profiles         |
+| Zones          | `~/.local/share/openfan/zones.toml`          | Fan groups             |
 | Thermal curves | `~/.local/share/openfan/thermal_curves.toml` | Temperature-PWM curves |
-| CFM mappings | `~/.local/share/openfan/cfm_mappings.toml` | Airflow display values |
+| CFM mappings   | `~/.local/share/openfan/cfm_mappings.toml`   | Airflow display values |
 
 For system-wide installations, use `/etc/openfan/` and `/var/lib/openfan/`.
 
@@ -221,12 +221,12 @@ openfanctl config reset
 CLI settings can also be configured via environment variables (override config
 file):
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `OPENFAN_SERVER` | Server URL | `http://192.168.1.100:3000` |
-| `OPENFAN_FORMAT` | Output format | `json` or `table` |
-| `OPENFAN_TIMEOUT` | Request timeout (seconds) | `30` |
-| `OPENFAN_VERBOSE` | Verbose output | `true` or `false` |
+| Variable          | Purpose                   | Example                     |
+| ----------------- | ------------------------- | --------------------------- |
+| `OPENFAN_SERVER`  | Server URL                | `http://192.168.1.100:3000` |
+| `OPENFAN_FORMAT`  | Output format             | `json` or `table`           |
+| `OPENFAN_TIMEOUT` | Request timeout (seconds) | `30`                        |
+| `OPENFAN_VERBOSE` | Verbose output            | `true` or `false`           |
 
 Priority: CLI flags > env vars > config file > defaults.
 
@@ -453,11 +453,11 @@ temperatures to PWM values, with linear interpolation between points.
 
 The server creates these default thermal curves:
 
-| Name | Description | Points |
-|------|-------------|--------|
-| Balanced | Standard curve for balanced performance | 30°C→25%, 50°C→50%, 70°C→80%, 85°C→100% |
-| Silent | Low noise curve for quiet operation | 40°C→20%, 60°C→40%, 80°C→70%, 90°C→100% |
-| Aggressive | High cooling for maximum performance | 30°C→40%, 50°C→70%, 65°C→90%, 75°C→100% |
+| Name       | Description                             | Points                                  |
+| ---------- | --------------------------------------- | --------------------------------------- |
+| Balanced   | Standard curve for balanced performance | 30°C→25%, 50°C→50%, 70°C→80%, 85°C→100% |
+| Silent     | Low noise curve for quiet operation     | 40°C→20%, 60°C→40%, 80°C→70%, 90°C→100% |
+| Aggressive | High cooling for maximum performance    | 30°C→40%, 50°C→70%, 65°C→90%, 75°C→100% |
 
 ### Managing Thermal Curves
 
@@ -612,35 +612,35 @@ The server exposes a REST API on port 3000 (default).
 
 ### Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v0/info` | GET | Server info (includes connection status) |
-| `/api/v0/reconnect` | POST | Trigger manual reconnection attempt |
-| `/api/v0/controllers` | GET | List all controllers |
-| `/api/v0/controller/{id}/info` | GET | Get controller details |
-| `/api/v0/controller/{id}/reconnect` | POST | Reconnect specific controller |
-| `/api/v0/fan/status` | GET | All fan status |
-| `/api/v0/fan/{id}/pwm?value=N` | GET | Set fan PWM (0-100) |
-| `/api/v0/fan/{id}/rpm?value=N` | GET | Set fan RPM target (500-9000) |
-| `/api/v0/profiles/list` | GET | List profiles |
-| `/api/v0/profiles/set?name=X` | GET | Apply profile |
-| `/api/v0/profiles/add` | POST | Add profile |
-| `/api/v0/alias/all/get` | GET | Get all aliases |
-| `/api/v0/alias/{id}/set?value=X` | GET | Set alias |
-| `/api/v0/alias/{id}` | DELETE | Delete alias (revert to default) |
-| `/api/v0/zones/list` | GET | List zones |
-| `/api/v0/zones/add` | POST | Add zone |
-| `/api/v0/zone/{name}/apply?mode=pwm&value=N` | GET | Apply to zone |
-| `/api/v0/curves/list` | GET | List thermal curves |
-| `/api/v0/curves/add` | POST | Add thermal curve |
-| `/api/v0/curve/{name}/get` | GET | Get curve details |
-| `/api/v0/curve/{name}/update` | POST | Update curve |
-| `/api/v0/curve/{name}` | DELETE | Delete curve |
-| `/api/v0/curve/{name}/interpolate?temp=N` | GET | Interpolate PWM for temperature |
-| `/api/v0/cfm/list` | GET | List CFM mappings |
-| `/api/v0/cfm/{port}` | GET | Get CFM mapping for port |
-| `/api/v0/cfm/{port}` | POST | Set CFM mapping `{"cfm_at_100": 45.0}` |
-| `/api/v0/cfm/{port}` | DELETE | Delete CFM mapping |
+| Endpoint                                     | Method | Description                              |
+| -------------------------------------------- | ------ | ---------------------------------------- |
+| `/api/v0/info`                               | GET    | Server info (includes connection status) |
+| `/api/v0/reconnect`                          | POST   | Trigger manual reconnection attempt      |
+| `/api/v0/controllers`                        | GET    | List all controllers                     |
+| `/api/v0/controller/{id}/info`               | GET    | Get controller details                   |
+| `/api/v0/controller/{id}/reconnect`          | POST   | Reconnect specific controller            |
+| `/api/v0/fan/status`                         | GET    | All fan status                           |
+| `/api/v0/fan/{id}/pwm?value=N`               | GET    | Set fan PWM (0-100)                      |
+| `/api/v0/fan/{id}/rpm?value=N`               | GET    | Set fan RPM target (500-9000)            |
+| `/api/v0/profiles/list`                      | GET    | List profiles                            |
+| `/api/v0/profiles/set?name=X`                | GET    | Apply profile                            |
+| `/api/v0/profiles/add`                       | POST   | Add profile                              |
+| `/api/v0/alias/all/get`                      | GET    | Get all aliases                          |
+| `/api/v0/alias/{id}/set?value=X`             | GET    | Set alias                                |
+| `/api/v0/alias/{id}`                         | DELETE | Delete alias (revert to default)         |
+| `/api/v0/zones/list`                         | GET    | List zones                               |
+| `/api/v0/zones/add`                          | POST   | Add zone                                 |
+| `/api/v0/zone/{name}/apply?mode=pwm&value=N` | GET    | Apply to zone                            |
+| `/api/v0/curves/list`                        | GET    | List thermal curves                      |
+| `/api/v0/curves/add`                         | POST   | Add thermal curve                        |
+| `/api/v0/curve/{name}/get`                   | GET    | Get curve details                        |
+| `/api/v0/curve/{name}/update`                | POST   | Update curve                             |
+| `/api/v0/curve/{name}`                       | DELETE | Delete curve                             |
+| `/api/v0/curve/{name}/interpolate?temp=N`    | GET    | Interpolate PWM for temperature          |
+| `/api/v0/cfm/list`                           | GET    | List CFM mappings                        |
+| `/api/v0/cfm/{port}`                         | GET    | Get CFM mapping for port                 |
+| `/api/v0/cfm/{port}`                         | POST   | Set CFM mapping `{"cfm_at_100": 45.0}`   |
+| `/api/v0/cfm/{port}`                         | DELETE | Delete CFM mapping                       |
 
 ### Example API Calls
 

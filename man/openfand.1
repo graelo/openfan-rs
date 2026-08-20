@@ -1,0 +1,113 @@
+.TH OPENFAND 1 "2026-08-20" "openfand 0.2.1" "User Commands"
+.SH NAME
+openfand \- REST API server for OpenFAN fan controllers
+.SH SYNOPSIS
+.B openfand
+.RI [ OPTIONS ]
+.SH DESCRIPTION
+.B openfand
+runs the OpenFAN REST API server and communicates with one or more fan
+controllers over USB serial.
+.PP
+A controller can be configured through command-line options for a single
+controller, or through one or more
+.B [[controllers]]
+entries in the TOML configuration file.
+Mock mode provides a server without hardware for development and testing.
+.SH OPTIONS
+.TP
+.BI \-c , \-\-config " " PATH
+Path to the TOML configuration file.
+The default is selected from
+.BR OPENFAN_SERVER_CONFIG ,
+XDG configuration directories, and the platform configuration directory.
+.TP
+.BI \-b , \-\-bind " " ADDRESS
+Server bind address. Overrides
+.B server.bind_address
+from the configuration file.
+.TP
+.BI \-p , \-\-port " " PORT
+Server port. Overrides
+.B server.port
+from the configuration file.
+.TP
+.BR \-v , \-\-verbose
+Enable verbose logging.
+.TP
+.B \-\-mock
+Run without hardware for testing and development.
+When no controllers are configured, this creates a single
+.B default
+controller using
+.BR \-\-board .
+.TP
+.BI \-\-board " " BOARD
+Board type for single-controller mode.
+Use
+.B standard
+for the OpenFAN Standard board or
+.B custom:N
+for a custom board with 1 to 16 fans.
+The default is
+.BR standard .
+This option is ignored when
+.B [[controllers]]
+is configured.
+.TP
+.BI \-\-device " " PATH
+Serial device path, such as
+.B /dev/ttyACM0
+or
+.BR /dev/ttyUSB0 .
+Creates an implicit
+.B default
+controller in single-controller mode and takes precedence over configured
+controllers.
+.SH CONFIGURATION
+The server reads TOML configuration containing server settings, mutable data
+location, reconnection and shutdown behavior, and optional controller entries.
+.PP
+A multi-controller configuration uses entries like:
+.PP
+.nf
+[[controllers]]
+id = "main"
+device = "/dev/ttyACM0"
+board = "standard"
+description = "Main chassis fans"
+.fi
+.PP
+When no controller is configured, use either
+.B \-\-device
+with
+.B \-\-board
+or
+.B \-\-mock
+with
+.BR \-\-board .
+.SH FILES
+.TP
+.I ~/.config/openfan/config.toml
+Default per-user server configuration on Linux.
+.TP
+.I /etc/openfan/config.toml
+System-wide fallback configuration.
+.TP
+.I ~/.config/openfan/
+Platform-dependent configuration directory selected through XDG conventions.
+.TP
+.I /var/lib/openfan/
+System-wide default directory for mutable profiles, aliases, zones, curves,
+and CFM mappings.
+.SH EXIT STATUS
+.TP
+.B 0
+The server terminated successfully.
+.TP
+.B 1
+Configuration loading, controller initialization, or runtime startup failed.
+.SH SEE ALSO
+.BR openfanctl (1)
+.SH AUTHORS
+graelo <https://github.com/graelo/openfan-rs>

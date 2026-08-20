@@ -1,0 +1,275 @@
+.TH OPENFANCTL 1 "2026-08-20" "openfanctl 0.2.1" "User Commands"
+.SH NAME
+openfanctl \- command-line client for OpenFAN fan controllers
+.SH SYNOPSIS
+.B openfanctl
+.RI [ OPTIONS ] COMMAND
+.RI [ COMMAND_OPTIONS ]
+.SH DESCRIPTION
+.B openfanctl
+controls OpenFAN fan controllers through the REST API exposed by
+.BR openfand (1).
+It supports table and JSON output, configuration management, profiles,
+zones, thermal curves, and multi-controller setups.
+.SH GLOBAL OPTIONS
+.TP
+.BI \-s , \-\-server " " URL
+Server URL. Overrides the configured URL.
+.TP
+.BI \-f , \-\-format " " FORMAT
+Output format. FORMAT is
+.B table
+for pretty output or
+.B json
+for machine-readable JSON.
+.TP
+.BI \-v , \-\-verbose " " BOOL
+Enable or disable verbose logging. BOOL is
+.B true
+or
+.BR false .
+.TP
+.B \-\-no-config
+Do not load the CLI configuration file.
+.TP
+.BI \-\-config " " PATH
+CLI configuration file path. The default is
+.BR ~/.config/openfan/cli.toml .
+.TP
+.BI \-c , \-\-controller " " ID
+Controller ID for controller-specific commands.
+This is required for fan, profile, alias, curve, and CFM commands in
+multi-controller setups. Zone commands are global.
+.SH COMMANDS
+.TP
+.B info
+Show system information.
+.TP
+.B status
+Show the status of all fans.
+.TP
+.B health
+Check server connectivity and health.
+.TP
+.B controllers
+List all configured controllers.
+.TP
+.B controller
+Manage a specific controller. See
+.BR CONTROLLER .
+.TP
+.B config
+Show or manage CLI configuration. See
+.BR CONFIG .
+.TP
+.B fan
+Control or inspect a fan. See
+.BR FAN .
+.TP
+.B profile
+Manage fan profiles. See
+.BR PROFILE .
+.TP
+.B alias
+Manage fan aliases. See
+.BR ALIAS .
+.TP
+.B zone
+Manage global, cross-controller zones. See
+.BR ZONE .
+.TP
+.B curve
+Manage thermal curves. See
+.BR CURVE .
+.TP
+.B cfm
+Manage CFM mappings. See
+.BR CFM .
+.TP
+.BI completion " " SHELL
+Generate shell completion for
+.BR bash ,
+.BR elvish ,
+.BR fish ,
+.BR powershell ,
+or
+.BR zsh .
+.SH CONTROLLER
+.TP
+.BI controller info " " ID
+Show information for controller ID.
+.TP
+.BI controller reconnect " " ID
+Force a reconnection attempt for controller ID.
+.SH CONFIG
+.TP
+.B config show
+Show the current CLI configuration.
+.TP
+.BI config set " " KEY VALUE
+Set a configuration value.
+.TP
+.B config reset
+Reset CLI configuration to defaults.
+.SH FAN
+.TP
+.BI fan set " " FAN_ID
+Set a fan speed. Specify exactly one of the following options:
+.TP
+.BI \-\-pwm " " PERCENT
+Set PWM percentage from 0 to 100.
+.TP
+.BI \-\-rpm " " RPM
+Set a target RPM.
+.TP
+.BI fan rpm " " FAN_ID
+Get the current RPM for a fan.
+.TP
+.BI fan pwm " " FAN_ID
+Get the current PWM for a fan.
+.SH PROFILE
+.TP
+.B profile list
+List all profiles.
+.TP
+.BI profile apply " " NAME
+Apply a profile.
+.TP
+.BI profile add " " NAME MODE VALUES
+Add a profile. MODE is
+.B pwm
+or
+.BR rpm .
+VALUES is a comma-separated list of values for the board's fan channels.
+.TP
+.BI profile remove " " NAME
+Remove a profile.
+.SH ALIAS
+.TP
+.B alias list
+Show all fan aliases.
+.TP
+.BI alias get " " FAN_ID
+Get the alias for a fan.
+.TP
+.BI alias set " " FAN_ID NAME
+Set a fan alias.
+.TP
+.BI alias delete " " FAN_ID
+Delete a fan alias and restore its default name.
+.SH ZONE
+Zones are global and may contain fans from multiple controllers.
+A port is written as
+.B controller:fan_id
+or as
+.B fan_id
+to use the default controller.
+.TP
+.B zone list
+List all zones.
+.TP
+.BI zone get " " NAME
+Show zone details.
+.TP
+.BI zone add " " NAME
+Add a zone. Use
+.BI \-p , \-\-ports " " PORTS
+for comma-separated port specifications and optionally
+.BI \-d , \-\-description " " DESCRIPTION .
+.TP
+.BI zone update " " NAME
+Update a zone using the same
+.B \-\-ports
+and optional
+.B \-\-description
+options as
+.BR zone add .
+.TP
+.BI zone delete " " NAME
+Delete a zone.
+.TP
+.BI zone apply " " NAME
+Apply a value to every fan in a zone. Specify
+.BI \-\-pwm " " PERCENT
+or
+.BI \-\-rpm " " RPM .
+.SH CURVE
+.TP
+.B curve list
+List all thermal curves.
+.TP
+.BI curve get " " NAME
+Show thermal curve details.
+.TP
+.BI curve add " " NAME
+Add a thermal curve with
+.BI \-p , \-\-points " " POINTS
+where POINTS has the form
+.BR temp:pwm,temp:pwm,... .
+Optionally provide
+.BI \-d , \-\-description " " DESCRIPTION .
+.TP
+.BI curve update " " NAME
+Update a thermal curve using the same options as
+.BR curve add .
+.TP
+.BI curve delete " " NAME
+Delete a thermal curve.
+.TP
+.BI curve interpolate " " NAME
+Interpolate a PWM value at a temperature supplied with
+.BI \-t , \-\-temp " " CELSIUS .
+.SH CFM
+CFM mappings provide display-only airflow estimates for fan ports.
+.TP
+.B cfm list
+List all CFM mappings.
+.TP
+.BI cfm get " " PORT
+Get the CFM mapping for a port.
+.TP
+.BI cfm set " " PORT
+Set the CFM-at-100-percent value with
+.BI \-\-cfm-at-100 " " CFM .
+.TP
+.BI cfm delete " " PORT
+Delete the CFM mapping for a port.
+.SH EXAMPLES
+Show status as JSON:
+.PP
+.nf
+openfanctl --format json status
+.fi
+.PP
+Set fan 0 to 75 percent PWM:
+.PP
+.nf
+openfanctl fan set 0 --pwm 75
+.fi
+.PP
+Use a specific controller:
+.PP
+.nf
+openfanctl --controller gpu fan set 0 --rpm 1200
+.fi
+.PP
+Add a cross-controller zone:
+.PP
+.nf
+openfanctl zone add intake --ports main:0,main:1,gpu:0
+.fi
+.SH FILES
+.TP
+.I ~/.config/openfan/cli.toml
+Default CLI configuration file.
+.SH EXIT STATUS
+.TP
+.B 0
+The requested operation completed successfully.
+.TP
+.B 1
+The operation failed or the server returned an error.
+.SH SEE ALSO
+.BR openfand (1)
+.SH AUTHORS
+graelo <https://github.com/graelo/openfan-rs>
