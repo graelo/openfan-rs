@@ -4,18 +4,38 @@ All notable changes to the OpenFAN Controller project will be documented in
 this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.2.0 (2026-01-04)
+## [Unreleased]
 
 ### Added
 
-- **Makefile**: Convenience commands for building, testing, and Docker operations
-  - `make docker` automatically extracts version from Cargo.toml and builds Docker image
+- Manpages for the `openfand` and `openfanctl` binaries.
+- Makefile targets for local formatting, linting, testing, auditing, coverage,
+  and documentation checks.
+
+### Changed
+
+- Make the Makefile the canonical local verification workflow while retaining
+  OpenFAN's workspace, release, and Docker targets.
+- Move user-facing project documentation to `README.md` instead of duplicating
+  the overview in `openfan-core/src/lib.rs`.
+- Document the development and manpage workflows in `README.md` and
+  `CONTRIBUTING.md`.
+
+## [0.2.0] (2026-01-04)
+
+### Added
+
+- **Makefile**: Convenience commands for building, testing, and Docker
+    operations
+  - `make docker` automatically extracts version from Cargo.toml and builds
+    Docker image
   - `make docker-multiplatform` for multi-architecture builds (amd64/arm64)
   - `make build`, `make test`, `make clean` for standard Rust operations
-- **CONTRIBUTING.md**: Developer onboarding documentation with development setup,
-  testing guide, commit conventions, and PR process
+- **CONTRIBUTING.md**: Developer onboarding documentation with development
+    setup, testing guide, commit conventions, and PR process
 - Added specific error variants for better error handling: `ZoneNotFound`,
   `CurveNotFound`, `CfmMappingNotFound`
 - **Device reconnection support**: Automatic reconnection when hardware
@@ -38,24 +58,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Configure multiple controllers via `[[controllers]]` array in config.toml
   - CLI `--controller` (`-c`) flag for controller-specific commands
   - New `openfanctl controllers` command to list all controllers
-  - New `openfanctl controller info <id>` and `controller reconnect <id>` subcommands
-  - Zones now support cross-controller fan grouping with `controller:fan_id` format
+  - New `openfanctl controller info <id>` and `controller reconnect <id>`
+    subcommands
+  - Zones now support cross-controller fan grouping with `controller:fan_id`
+    format
   - New API endpoints: `/api/v0/controllers`, `/api/v0/controller/{id}/info`,
     `/api/v0/controller/{id}/reconnect`
   - Backward compatible: single-controller setups work unchanged
 - **Code quality improvements**:
-  - `BoardType` enum now uses serde with string format (`"standard"`, `"custom:4"`)
+  - `BoardType` enum now uses serde with string format (`"standard"`,
+    `"custom:4"`)
   - Builder pattern for `ControllerEntry` construction
   - Removed duplicate type definitions across crates
   - Enhanced async method documentation with proper imperative mood
   - Minimized imports in openfanctl for better maintainability
   - Improved test coverage (183 integration tests, 75.21% code coverage)
-    - Added integration tests for edge cases in fan handlers (non-numeric IDs, missing controllers, PWM clamping)
+    - Added integration tests for edge cases in fan handlers (non-numeric IDs,
+      missing controllers, PWM clamping)
     - Added error conversion and Display trait tests in openfan-core
   - Version strings now use `env!("CARGO_PKG_VERSION")` for consistency
     - Replaced hardcoded version strings in production code
-    - Test fixtures also use CARGO_PKG_VERSION with "-test" suffix for mock server
-- **Module rename**: Renamed `openfand/src/hardware/` to `openfand/src/controllers/` for better alignment with multi-controller architecture
+    - Test fixtures also use CARGO_PKG_VERSION with "-test" suffix for mock
+      server
+- **Module rename**: Renamed `openfand/src/hardware/` to
+    `openfand/src/controllers/` for better alignment with multi-controller
+    architecture
 - **Docker version automation**:
   - Dockerfile now extracts version from Cargo.toml instead of hardcoding
   - docker-compose.yml passes VERSION build arg automatically
@@ -146,6 +173,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-[Unreleased]: https://github.com/graelo/openfan-rs/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/graelo/openfan-rs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/graelo/openfan-rs/releases/tag/v0.2.0
 [0.1.0]: https://github.com/graelo/openfan-rs/releases/tag/v0.1.0
 [0.0.1]: https://github.com/graelo/openfan-rs/releases/tag/v0.0.1

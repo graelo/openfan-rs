@@ -31,10 +31,10 @@ OpenFAN is a fan controller system consisting of:
 
 ## Supported Hardware
 
-| Board | Fans | USB VID:PID | Status |
-|-------|------|-------------|--------|
-| OpenFAN Standard | 10 | 2E8A:000A | Supported |
-| Custom | 1-16 | User-defined | Supported |
+| Board            | Fans | USB VID:PID  | Status    |
+| ---------------- | ---- | ------------ | --------- |
+| OpenFAN Standard | 10   | 2E8A:000A    | Supported |
+| Custom           | 1-16 | User-defined | Supported |
 
 The server auto-detects OpenFAN Standard boards via USB. For custom/DIY boards,
 use `--board custom:N` where N is the fan count (1-16).
@@ -50,7 +50,8 @@ curl -LO https://github.com/graelo/openfan-rs/releases/latest/download/openfan-c
 sudo dpkg -i openfan-controller_<VERSION>_amd64.deb
 ```
 
-**Other Linux** (statically-linked musl binaries — use `aarch64-unknown-linux-musl` on ARM64):
+**Other Linux** (statically-linked musl binaries — use
+`aarch64-unknown-linux-musl` on ARM64):
 
 ```bash
 BASE=https://github.com/graelo/openfan-rs/releases/latest/download
@@ -116,11 +117,11 @@ openfanctl --format json status
 
 OpenFAN discovers configuration using XDG paths with system fallback:
 
-| Type | User config | System config (fallback) |
-|------|--------------|----------------|
-| Server config | `~/.config/openfan/config.toml` | `/etc/openfan/config.toml` |
-| CLI config | `~/.config/openfan/cli.toml` | — |
-| Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/` | `/var/lib/openfan/` |
+| Type                                    | User config                     | System config (fallback)   |
+| --------------------------------------- | ------------------------------- | -------------------------- |
+| Server config                           | `~/.config/openfan/config.toml` | `/etc/openfan/config.toml` |
+| CLI config                              | `~/.config/openfan/cli.toml`    | —                          |
+| Data (aliases, profiles, zones, curves) | `~/.local/share/openfan/`       | `/var/lib/openfan/`        |
 
 Config path priority: `--config` flag > `OPENFAN_SERVER_CONFIG` env var > XDG
 default.
@@ -240,6 +241,22 @@ curl -X POST http://localhost:3000/api/v0/controller/main/reconnect
 ```
 
 See the [Tutorial](docs/TUTORIAL.md) for the complete API reference.
+
+## Development
+
+The [`Makefile`](Makefile) is the canonical definition of local build and
+verification tasks. Run `make help` to list all targets. The primary workflow
+is:
+
+```bash
+make check       # formatting, linting, and the full test suite
+make check-all   # check plus audits, documentation, and CI security checks
+```
+
+Use `make fix` for automatic formatting and Clippy fixes. Manpages for the two
+binaries live in [`man/`](man/); lint them with `make man`. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for focused tests, coverage, and
+documentation maintenance.
 
 ## Docker
 
