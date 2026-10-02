@@ -59,7 +59,7 @@ jobs:
           cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Install convco
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: convco@0.7.0
 
@@ -77,7 +77,7 @@ jobs:
         run: cargo build --locked --release --workspace
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@b20dedce73af6905cdc30d6611090c9b67557c8d # v2.85.12
+        uses: taiki-e/install-action@4cef1412cce204788f482e778a0b9187f9626a29 # v2.87.21
         with:
           tool: cargo-nextest@0.9.133
 
