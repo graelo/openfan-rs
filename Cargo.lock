@@ -946,7 +946,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-serial",
- "tokio-test",
  "toml",
  "tower",
  "tower-http 0.7.1",

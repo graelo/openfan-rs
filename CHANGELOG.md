@@ -36,9 +36,9 @@ and this project adheres to
 ### Removed
 
 - Unused dependencies that trip the `cargo::unused_dependencies` lint on
-  beta and nightly toolchains: `rand` from `openfanctl`, and the deprecated
-  `serde_yaml` from `openfand`, `openfan-core` dev-dependencies, and the
-  workspace.
+  beta and nightly toolchains: `rand` from `openfanctl`, `tokio-test` from
+  `openfand`, and the deprecated `serde_yaml` from `openfand`,
+  `openfan-core` dev-dependencies, and the workspace.
 
 ## [0.2.0] (2026-01-04)
 
