@@ -12,6 +12,8 @@ and this project adheres to
 ### Added
 
 - Manpages for the `openfand` and `openfanctl` binaries.
+- `.cargo/config.toml` denying cargo build warnings locally, matching the
+  `CARGO_BUILD_WARNINGS=deny` default of the CI toolchain setup.
 - Makefile targets for local formatting, linting, testing, auditing, coverage,
   and documentation checks.
 
