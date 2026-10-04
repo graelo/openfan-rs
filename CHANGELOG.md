@@ -29,6 +29,9 @@ and this project adheres to
   `.github/poutine.yml` skip list accordingly (GitHub Actions playbook v1.9).
 - Call same-repository reusable workflows with the `$/.github/...`
   self-repository syntax introduced in the playbook v1.8.
+- Move the test-only `axum` dependency of `openfanctl` to dev-dependencies,
+  where the stricter `cargo::unused_dependencies` analysis of the
+  `actions-rust-lang/setup-rust-toolchain`-based builds expects it.
 
 ### Removed
 
