@@ -23,6 +23,12 @@ and this project adheres to
   the overview in `openfan-core/src/lib.rs`.
 - Document the development and manpage workflows in `README.md` and
   `CONTRIBUTING.md`.
+- Switch CI Rust toolchain installation from `dtolnay/rust-toolchain` to
+  `actions-rust-lang/setup-rust-toolchain` (v2.0.0), drop the now-unneeded
+  `.github/zizmor.yml` superfluous-action ignores, and update the
+  `.github/poutine.yml` skip list accordingly (GitHub Actions playbook v1.9).
+- Call same-repository reusable workflows with the `$/.github/...`
+  self-repository syntax introduced in the playbook v1.8.
 
 ## [0.2.0] (2026-01-04)
 
