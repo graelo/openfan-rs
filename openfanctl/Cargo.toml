@@ -38,11 +38,9 @@ thiserror.workspace = true
 # Async runtime
 tokio.workspace = true
 
+[dev-dependencies]
 # For test utilities (mock server)
 axum.workspace = true
-rand = "0.10"
-
-[dev-dependencies]
 serial_test = "4.0"
 tempfile = "3"
 tokio-test = "0.4"

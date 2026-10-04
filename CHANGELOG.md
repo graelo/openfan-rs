@@ -12,6 +12,8 @@ and this project adheres to
 ### Added
 
 - Manpages for the `openfand` and `openfanctl` binaries.
+- `.cargo/config.toml` denying cargo build warnings locally, matching the
+  `CARGO_BUILD_WARNINGS=deny` default of the CI toolchain setup.
 - Makefile targets for local formatting, linting, testing, auditing, coverage,
   and documentation checks.
 
@@ -23,6 +25,22 @@ and this project adheres to
   the overview in `openfan-core/src/lib.rs`.
 - Document the development and manpage workflows in `README.md` and
   `CONTRIBUTING.md`.
+- Switch CI Rust toolchain installation from `dtolnay/rust-toolchain` to
+  `actions-rust-lang/setup-rust-toolchain` (v2.0.0), drop the now-unneeded
+  `.github/zizmor.yml` superfluous-action ignores, and update the
+  `.github/poutine.yml` skip list accordingly (GitHub Actions playbook v1.9).
+- Call same-repository reusable workflows with the `$/.github/...`
+  self-repository syntax introduced in the playbook v1.8.
+- Move the test-only `axum` dependency of `openfanctl` to dev-dependencies,
+  where the stricter `cargo::unused_dependencies` analysis of the
+  `actions-rust-lang/setup-rust-toolchain`-based builds expects it.
+
+### Removed
+
+- Unused dependencies that trip the `cargo::unused_dependencies` lint on
+  beta and nightly toolchains: `rand` from `openfanctl`, `tokio-test` from
+  `openfand`, and the deprecated `serde_yaml` from `openfand`,
+  `openfan-core` dev-dependencies, and the workspace.
 
 ## [0.2.0] (2026-01-04)
 

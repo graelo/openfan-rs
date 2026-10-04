@@ -38,6 +38,12 @@ The primary targets are:
 - `make man`: roff manpage linting.
 - `make coverage`: HTML coverage using `cargo-llvm-cov`.
 
+Cargo warnings are denied locally as well: `.cargo/config.toml` sets
+`build.warnings = "deny"`, mirroring the `CARGO_BUILD_WARNINGS` default of
+`actions-rust-lang/setup-rust-toolchain` in CI. If a build fails with
+"warnings are denied by `build.warnings` configuration", fix the warning
+rather than working around the setting.
+
 The verification targets assume that external tools such as
 `cargo-nextest`, `cargo-deny`, `cargo-pants`, `convco`, `poutine`, `zizmor`,
 `rumdl`, `mandoc`, and `cargo-llvm-cov` are installed locally.
