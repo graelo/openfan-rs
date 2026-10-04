@@ -40,7 +40,6 @@ tokio.workspace = true
 
 # For test utilities (mock server)
 axum.workspace = true
-rand = "0.10"
 
 [dev-dependencies]
 serial_test = "4.0"

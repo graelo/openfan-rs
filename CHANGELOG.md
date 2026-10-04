@@ -30,6 +30,13 @@ and this project adheres to
 - Call same-repository reusable workflows with the `$/.github/...`
   self-repository syntax introduced in the playbook v1.8.
 
+### Removed
+
+- Unused dependencies that trip the `cargo::unused_dependencies` lint on
+  beta and nightly toolchains: `rand` from `openfanctl`, and the deprecated
+  `serde_yaml` from `openfand`, `openfan-core` dev-dependencies, and the
+  workspace.
+
 ## [0.2.0] (2026-01-04)
 
 ### Added
