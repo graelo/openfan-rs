@@ -42,6 +42,12 @@ and this project adheres to
   `openfand`, and the deprecated `serde_yaml` from `openfand`,
   `openfan-core` dev-dependencies, and the workspace.
 
+### Security
+
+- Update `url` to 2.5.9 in `Cargo.lock`, fixing RUSTSEC-2026-0592: a stack
+  overflow in `Url::origin()` on nested `blob:` URLs, reachable in this
+  workspace through `reqwest` and `tower-http`.
+
 ## [0.2.0] (2026-01-04)
 
 ### Added
